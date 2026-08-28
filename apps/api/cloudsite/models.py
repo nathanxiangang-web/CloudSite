@@ -1,0 +1,192 @@
+from datetime import datetime, timezone
+
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from .database import IndexBase, StateBase
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class AListConnection(StateBase):
+    __tablename__ = "alist_connections"
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    base_url: Mapped[str] = mapped_column(String(500), default="")
+    base_path: Mapped[str] = mapped_column(String(1000), default="/")
+    username: Mapped[str] = mapped_column(String(200), default="")
+    password_ciphertext: Mapped[str] = mapped_column(Text, default="")
+    remember_credentials: Mapped[bool] = mapped_column(Boolean, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_test_status: Mapped[str] = mapped_column(String(40), default="untested")
+    last_test_message: Mapped[str] = mapped_column(Text, default="")
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SiteSettings(StateBase):
+    __tablename__ = "site_settings"
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    site_name: Mapped[str] = mapped_column(String(100), default="CloudSite")
+    home_title: Mapped[str] = mapped_column(String(200), default="把网盘变成好看的资源网站")
+    description: Mapped[str] = mapped_column(String(500), default="软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享")
+    recent_limit: Mapped[int] = mapped_column(Integer, default=6)
+    popular_limit: Mapped[int] = mapped_column(Integer, default=6)
+    collection_limit: Mapped[int] = mapped_column(Integer, default=4)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SystemSetting(StateBase):
+    __tablename__ = "system_settings"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    value_type: Mapped[str] = mapped_column(String(20), default="string")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ContentRootMapping(StateBase):
+    __tablename__ = "content_root_mappings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(40), index=True)
+    display_name: Mapped[str] = mapped_column(String(100))
+    alist_path: Mapped[str] = mapped_column(String(1000), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class DownloadEvent(StateBase):
+    __tablename__ = "download_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    result: Mapped[str] = mapped_column(String(20))
+    error_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(20), default="public")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DownloadDiagnostic(StateBase):
+    __tablename__ = "download_diagnostics"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    failed_step: Mapped[str] = mapped_column(String(40), default="")
+    error_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    message: Mapped[str] = mapped_column(String(500), default="")
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    target_host: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OperationLog(StateBase):
+    __tablename__ = "operation_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    level: Mapped[str] = mapped_column(String(20), default="INFO")
+    module: Mapped[str] = mapped_column(String(50))
+    action: Mapped[str] = mapped_column(String(80))
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Collection(StateBase):
+    __tablename__ = "collections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    cover: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    visible_on_home: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class CollectionItem(StateBase):
+    __tablename__ = "collection_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    collection_id: Mapped[int] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), index=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("collection_id", "resource_id"),)
+
+
+class Share(StateBase):
+    __tablename__ = "shares"
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    object_type: Mapped[str] = mapped_column(String(20), index=True)
+    object_id: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    access_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class Folder(IndexBase):
+    __tablename__ = "folders"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(500), index=True)
+    path: Mapped[str] = mapped_column(String(1500), unique=True)
+    parent_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    content_type: Mapped[str] = mapped_column(String(40), index=True)
+    root_mapping_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    depth: Mapped[int] = mapped_column(Integer, default=0)
+    child_folder_count: Mapped[int] = mapped_column(Integer, default=0)
+    resource_count: Mapped[int] = mapped_column(Integer, default=0)
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+
+
+class Resource(IndexBase):
+    __tablename__ = "resources"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(500), index=True)
+    path: Mapped[str] = mapped_column(String(1500), unique=True)
+    parent_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    content_type: Mapped[str] = mapped_column(String(40), index=True)
+    root_mapping_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    extension: Mapped[str] = mapped_column(String(40), default="")
+    mime_type: Mapped[str] = mapped_column(String(200), default="")
+    size: Mapped[int] = mapped_column(BigInteger, default=0)
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    thumbnail: Mapped[str] = mapped_column(Text, default="")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SyncRun(IndexBase):
+    __tablename__ = "sync_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sync_type: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    folders_scanned: Mapped[int] = mapped_column(Integer, default=0)
+    resources_scanned: Mapped[int] = mapped_column(Integer, default=0)
+    added_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0)
+    removed_count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+
+
+class SyncChange(IndexBase):
+    __tablename__ = "sync_changes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sync_run_id: Mapped[int] = mapped_column(ForeignKey("sync_runs.id", ondelete="CASCADE"), index=True)
+    object_type: Mapped[str] = mapped_column(String(20))
+    object_id: Mapped[str] = mapped_column(String(64))
+    change_type: Mapped[str] = mapped_column(String(20))
+    old_path: Mapped[str | None] = mapped_column(String(1500), nullable=True)
+    new_path: Mapped[str | None] = mapped_column(String(1500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("sync_run_id", "object_type", "object_id", "change_type"),)

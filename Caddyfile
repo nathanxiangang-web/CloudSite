@@ -1,0 +1,23 @@
+{$CLOUDSITE_DOMAIN:localhost} {
+    encode zstd gzip
+
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    handle /d/* {
+        reverse_proxy api:8000
+    }
+
+    handle /p/* {
+        reverse_proxy api:8000
+    }
+
+    handle /office-files/* {
+        reverse_proxy api:8000
+    }
+
+    handle {
+        reverse_proxy web:3000
+    }
+}

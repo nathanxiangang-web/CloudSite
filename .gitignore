@@ -1,0 +1,33 @@
+# Secrets and local runtime settings
+.env
+.env.*
+!.env.example
+
+# Runtime data, logs, caches and backups
+data/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.tar.gz
+*.zip
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Local tooling and generated workspace files
+.playwright-cli/
+work/
+outputs/
