@@ -50,6 +50,20 @@ docker compose up -d --build
 docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 ```
 
+### 使用现有 Traefik 发布到公网
+
+仓库提供 `docker-compose.prod.yml`，用于接入已存在的 Traefik 网络。它不会直接映射 3000 或 8000 端口，而是由 Traefik 将 HTTPS 域名转发到前端服务。
+
+```bash
+# 首次在服务器构建
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# 已导入预构建镜像时，不在服务器构建
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+```
+
+生产覆盖文件默认使用外部网络 `my-servers_app-net` 和证书解析器 `myresolver`；如果你的 Traefik 名称不同，请先调整 `docker-compose.prod.yml`。
+
 ## 常用操作
 
 ```bash

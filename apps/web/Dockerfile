@@ -3,8 +3,9 @@ RUN apk add --no-cache nodejs npm
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install --registry=https://registry.npmmirror.com --no-audit --no-fund
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm@10.15.1 --registry=https://registry.npmmirror.com --no-audit --no-fund \
+  && pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
 
 FROM base AS build
 WORKDIR /app
