@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     text_preview_max_bytes: int = 1048576
     office_cache_ttl_seconds: int = 3600
     office_cache_max_bytes: int = 200 * 1024 * 1024
+    sync_list_rps: float = 2.0
+    sync_list_jitter_ms: int = 250
+    sync_manual_cooldown_seconds: int = 300
+    sync_startup_delay_min_seconds: int = 30
+    sync_startup_delay_max_seconds: int = 60
+    sync_failure_retry_delay_seconds: int = 900
+    sync_missing_confirm_runs: int = 1
+    sync_mass_change_min_items: int = 100
+    sync_mass_change_ratio: float = 0.10
 
     model_config = SettingsConfigDict(env_prefix="CLOUDSITE_", env_file=".env", extra="ignore")
 

@@ -12,6 +12,9 @@ CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分
 - 支持合集、资源分享链接、有效期与访问统计。
 - 资源下载由 `/d/{resource_id}` 实时向 AList 请求 `raw_url`，应用返回 302 跳转，不将网盘直链写入索引。
 - 内置后台概览、内容索引、合集、分享、下载诊断、站点设置、同步历史和 AList 后台认证。
+- 同步任务后台执行，浏览器立即收到“已启动”，长时间扫描不会被反向代理误报失败。
+- AList 列表请求默认限制为 2 RPS 并加入随机间隔；支持 3/6/12/24 小时自动同步、手动冷却和访问限制熔断。
+- 仅在内容根完整扫描成功后提交该根的缺失差异；扫描失败保留旧索引，并对异常大规模变化进行保护。
 
 ## 技术栈
 
@@ -54,13 +57,24 @@ docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 
 仓库提供 `docker-compose.prod.yml`，用于接入已存在的 Traefik 网络。它不会直接映射 3000 或 8000 端口，而是由 Traefik 将 HTTPS 域名转发到前端服务。
 
-```bash
-# 首次在服务器构建
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+默认从 GitHub Container Registry 拉取已构建镜像，公网服务器无需安装 Node.js、Python 构建环境，也无需现场构建：
 
-# 已导入预构建镜像时，不在服务器构建
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+```bash
+# 拉取 .env 中 CLOUDSITE_IMAGE_TAG 指定的版本
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml pull
+
+# 使用预构建镜像启动或升级
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --wait
 ```
+
+建议在 `.env` 中固定 `CLOUDSITE_IMAGE_TAG=v0.1.2`。需要跟随主分支最新镜像时可改为 `latest`，但生产环境不建议长期使用浮动标签。
+
+每次向 `main` 推送或创建 `v*` Git 标签时，GitHub Actions 会分别构建并发布：
+
+- `ghcr.io/nathanxiangang-web/cloudsite-api`
+- `ghcr.io/nathanxiangang-web/cloudsite-web`
+
+两个 Container package 设为 Public 后，服务器可匿名拉取；若保持 Private，需先用具备 `read:packages` 权限的令牌执行 `docker login ghcr.io`。
 
 生产覆盖文件默认使用外部网络 `my-servers_app-net` 和证书解析器 `myresolver`；如果你的 Traefik 名称不同，请先调整 `docker-compose.prod.yml`。
 
@@ -78,6 +92,10 @@ docker compose down
 
 # 重新构建并启动
 docker compose up -d --build
+
+# 生产环境升级到 .env 指定的 GHCR 版本
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --wait
 ```
 
 运行数据位于 `./data`，其中包含站点配置和可重建的内容索引。升级或迁移前请先备份该目录；`scripts/backup.sh` 与 `scripts/restore.sh` 可辅助执行备份和恢复。
@@ -96,6 +114,14 @@ docker compose run --rm web npm run lint
 # 构建镜像
 docker compose build
 ```
+
+## 同步安全模型
+
+- 周期和普通手动同步使用 AList 已有目录状态，不强制逐目录刷新 Storage。
+- 一个同步任务按内容根顺序执行；同一时间只允许一个任务运行。
+- 内容根扫描成功后，索引以本次真实结果更新，未出现项目可直接标记为缺失。
+- 内容根扫描失败时保留该根旧数据，不把“没扫到”当成“已删除”。
+- 检测到 405、访问限制或异常大规模路径变化时，暂停提交并等待冷却，避免持续请求或误删索引。
 
 ## 安全说明
 

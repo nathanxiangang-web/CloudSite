@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import math
+import random
 import secrets
 import time
 from contextlib import asynccontextmanager, suppress
@@ -21,7 +22,15 @@ from .config import settings
 from .crypto import decrypt_secret, encrypt_secret
 from .database import IndexSession, StateSession, init_databases
 from .download import DownloadError, resolve_download_entry, validate_download_url, validate_resource_id
-from .indexer import log_operation, normalize_path, recover_interrupted_sync_runs, run_sync
+from .indexer import (
+    automatic_sync_due,
+    log_operation,
+    normalize_path,
+    recover_interrupted_sync_runs,
+    run_sync,
+    sync_circuit_status,
+    sync_preflight,
+)
 from .models import (
     AListConnection,
     Collection,
@@ -64,9 +73,11 @@ from .search import SEARCH_OBJECT_TYPES, SEARCH_SORTS, SEARCH_TYPES, classify_ma
 
 
 scheduler_task: asyncio.Task | None = None
+manual_sync_task: asyncio.Task | None = None
 SESSION_COOKIE = "cloudsite_session"
 _storage_info_cache: dict = {"data": None, "fetched_at": 0.0}
 STORAGE_INFO_TTL_SECONDS = 600
+SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
 
 
 def create_session_token(username: str) -> str:
@@ -100,26 +111,39 @@ def alist_http_exception(exc: Exception, fallback_status: int = 502) -> HTTPExce
 async def get_system_values(session) -> dict:
     rows = list((await session.scalars(select(SystemSetting))).all())
     values = {row.key: row.value for row in rows}
+    interval = int(values.get("sync_interval_minutes", "360"))
     return {
         "automatic_sync": values.get("automatic_sync", "false") == "true",
-        "sync_interval_minutes": int(values.get("sync_interval_minutes", "60")),
+        "sync_interval_minutes": interval if interval in SYNC_INTERVAL_OPTIONS else 360,
         "sync_on_startup": values.get("sync_on_startup", "false") == "true",
     }
 
 
 async def scheduler_loop() -> None:
     while True:
+        await asyncio.sleep(60)
         async with StateSession() as session:
             values = await get_system_values(session)
-        await asyncio.sleep(max(60, values["sync_interval_minutes"] * 60))
-        if values["automatic_sync"]:
+        if values["automatic_sync"] and await automatic_sync_due(values["sync_interval_minutes"]):
             with suppress(Exception):
                 await run_sync("scheduled")
 
 
+async def _run_manual_sync_in_background(full: bool, force: bool) -> None:
+    global manual_sync_task
+    try:
+        await run_sync("manual", full, force)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        await log_operation("sync", "failed", f"后台同步启动失败：{str(exc)[:1000]}", level="ERROR")
+    finally:
+        manual_sync_task = None
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global scheduler_task
+    global scheduler_task, manual_sync_task
     await init_databases()
     await recover_interrupted_sync_runs()
     async with StateSession() as session:
@@ -135,10 +159,22 @@ async def lifespan(_: FastAPI):
         scheduler_task.cancel()
         with suppress(asyncio.CancelledError):
             await scheduler_task
+    if manual_sync_task and not manual_sync_task.done():
+        manual_sync_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await manual_sync_task
 
 
 async def _safe_startup_sync():
-    await asyncio.sleep(2)
+    delay = random.uniform(
+        settings.sync_startup_delay_min_seconds,
+        settings.sync_startup_delay_max_seconds,
+    )
+    await asyncio.sleep(delay)
+    async with StateSession() as session:
+        values = await get_system_values(session)
+    if not values["sync_on_startup"] or not await automatic_sync_due(values["sync_interval_minutes"]):
+        return
     with suppress(Exception):
         await run_sync("startup")
 
@@ -716,12 +752,32 @@ async def admin_overview():
         type_counts = {}
         for kind in ("software", "image", "video", "document", "file"):
             type_counts[kind] = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.content_type == kind, Resource.status == "active")) or 0)
+        circuit = await sync_circuit_status()
         return {
             "resources": resource_total,
             "folders": folder_total,
             "download_failures": failures,
             "alist_connected": bool(connection and connection.enabled and connection.last_test_status == "success"),
-            "latest_sync": None if not latest_sync else {"status": latest_sync.status, "finished_at": latest_sync.finished_at, "added": latest_sync.added_count, "updated": latest_sync.updated_count, "removed": latest_sync.removed_count},
+            "latest_sync": None if not latest_sync else {
+                "id": latest_sync.id,
+                "status": latest_sync.status,
+                "finished_at": latest_sync.finished_at,
+                "added": latest_sync.added_count,
+                "updated": latest_sync.updated_count,
+                "removed": latest_sync.removed_count,
+                "folders_scanned": latest_sync.folders_scanned,
+                "resources_scanned": latest_sync.resources_scanned,
+                "current_path": latest_sync.current_path,
+                "roots_total": latest_sync.roots_total,
+                "roots_completed": latest_sync.roots_completed,
+                "roots_failed": latest_sync.roots_failed,
+                "duration_ms": latest_sync.duration_ms,
+            },
+            "sync_circuit": {
+                "open": circuit["open"],
+                "until": circuit["until"],
+                "reason": circuit["reason"],
+            },
             "type_counts": type_counts,
             "logs": [{"level": row.level, "message": row.message, "created_at": row.created_at} for row in logs],
         }
@@ -964,12 +1020,19 @@ async def delete_root_mapping(mapping_id: int):
         return {"ok": True}
 
 
-@app.post("/api/admin/sync")
+@app.post("/api/admin/sync", status_code=202)
 async def sync(payload: SyncInput):
-    try:
-        return await run_sync("manual", payload.full)
-    except Exception as exc:
-        raise HTTPException(409 if "正在运行" in str(exc) else 400, str(exc)) from exc
+    global manual_sync_task
+    if manual_sync_task and not manual_sync_task.done():
+        return {"status": "already_running"}
+    preflight = await sync_preflight("manual", payload.force)
+    if preflight:
+        return preflight
+    manual_sync_task = asyncio.create_task(
+        _run_manual_sync_in_background(payload.full, payload.force),
+        name="cloudsite-manual-sync",
+    )
+    return {"status": "accepted", "message": "同步任务已启动"}
 
 
 @app.post("/api/admin/search/rebuild")
@@ -997,6 +1060,10 @@ def sync_run_dict(row: SyncRun) -> dict:
         "finished_at": row.finished_at,
         "duration_ms": row.duration_ms,
         "error_message": row.error_message,
+        "current_path": row.current_path,
+        "roots_total": row.roots_total,
+        "roots_completed": row.roots_completed,
+        "roots_failed": row.roots_failed,
     }
 
 

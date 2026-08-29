@@ -116,7 +116,7 @@ class AListClient:
                 except (httpx.TimeoutException, httpx.TransportError):
                     if attempt == 2:
                         raise
-                    await asyncio.sleep(0.3 * (2 ** attempt))
+                    await asyncio.sleep((5.0, 15.0)[attempt])
                 finally:
                     if self._client is None:
                         await request_client.aclose()

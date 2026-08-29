@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from types import SimpleNamespace
 
@@ -5,8 +7,9 @@ from cloudsite import main
 from cloudsite.alist import AListClient, AListError, AListUrlBuilder
 from cloudsite.crypto import decrypt_secret, encrypt_secret
 from cloudsite.download import DownloadError, DownloadUrlCache, map_alist_error, validate_download_url, validate_resource_id
-from cloudsite.indexer import join_path, normalize_path, preserve_existing_ids, scan_roots, should_ignore, stable_id, times_equal
+from cloudsite.indexer import advance_missing_candidate, join_path, mass_change_guard_triggered, normalize_path, preserve_existing_ids, scan_roots, should_ignore, stable_id, times_equal
 from cloudsite.main import breadcrumbs_for, create_session_token, folder_dict, resource_dict, verify_session_token
+from cloudsite.schemas import SystemInput
 from cloudsite.search import build_fts_query, classify_match, escape_like, normalize_search_query
 from cloudsite.preview import preview_capability, validate_download_url
 
@@ -238,6 +241,90 @@ async def test_dynamic_scanner_propagates_upstream_failure_without_partial_diff(
     root = SimpleNamespace(id=1, alist_path="/Apps", display_name="Apps", content_type="software")
     with pytest.raises(AListError):
         await scan_roots(BrokenClient(), [root])
+
+
+async def test_dynamic_scanner_rate_limits_every_directory_request():
+    tree = {
+        "/软件": [{"name": "A", "is_dir": True}],
+        "/软件/A": [{"name": "B", "is_dir": True}],
+        "/软件/A/B": [],
+    }
+
+    class FakeClient:
+        async def list_path(self, path: str):
+            return tree[path]
+
+    class FakeLimiter:
+        calls = 0
+
+        async def wait(self):
+            self.calls += 1
+
+    limiter = FakeLimiter()
+    root = SimpleNamespace(id=1, alist_path="/软件", display_name="软件", content_type="software")
+    await scan_roots(FakeClient(), [root], rate_limiter=limiter)
+    assert limiter.calls == 3
+
+
+def test_missing_is_committed_after_one_complete_scan():
+    from datetime import datetime, timezone
+
+    row = SimpleNamespace(status="active", missing_streak=0, missing_candidate_at=None, indexed_at=None)
+    now = datetime.now(timezone.utc)
+    assert advance_missing_candidate(row, now, 1) is True
+    assert row.status == "missing"
+
+
+def test_mass_change_guard_blocks_large_or_high_ratio_missing(monkeypatch):
+    from cloudsite.indexer import settings as indexer_settings
+
+    monkeypatch.setattr(indexer_settings, "sync_mass_change_min_items", 100)
+    monkeypatch.setattr(indexer_settings, "sync_mass_change_ratio", 0.10)
+    assert mass_change_guard_triggered(5, 5, 100) is False
+    assert mass_change_guard_triggered(5, 11, 100) is True
+    assert mass_change_guard_triggered(100, 100, 1000) is True
+
+
+def test_sync_interval_only_accepts_supported_hours():
+    for minutes in (180, 360, 720, 1440):
+        assert SystemInput(sync_interval_minutes=minutes).sync_interval_minutes == minutes
+    with pytest.raises(ValueError):
+        SystemInput(sync_interval_minutes=60)
+
+
+async def test_manual_sync_endpoint_returns_before_background_work_finishes(monkeypatch):
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_preflight(sync_type: str, force: bool):
+        return None
+
+    async def fake_run_sync(sync_type: str, full: bool, force: bool):
+        started.set()
+        await release.wait()
+        return {"status": "success"}
+
+    monkeypatch.setattr(main, "manual_sync_task", None)
+    monkeypatch.setattr(main, "sync_preflight", fake_preflight)
+    monkeypatch.setattr(main, "run_sync", fake_run_sync)
+    result = await main.sync(main.SyncInput(full=False, force=False))
+    assert result == {"status": "accepted", "message": "同步任务已启动"}
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert main.manual_sync_task is not None
+    assert not main.manual_sync_task.done()
+    release.set()
+    await asyncio.wait_for(main.manual_sync_task, timeout=1)
+
+
+async def test_manual_sync_endpoint_returns_preflight_status_without_starting(monkeypatch):
+    async def fake_preflight(sync_type: str, force: bool):
+        return {"status": "cooldown", "retry_after_seconds": 120}
+
+    monkeypatch.setattr(main, "manual_sync_task", None)
+    monkeypatch.setattr(main, "sync_preflight", fake_preflight)
+    result = await main.sync(main.SyncInput(full=False, force=False))
+    assert result == {"status": "cooldown", "retry_after_seconds": 120}
+    assert main.manual_sync_task is None
 
 
 def test_search_query_normalization_and_length_input_are_deterministic():

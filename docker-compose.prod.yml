@@ -1,6 +1,7 @@
 services:
   api:
-    image: cloudsite-public-api:0.1.0
+    image: ${CLOUDSITE_API_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-api}:${CLOUDSITE_IMAGE_TAG:-latest}
+    pull_policy: always
     ports: !reset []
     environment:
       CLOUDSITE_CORS_ORIGINS: https://${CLOUDSITE_DOMAIN:-cloud.netioi.com}
@@ -8,8 +9,11 @@ services:
       - cloudsite-internal
 
   web:
-    image: cloudsite-public-web:0.1.0
+    image: ${CLOUDSITE_WEB_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-web}:${CLOUDSITE_IMAGE_TAG:-latest}
+    pull_policy: always
     ports: !reset []
+    environment:
+      HOSTNAME: 0.0.0.0
     networks:
       - cloudsite-internal
       - traefik

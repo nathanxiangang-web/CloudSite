@@ -62,8 +62,18 @@ async def init_databases() -> None:
         await connection.run_sync(IndexBase.metadata.create_all)
         for table, column, definition in (
             ("folders", "root_mapping_id", "INTEGER"),
+            ("folders", "missing_streak", "INTEGER NOT NULL DEFAULT 0"),
+            ("folders", "missing_candidate_at", "DATETIME"),
+            ("folders", "last_seen_run_id", "INTEGER"),
             ("resources", "root_mapping_id", "INTEGER"),
+            ("resources", "missing_streak", "INTEGER NOT NULL DEFAULT 0"),
+            ("resources", "missing_candidate_at", "DATETIME"),
+            ("resources", "last_seen_run_id", "INTEGER"),
             ("sync_runs", "duration_ms", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "current_path", "VARCHAR(1500) NOT NULL DEFAULT ''"),
+            ("sync_runs", "roots_total", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "roots_completed", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "roots_failed", "INTEGER NOT NULL DEFAULT 0"),
         ):
             columns = await connection.exec_driver_sql(f"PRAGMA table_info({table})")
             if column not in {row[1] for row in columns.fetchall()}:

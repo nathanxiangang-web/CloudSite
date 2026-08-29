@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -26,11 +27,12 @@ class SiteInput(BaseModel):
 
 class SyncInput(BaseModel):
     full: bool = False
+    force: bool = False
 
 
 class SystemInput(BaseModel):
     automatic_sync: bool = False
-    sync_interval_minutes: int = Field(default=60, ge=5, le=10080)
+    sync_interval_minutes: Literal[180, 360, 720, 1440] = 360
     sync_on_startup: bool = False
 
 

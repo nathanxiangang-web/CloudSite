@@ -143,6 +143,9 @@ class Folder(IndexBase):
     modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    missing_streak: Mapped[int] = mapped_column(Integer, default=0)
+    missing_candidate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Resource(IndexBase):
@@ -161,6 +164,9 @@ class Resource(IndexBase):
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     status: Mapped[str] = mapped_column(String(20), default="active", index=True)
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    missing_streak: Mapped[int] = mapped_column(Integer, default=0)
+    missing_candidate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SyncRun(IndexBase):
@@ -177,6 +183,27 @@ class SyncRun(IndexBase):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str] = mapped_column(Text, default="")
+    current_path: Mapped[str] = mapped_column(String(1500), default="")
+    roots_total: Mapped[int] = mapped_column(Integer, default=0)
+    roots_completed: Mapped[int] = mapped_column(Integer, default=0)
+    roots_failed: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SyncRootResult(IndexBase):
+    __tablename__ = "sync_root_results"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sync_run_id: Mapped[int] = mapped_column(ForeignKey("sync_runs.id", ondelete="CASCADE"), index=True)
+    root_mapping_id: Mapped[int] = mapped_column(Integer, index=True)
+    root_path: Mapped[str] = mapped_column(String(1500))
+    status: Mapped[str] = mapped_column(String(30), index=True)
+    folders_scanned: Mapped[int] = mapped_column(Integer, default=0)
+    resources_scanned: Mapped[int] = mapped_column(Integer, default=0)
+    added_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0)
+    removed_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("sync_run_id", "root_mapping_id"),)
 
 
 class SyncChange(IndexBase):
