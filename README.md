@@ -74,7 +74,7 @@ docker compose pull
 docker compose up -d
 ```
 
-建议在 `.env` 中固定 `CLOUDSITE_IMAGE_TAG=v0.1.2`。需要跟随主分支最新镜像时可改为 `latest`，但生产环境不建议长期使用浮动标签。
+Compose 默认固定为 `v0.1.2`；升级时可在 `.env` 设置新的 `CLOUDSITE_IMAGE_TAG`。需要跟随主分支最新镜像时可改为 `latest`，但生产环境不建议长期使用浮动标签。
 
 每次向 `main` 推送或创建 `v*` Git 标签时，GitHub Actions 会分别构建并发布：
 
