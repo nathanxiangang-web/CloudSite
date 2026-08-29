@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      CLOUDSITE_SECRET_KEY: ${CLOUDSITE_SECRET_KEY:-cloudsite-development-key-change-me}
+      CLOUDSITE_MASTER_KEY: ${CLOUDSITE_MASTER_KEY:-}
+      CLOUDSITE_DATA_DIR: /data
+      CLOUDSITE_CORS_ORIGINS: ${CLOUDSITE_CORS_ORIGINS:-http://localhost:3000}
+      CLOUDSITE_OFFICE_CACHE_TTL_SECONDS: ${CLOUDSITE_OFFICE_CACHE_TTL_SECONDS:-3600}
+      CLOUDSITE_OFFICE_CACHE_MAX_BYTES: ${CLOUDSITE_OFFICE_CACHE_MAX_BYTES:-209715200}
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ./apps/web
+    environment:
+      API_INTERNAL_URL: http://api:8000
+      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-CloudSite}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

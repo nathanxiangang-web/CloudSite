@@ -32,39 +32,46 @@ cp .env.example .env
 
 编辑 `.env`，至少将 `CLOUDSITE_SECRET_KEY` 替换为高强度随机字符串。该文件仅在本机或服务器保存，切勿提交到仓库。
 
-### 2. 启动服务
+### 2. 生产环境启动
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-服务默认地址：
-
-- 前台：`http://localhost:3000`
-- API：`http://localhost:8000`
+默认的 `docker-compose.yml` 使用 GHCR 预构建镜像并接入 Traefik。首次启动前请确认外部网络 `my-servers_app-net` 已存在，并在 `.env` 设置域名和密钥。
 
 首次打开后台后，在“系统设置”中配置 AList 地址和管理账号，再设置内容根目录映射并执行同步。
 
-### 可选：使用 Caddy
+### 本地源码构建
+
+本地开发或测试时使用独立文件：
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+前台默认为 `http://localhost:3000`，API 为 `http://localhost:8000`。
+
+### 可选：本地使用 Caddy
 
 设置 `.env` 中的 `CLOUDSITE_DOMAIN` 后执行：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+docker compose -f docker-compose.dev.yml -f docker-compose.caddy.yml up -d --build
 ```
 
 ### 使用现有 Traefik 发布到公网
 
-仓库提供 `docker-compose.prod.yml`，用于接入已存在的 Traefik 网络。它不会直接映射 3000 或 8000 端口，而是由 Traefik 将 HTTPS 域名转发到前端服务。
+默认的 `docker-compose.yml` 就是完整生产配置，用于接入已存在的 Traefik 网络。它不会直接映射 3000 或 8000 端口，而是由 Traefik 将 HTTPS 域名转发到前端服务。
 
 默认从 GitHub Container Registry 拉取已构建镜像，公网服务器无需安装 Node.js、Python 构建环境，也无需现场构建：
 
 ```bash
 # 拉取 .env 中 CLOUDSITE_IMAGE_TAG 指定的版本
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose pull
 
 # 使用预构建镜像启动或升级
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --wait
+docker compose up -d
 ```
 
 建议在 `.env` 中固定 `CLOUDSITE_IMAGE_TAG=v0.1.2`。需要跟随主分支最新镜像时可改为 `latest`，但生产环境不建议长期使用浮动标签。
@@ -76,7 +83,7 @@ docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml 
 
 两个 Container package 设为 Public 后，服务器可匿名拉取；若保持 Private，需先用具备 `read:packages` 权限的令牌执行 `docker login ghcr.io`。
 
-生产覆盖文件默认使用外部网络 `my-servers_app-net` 和证书解析器 `myresolver`；如果你的 Traefik 名称不同，请先调整 `docker-compose.prod.yml`。
+默认配置使用外部网络 `my-servers_app-net` 和证书解析器 `myresolver`；如果你的 Traefik 名称不同，请先调整 `docker-compose.yml`。
 
 ## 常用操作
 
@@ -90,12 +97,12 @@ docker compose logs -f
 # 停止服务（不会删除 data 目录）
 docker compose down
 
-# 重新构建并启动
-docker compose up -d --build
+# 本地重新构建并启动
+docker compose -f docker-compose.dev.yml up -d --build
 
 # 生产环境升级到 .env 指定的 GHCR 版本
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml pull
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --wait
+docker compose pull
+docker compose up -d
 ```
 
 运行数据位于 `./data`，其中包含站点配置和可重建的内容索引。升级或迁移前请先备份该目录；`scripts/backup.sh` 与 `scripts/restore.sh` 可辅助执行备份和恢复。
@@ -106,13 +113,13 @@ docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml 
 
 ```bash
 # 后端测试
-docker compose run --rm api pytest
+docker compose -f docker-compose.dev.yml run --rm api pytest
 
 # 前端类型检查
-docker compose run --rm web npm run lint
+docker compose -f docker-compose.dev.yml run --rm web npm run lint
 
 # 构建镜像
-docker compose build
+docker compose -f docker-compose.dev.yml build
 ```
 
 ## 同步安全模型

@@ -1,34 +1,55 @@
 services:
   api:
-    build:
-      context: ./apps/api
+    image: ${CLOUDSITE_API_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-api}:${CLOUDSITE_IMAGE_TAG:-latest}
+    pull_policy: always
     environment:
       CLOUDSITE_SECRET_KEY: ${CLOUDSITE_SECRET_KEY:-cloudsite-development-key-change-me}
       CLOUDSITE_MASTER_KEY: ${CLOUDSITE_MASTER_KEY:-}
       CLOUDSITE_DATA_DIR: /data
-      CLOUDSITE_CORS_ORIGINS: ${CLOUDSITE_CORS_ORIGINS:-http://localhost:3000}
+      CLOUDSITE_CORS_ORIGINS: https://${CLOUDSITE_DOMAIN:-cloud.netioi.com}
       CLOUDSITE_OFFICE_CACHE_TTL_SECONDS: ${CLOUDSITE_OFFICE_CACHE_TTL_SECONDS:-3600}
       CLOUDSITE_OFFICE_CACHE_MAX_BYTES: ${CLOUDSITE_OFFICE_CACHE_MAX_BYTES:-209715200}
     volumes:
       - ./data:/data
-    ports:
-      - "8000:8000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
+    networks:
+      - cloudsite-internal
 
   web:
-    build:
-      context: ./apps/web
+    image: ${CLOUDSITE_WEB_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-web}:${CLOUDSITE_IMAGE_TAG:-latest}
+    pull_policy: always
     environment:
       API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-CloudSite}
+      HOSTNAME: 0.0.0.0
     depends_on:
       api:
         condition: service_healthy
-    ports:
-      - "3000:3000"
     restart: unless-stopped
+    networks:
+      - cloudsite-internal
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=my-servers_app-net"
+      - "traefik.http.routers.cloudsite.rule=Host(`${CLOUDSITE_DOMAIN:-cloud.netioi.com}`)"
+      - "traefik.http.routers.cloudsite.entrypoints=websecure"
+      - "traefik.http.routers.cloudsite.tls=true"
+      - "traefik.http.routers.cloudsite.tls.certresolver=myresolver"
+      - "traefik.http.services.cloudsite.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.cloudsite-security.headers.contenttypenosniff=true"
+      - "traefik.http.middlewares.cloudsite-security.headers.framedeny=true"
+      - "traefik.http.middlewares.cloudsite-security.headers.referrerpolicy=strict-origin-when-cross-origin"
+      - "traefik.http.routers.cloudsite.middlewares=cloudsite-security@docker"
+
+networks:
+  cloudsite-internal:
+    name: cloudsite-internal
+  traefik:
+    external: true
+    name: my-servers_app-net
