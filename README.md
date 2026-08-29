@@ -20,7 +20,7 @@ CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分
 
 - 前端：Next.js 16、React 19、TypeScript、Tailwind CSS
 - 后端：FastAPI、SQLAlchemy、SQLite
-- 部署：Docker Compose；可选 Caddy 反向代理与 HTTPS
+- 部署：Docker Compose + Traefik HTTPS
 
 ## 快速启动
 
@@ -51,14 +51,6 @@ docker compose -f docker-compose.dev.yml up -d --build
 ```
 
 前台默认为 `http://localhost:3000`，API 为 `http://localhost:8000`。
-
-### 可选：本地使用 Caddy
-
-设置 `.env` 中的 `CLOUDSITE_DOMAIN` 后执行：
-
-```bash
-docker compose -f docker-compose.dev.yml -f docker-compose.caddy.yml up -d --build
-```
 
 ### 使用现有 Traefik 发布到公网
 
