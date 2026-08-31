@@ -17,7 +17,7 @@ export default function AboutPage() {
       <li>精选合集</li>
       <li>分享</li>
     </ul>
-    <p className="static-meta">当前版本 v0.1.2</p>
+    <p className="static-meta">当前版本 v0.2.0</p>
     <SiteFooter />
   </div></PublicShell>;
 }

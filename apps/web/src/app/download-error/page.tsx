@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { PublicShell } from "@/components/PublicShell";
+import { DownloadButton } from "@/components/DownloadButton";
 import { api, Resource } from "@/lib/api";
 
 const messages: Record<string, string> = {
@@ -26,7 +27,7 @@ function DownloadErrorContent() {
   const resourceId = params.get("resource") || "";
   const resource = useQuery({ queryKey: ["download-error-resource", resourceId], queryFn: () => api<Resource & { breadcrumbs: unknown[]; related: Resource[] }>(`/api/resources/${encodeURIComponent(resourceId)}`), enabled: Boolean(resourceId) && code !== "DL-001", retry: false });
   return <PublicShell><div className="page download-error-page">
-    <section className="download-error-card"><span className="download-error-icon"><AlertTriangle /></span><h1>下载暂时不可用</h1><p>{resource.data?.name || "当前资源"}</p><strong>{messages[code]}</strong><small>错误码：{code}</small><div>{resourceId && <a className="button primary" href={`/d/${encodeURIComponent(resourceId)}`}><RefreshCw />重新获取下载入口</a>}{resourceId && code !== "DL-001" && <Link className="button" href={`/resource/${encodeURIComponent(resourceId)}`}>返回文件详情</Link>}<Link className="button" href="/">返回首页</Link></div></section>
+    <section className="download-error-card"><span className="download-error-icon"><AlertTriangle /></span><h1>下载暂时不可用</h1><p>{resource.data?.name || "当前资源"}</p><strong>{messages[code]}</strong><small>错误码：{code}</small><div>{resourceId && <DownloadButton resourceId={resourceId} className="button primary"><><RefreshCw />重新获取下载入口</></DownloadButton>}{resourceId && code !== "DL-001" && <Link className="button" href={`/resource/${encodeURIComponent(resourceId)}`}>返回文件详情</Link>}<Link className="button" href="/">返回首页</Link></div></section>
   </div></PublicShell>;
 }
 

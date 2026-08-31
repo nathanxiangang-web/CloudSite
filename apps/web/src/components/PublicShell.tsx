@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "./Brand";
 import { StorageInfoCard } from "./StorageInfoCard";
+import { AuthMenu } from "./AuthMenu";
 
 const items = [
   ["/", "首页", Home],
@@ -28,7 +29,8 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       <StorageInfoCard />
     </aside>
     <main className="content">
-      {children}
+      <header className="public-topbar"><AuthMenu /></header>
+      <div className="public-content">{children}</div>
     </main>
   </div>;
 }

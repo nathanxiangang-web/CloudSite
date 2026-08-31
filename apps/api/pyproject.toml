@@ -1,6 +1,6 @@
 [project]
 name = "cloudsite-api"
-version = "0.1.2"
+version = "0.2.0"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.116,<1",
@@ -12,6 +12,7 @@ dependencies = [
   "cryptography>=45,<47",
   "pydantic-settings>=2.10,<3",
   "python-multipart>=0.0.20,<1",
+  "pwdlib[argon2]>=0.3,<1",
 ]
 
 [project.optional-dependencies]

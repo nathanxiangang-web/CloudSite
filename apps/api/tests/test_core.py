@@ -266,12 +266,25 @@ async def test_dynamic_scanner_rate_limits_every_directory_request():
     assert limiter.calls == 3
 
 
-def test_missing_is_committed_after_one_complete_scan():
+def test_missing_requires_two_independent_complete_scans():
     from datetime import datetime, timezone
 
     row = SimpleNamespace(status="active", missing_streak=0, missing_candidate_at=None, indexed_at=None)
     now = datetime.now(timezone.utc)
-    assert advance_missing_candidate(row, now, 1) is True
+    assert advance_missing_candidate(row, now, 2) is False
+    assert row.status == "suspected_missing"
+    assert row.missing_streak == 1
+    assert row.missing_candidate_at == now
+    assert advance_missing_candidate(row, now, 2) is True
+    assert row.status == "missing"
+    assert row.missing_streak == 2
+
+
+def test_missing_confirmation_can_be_configured_for_one_scan():
+    from datetime import datetime, timezone
+
+    row = SimpleNamespace(status="active", missing_streak=0, missing_candidate_at=None, indexed_at=None)
+    assert advance_missing_candidate(row, datetime.now(timezone.utc), 1) is True
     assert row.status == "missing"
 
 
@@ -283,6 +296,53 @@ def test_mass_change_guard_blocks_large_or_high_ratio_missing(monkeypatch):
     assert mass_change_guard_triggered(5, 5, 100) is False
     assert mass_change_guard_triggered(5, 11, 100) is True
     assert mass_change_guard_triggered(100, 100, 1000) is True
+
+
+async def test_mass_change_guard_keeps_entire_root_unchanged(monkeypatch):
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from cloudsite.database import IndexBase
+    from cloudsite.indexer import ScannedFolder, _commit_root, settings as indexer_settings
+    from cloudsite.models import Folder, SyncRootResult, SyncRun
+
+    monkeypatch.setattr(indexer_settings, "sync_mass_change_min_items", 2)
+    monkeypatch.setattr(indexer_settings, "sync_mass_change_ratio", 1.0)
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(IndexBase.metadata.create_all)
+
+    async with session_factory() as session:
+        session.add_all(
+            [
+                Folder(id="old-1", name="A", path="/旧/A", parent_id=None, content_type="software", root_mapping_id=1, status="active"),
+                Folder(id="old-2", name="B", path="/旧/B", parent_id=None, content_type="software", root_mapping_id=1, status="active"),
+            ]
+        )
+        run = SyncRun(sync_type="manual", status="running")
+        session.add(run)
+        await session.commit()
+        await session.refresh(run)
+        root = SimpleNamespace(id=1, alist_path="/新")
+        scanned = {
+            "new-1": ScannedFolder("new-1", "A", "/新/A", None, "software", 1, 0, None),
+            "new-2": ScannedFolder("new-2", "B", "/新/B", None, "software", 1, 0, None),
+        }
+
+        result = await _commit_root(session, run, root, scanned, {})
+        assert result == (0, 0, 0, True)
+        rows = list((await session.scalars(select(Folder).order_by(Folder.id))).all())
+        assert [(row.id, row.path, row.status) for row in rows] == [
+            ("old-1", "/旧/A", "active"),
+            ("old-2", "/旧/B", "active"),
+        ]
+        audit = await session.scalar(select(SyncRootResult))
+        assert audit is not None
+        assert audit.status == "suspicious_churn"
+        assert (audit.added_count, audit.removed_count) == (2, 2)
+
+    await engine.dispose()
 
 
 def test_sync_interval_only_accepts_supported_hours():

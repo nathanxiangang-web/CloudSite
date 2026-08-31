@@ -129,6 +129,40 @@ class Share(StateBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class User(StateBase):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(32))
+    username_normalized: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserSession(StateBase):
+    __tablename__ = "user_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class DownloadRateLimit(StateBase):
+    __tablename__ = "download_rate_limits"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    recent_hits_json: Mapped[str] = mapped_column(Text, default="[]")
+    blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, index=True)
+
+
 class Folder(IndexBase):
     __tablename__ = "folders"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -146,6 +180,7 @@ class Folder(IndexBase):
     missing_streak: Mapped[int] = mapped_column(Integer, default=0)
     missing_candidate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    missing_last_observed_cycle_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Resource(IndexBase):
@@ -167,6 +202,7 @@ class Resource(IndexBase):
     missing_streak: Mapped[int] = mapped_column(Integer, default=0)
     missing_candidate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    missing_last_observed_cycle_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SyncRun(IndexBase):
@@ -217,3 +253,56 @@ class SyncChange(IndexBase):
     new_path: Mapped[str | None] = mapped_column(String(1500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (UniqueConstraint("sync_run_id", "object_type", "object_id", "change_type"),)
+
+
+class SyncCycle(IndexBase):
+    __tablename__ = "sync_cycles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cycle_type: Mapped[str] = mapped_column(String(30), default="normal", index=True)
+    status: Mapped[str] = mapped_column(String(30), default="planned", index=True)
+    anchor_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    planned_folder_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_folder_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_folder_count: Mapped[int] = mapped_column(Integer, default=0)
+    carry_over_count: Mapped[int] = mapped_column(Integer, default=0)
+    windows_total: Mapped[int] = mapped_column(Integer, default=4)
+    windows_completed: Mapped[int] = mapped_column(Integer, default=0)
+    alist_list_requests: Mapped[int] = mapped_column(Integer, default=0)
+    changed_scope_count: Mapped[int] = mapped_column(Integer, default=0)
+    unchanged_scope_count: Mapped[int] = mapped_column(Integer, default=0)
+    fts_rebuilt_count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SyncCycleItem(IndexBase):
+    __tablename__ = "sync_cycle_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("sync_cycles.id", ondelete="CASCADE"), index=True)
+    folder_id: Mapped[str] = mapped_column(String(64), index=True)
+    folder_path: Mapped[str] = mapped_column(String(1500))
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    window_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (UniqueConstraint("cycle_id", "folder_id"),)
+
+
+class FolderScanState(IndexBase):
+    __tablename__ = "folder_scan_state"
+    folder_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    path: Mapped[str] = mapped_column(String(1500), index=True)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_verified_cycle_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    fingerprint_version: Mapped[int] = mapped_column(Integer, default=1)
+    last_scan_result: Mapped[str] = mapped_column(String(30), default="never")
+    last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

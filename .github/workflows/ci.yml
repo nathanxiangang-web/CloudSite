@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend with test dependencies
+        run: pip install -e ".[test]"
+      - name: Run backend tests
+        run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Type check
+        run: pnpm run lint
+      - name: Build frontend
+        run: pnpm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate generic Compose
+        run: docker compose config --quiet
+      - name: Validate Traefik Compose
+        env:
+          CLOUDSITE_DOMAIN: cloud.example.com
+        run: docker compose -f docker-compose.traefik.yml config --quiet
+      - name: Validate development Compose
+        run: docker compose -f docker-compose.dev.yml config --quiet
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build API and Web images
+        run: docker compose -f docker-compose.dev.yml build
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: [backend, frontend, compose, docker-smoke]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/images.yml
+    secrets: inherit

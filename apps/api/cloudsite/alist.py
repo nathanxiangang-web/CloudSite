@@ -188,13 +188,17 @@ class AListClient:
         await self.login()
         return await self._request(method, path, **kwargs)
 
-    async def list_path(self, path: str) -> list[dict[str, Any]]:
+    async def list_path(self, path: str, refresh: bool = False, strict: bool = False) -> list[dict[str, Any]]:
         payload = await self._authenticated_request(
             "POST",
             "/api/fs/list",
-            json={"path": path, "password": "", "page": 1, "per_page": 0, "refresh": False},
+            json={"path": path, "password": "", "page": 1, "per_page": 0, "refresh": refresh},
         )
-        content = (payload.get("data") or {}).get("content") or []
+        data = payload.get("data") or {}
+        raw_content = data.get("content")
+        if strict and not isinstance(raw_content, list):
+            raise AListError("AList 目录响应缺少完整 content 列表", "AL-005", status_code=502)
+        content = raw_content or []
         if not isinstance(content, list):
             raise AListError("AList 目录响应格式异常", "AL-005", status_code=502)
         return content

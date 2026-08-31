@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     secret_key: str = "cloudsite-development-key-change-me"
     master_key: str = ""
     cors_origins: str = "http://localhost:3000"
+    trusted_proxy_cidrs: str = "127.0.0.1/32,::1/128,172.16.0.0/12"
     request_timeout_seconds: float = 20.0
     download_cache_ttl_seconds: int = 60
     download_cache_max_entries: int = 500
@@ -22,7 +23,7 @@ class Settings(BaseSettings):
     sync_startup_delay_min_seconds: int = 30
     sync_startup_delay_max_seconds: int = 60
     sync_failure_retry_delay_seconds: int = 900
-    sync_missing_confirm_runs: int = 1
+    sync_missing_confirm_runs: int = 2
     sync_mass_change_min_items: int = 100
     sync_mass_change_ratio: float = 0.10
 
@@ -43,6 +44,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def trusted_proxy_cidr_list(self) -> list[str]:
+        return [item.strip() for item in self.trusted_proxy_cidrs.split(",") if item.strip()]
 
     @property
     def credential_key(self) -> str:

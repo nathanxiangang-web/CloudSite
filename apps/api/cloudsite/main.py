@@ -18,10 +18,18 @@ from sqlalchemy import delete, desc, func, select, text
 
 from . import __version__
 from .alist import AListClient, AListError
+from .auth import router as auth_router
 from .config import settings
 from .crypto import decrypt_secret, encrypt_secret
 from .database import IndexSession, StateSession, init_databases
 from .download import DownloadError, resolve_download_entry, validate_download_url, validate_resource_id
+from .download_rate_limit import (
+    DOWNLOAD_RATE_CLEANUP_SECONDS,
+    check_download_rate,
+    cleanup_download_rate_limits,
+    get_effective_client_ip,
+    rate_limit_payload,
+)
 from .indexer import (
     automatic_sync_due,
     log_operation,
@@ -70,12 +78,21 @@ from .schemas import (
     TextPreviewOutput,
 )
 from .search import SEARCH_OBJECT_TYPES, SEARCH_SORTS, SEARCH_TYPES, classify_match, normalize_search_query, rebuild_search_index, search_index
+from .sync.rolling import (
+    migrate_existing_index_to_rolling,
+    recover_rolling_state,
+    rolling_enabled,
+    rolling_status,
+    run_due_rolling_window,
+)
+from .users import router as users_router
 
 
 scheduler_task: asyncio.Task | None = None
 manual_sync_task: asyncio.Task | None = None
 SESSION_COOKIE = "cloudsite_session"
 _storage_info_cache: dict = {"data": None, "fetched_at": 0.0}
+_last_rate_limit_cleanup_at = 0.0
 STORAGE_INFO_TTL_SECONDS = 600
 SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
 
@@ -120,19 +137,39 @@ async def get_system_values(session) -> dict:
 
 
 async def scheduler_loop() -> None:
+    global _last_rate_limit_cleanup_at
     while True:
         await asyncio.sleep(60)
+        if time.monotonic() - _last_rate_limit_cleanup_at >= DOWNLOAD_RATE_CLEANUP_SECONDS:
+            with suppress(Exception):
+                await cleanup_download_rate_limits()
+                _last_rate_limit_cleanup_at = time.monotonic()
         async with StateSession() as session:
             values = await get_system_values(session)
-        if values["automatic_sync"] and await automatic_sync_due(values["sync_interval_minutes"]):
-            with suppress(Exception):
+        if not values["automatic_sync"]:
+            continue
+        with suppress(Exception):
+            if await migrate_existing_index_to_rolling():
+                await run_due_rolling_window()
+            elif await automatic_sync_due(values["sync_interval_minutes"]):
+                # Freeze the existing first-index bootstrap path.  Rolling 1.1
+                # is enabled only after this legacy full sync succeeds.
                 await run_sync("scheduled")
 
 
 async def _run_manual_sync_in_background(full: bool, force: bool) -> None:
     global manual_sync_task
     try:
-        await run_sync("manual", full, force)
+        if await rolling_enabled():
+            await run_due_rolling_window(manual=True)
+        else:
+            result = await run_sync("manual", full, force)
+            if result.get("status") == "success":
+                # The completed first index remains authoritative even if the
+                # follow-up migration is temporarily unavailable.  The normal
+                # scheduler retries this idempotent migration later.
+                with suppress(Exception):
+                    await migrate_existing_index_to_rolling()
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -146,6 +183,8 @@ async def lifespan(_: FastAPI):
     global scheduler_task, manual_sync_task
     await init_databases()
     await recover_interrupted_sync_runs()
+    await recover_rolling_state()
+    await migrate_existing_index_to_rolling()
     async with StateSession() as session:
         if not await session.get(SiteSettings, 1):
             session.add(SiteSettings(id=1))
@@ -173,10 +212,13 @@ async def _safe_startup_sync():
     await asyncio.sleep(delay)
     async with StateSession() as session:
         values = await get_system_values(session)
-    if not values["sync_on_startup"] or not await automatic_sync_due(values["sync_interval_minutes"]):
+    if not values["sync_on_startup"]:
         return
     with suppress(Exception):
-        await run_sync("startup")
+        if await migrate_existing_index_to_rolling():
+            await run_due_rolling_window()
+        elif await automatic_sync_due(values["sync_interval_minutes"]):
+            await run_sync("startup")
 
 
 app = FastAPI(title="CloudSite API", version=__version__, lifespan=lifespan)
@@ -187,6 +229,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(auth_router)
+app.include_router(users_router)
 
 
 @app.middleware("http")
@@ -285,6 +329,17 @@ def breadcrumbs_for(folder: Folder | None, folders_by_id: dict[str, Folder]) -> 
 
 async def collection_dict(state, index, row: Collection, include_items: bool = False) -> dict:
     items = list((await state.scalars(select(CollectionItem).where(CollectionItem.collection_id == row.id).order_by(CollectionItem.sort_order, CollectionItem.id))).all())
+    resource_ids = [item.resource_id for item in items]
+    resources_by_id = {}
+    if resource_ids:
+        resources_by_id = {
+            resource.id: resource
+            for resource in (
+                await index.scalars(
+                    select(Resource).where(Resource.id.in_(resource_ids), Resource.status == "active")
+                )
+            ).all()
+        }
     payload = {
         "id": row.id,
         "name": row.name,
@@ -293,15 +348,11 @@ async def collection_dict(state, index, row: Collection, include_items: bool = F
         "status": row.status,
         "visible_on_home": row.visible_on_home,
         "sort_order": row.sort_order,
-        "item_count": len(items),
+        "item_count": len(resources_by_id),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
     if include_items:
-        resource_ids = [item.resource_id for item in items]
-        resources_by_id = {}
-        if resource_ids:
-            resources_by_id = {resource.id: resource for resource in (await index.scalars(select(Resource).where(Resource.id.in_(resource_ids), Resource.status == "active"))).all()}
         payload["items"] = [resource_dict(resources_by_id[item.resource_id]) for item in items if item.resource_id in resources_by_id]
     return payload
 
@@ -688,8 +739,9 @@ async def public_share(token: str):
 
 
 @app.get("/d/{resource_id}")
-async def download(resource_id: str):
+async def download(resource_id: str, request: Request):
     started = time.perf_counter()
+    wants_json = "application/json" in request.headers.get("accept", "").lower()
     async with IndexSession() as index, StateSession() as state:
         if not validate_resource_id(resource_id):
             await _download_event(state, resource_id[:64], "failed", "DL-001", started)
@@ -701,10 +753,20 @@ async def download(resource_id: str):
         if resource.status != "active":
             await _download_event(state, resource_id, "failed", "DL-007", started)
             return _download_error_redirect("DL-007", resource_id)
+        rate = await check_download_rate(get_effective_client_ip(request))
+        if not rate.allowed:
+            await _download_event(state, resource_id, "failed", "DOWNLOAD_RATE_LIMITED", started)
+            return JSONResponse(
+                rate_limit_payload(rate),
+                status_code=429,
+                headers={"Retry-After": str(rate.retry_after)},
+            )
         connection = await state.get(AListConnection, 1)
         try:
             resolution = await resolve_download_entry(resource, connection)
             await _download_event(state, resource_id, "success", None, started)
+            if wants_json:
+                return {"url": resolution.url}
             return RedirectResponse(resolution.url, status_code=302)
         except DownloadError as exc:
             await _download_event(state, resource_id, "failed", exc.code, started)
@@ -1033,6 +1095,28 @@ async def sync(payload: SyncInput):
         name="cloudsite-manual-sync",
     )
     return {"status": "accepted", "message": "同步任务已启动"}
+
+
+@app.get("/api/admin/sync/status")
+async def admin_rolling_sync_status():
+    return await rolling_status()
+
+
+@app.post("/api/admin/sync/window/run", status_code=202)
+async def admin_run_rolling_window():
+    global manual_sync_task
+    if not await rolling_enabled():
+        raise HTTPException(409, "首次完整索引尚未完成，不能进入 Rolling 1.1")
+    if manual_sync_task and not manual_sync_task.done():
+        return {"status": "already_running"}
+    preflight = await sync_preflight("rolling", False)
+    if preflight:
+        return preflight
+    manual_sync_task = asyncio.create_task(
+        _run_manual_sync_in_background(False, False),
+        name="cloudsite-rolling-window",
+    )
+    return {"status": "accepted", "message": "Rolling Window 已启动"}
 
 
 @app.post("/api/admin/search/rebuild")

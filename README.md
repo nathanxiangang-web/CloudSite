@@ -1,132 +1,155 @@
 # CloudSite
 
-CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分享的资源网站，并支持从浏览器经由应用返回 AList 的 302 直连下载。
+CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分享的资源网站，并通过 AList 原生下载入口提供浏览器 302 直连下载。
 
-> 这是从已完成的部署实例整理出的干净发布源码包：不包含 AList 账号、访问令牌、`.env`、数据库索引、运行日志、开发过程文档、设计素材、依赖目录或构建产物。
+> 发布源码不包含 AList 账号、访问令牌、`.env`、数据库、索引、日志、依赖目录或构建产物。
 
 ## 功能概览
 
 - 使用 AList 凭据连接网盘，配置在服务端加密保存。
-- 扫描任意深度目录，按软件、图片、视频、文档等资源分类并支持搜索。
-- 支持图片、视频、PDF 和常见 Office 文档预览。
-- 支持合集、资源分享链接、有效期与访问统计。
-- 资源下载由 `/d/{resource_id}` 实时向 AList 请求 `raw_url`，应用返回 302 跳转，不将网盘直链写入索引。
+- 扫描任意深度目录，按软件、图片、视频、文档等类型浏览和搜索。
+- 支持图片、视频、PDF、文本、Markdown 和常见 Office 文档预览。
+- 支持精选合集、资源分享链接、有效期与访问统计。
+- 支持独立的前台用户注册、登录、账户安全与后台用户禁用/恢复；普通用户身份不与 AList 管理员身份混用。
+- 资源下载由 `/d/{resource_id}` 解析 Resource，向 AList 获取文件信息及签名，构造 AList Native `/d/` 下载入口并返回 HTTP 302。
+- 公开下载按真实客户端 IP 固定执行滑动 60 秒最多 3 次、第 4 次等待 60 秒；状态持久化在 `state.db`，刷新页面或重启 API 均不能绕过。
+- CloudSite 不解析最终 Storage `raw_url`、不代理文件主体，也不按文件大小选择下载策略。
 - 内置后台概览、内容索引、合集、分享、下载诊断、站点设置、同步历史和 AList 后台认证。
-- 同步任务后台执行，浏览器立即收到“已启动”，长时间扫描不会被反向代理误报失败。
-- AList 列表请求默认限制为 2 RPS 并加入随机间隔；支持 3/6/12/24 小时自动同步、手动冷却和访问限制熔断。
-- 仅在内容根完整扫描成功后提交该根的缺失差异；扫描失败保留旧索引，并对异常大规模变化进行保护。
+- 首次同步保持原有完整内容根扫描流程不变；Sync Engine 1.1 只在首次同步成功并已有索引后迁移接管，迁移不请求 AList、不重建现有索引。
+- 后续校验按 24 小时 Cycle、4 个 6 小时 Window 覆盖全部目录；请求默认随机间隔 5～15 秒，并根据窗口工作量动态调速，绝对不超过约 2 RPS。
+- Rolling Scope 严格校验 AList 响应；缺失对象需跨两个独立 Cycle 确认，大规模路径变化按目录 Scope 零写入保护。
 
 ## 技术栈
 
 - 前端：Next.js 16、React 19、TypeScript、Tailwind CSS
 - 后端：FastAPI、SQLAlchemy、SQLite
-- 部署：Docker Compose + Traefik HTTPS
+- 部署：Docker Compose；可选 Traefik HTTPS
 
-## 快速启动
+## 一键部署
 
-### 1. 准备环境变量
+要求：Docker Engine 与 Docker Compose Plugin。服务器无需安装 Node.js 或 Python。
 
 ```bash
+git clone https://github.com/nathanxiangang-web/CloudSite.git
+cd CloudSite
 cp .env.example .env
 ```
 
-编辑 `.env`，至少将 `CLOUDSITE_SECRET_KEY` 替换为高强度随机字符串。该文件仅在本机或服务器保存，切勿提交到仓库。
-
-### 2. 生产环境启动
+编辑 `.env`，至少替换 `CLOUDSITE_SECRET_KEY`。随后启动：
 
 ```bash
 docker compose up -d
+docker compose ps
 ```
 
-默认的 `docker-compose.yml` 使用 GHCR 预构建镜像并接入 Traefik。首次启动前请确认外部网络 `my-servers_app-net` 已存在，并在 `.env` 设置域名和密钥。
+打开 `http://服务器IP:3000`。默认 Compose 只公开 Web 端口 `3000`，API 仅在内部网络提供服务，运行数据保存在 `./data`。
 
-首次打开后台后，在“系统设置”中配置 AList 地址和管理账号，再设置内容根目录映射并执行同步。
+首次进入后台后，在“系统设置”中配置 AList 地址和独立账号，再配置内容根并执行同步。
 
-### 本地源码构建
+## 使用现有 Traefik
 
-本地开发或测试时使用独立文件：
+在 `.env` 中设置：
+
+```dotenv
+CLOUDSITE_DOMAIN=cloud.example.com
+TRAEFIK_NETWORK=my-servers_app-net
+TRAEFIK_ENTRYPOINT=websecure
+TRAEFIK_CERT_RESOLVER=myresolver
+```
+
+确认外部网络已经存在，然后启动独立 Traefik 配置：
+
+```bash
+docker network inspect "$TRAEFIK_NETWORK"
+docker compose -f docker-compose.traefik.yml up -d
+```
+
+`docker-compose.traefik.yml` 不映射宿主机端口，由现有 Traefik 通过指定网络访问 Web 容器。
+
+## 本地源码开发
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build
 ```
 
-前台默认为 `http://localhost:3000`，API 为 `http://localhost:8000`。
-
-### 使用现有 Traefik 发布到公网
-
-默认的 `docker-compose.yml` 就是完整生产配置，用于接入已存在的 Traefik 网络。它不会直接映射 3000 或 8000 端口，而是由 Traefik 将 HTTPS 域名转发到前端服务。
-
-默认从 GitHub Container Registry 拉取已构建镜像，公网服务器无需安装 Node.js、Python 构建环境，也无需现场构建：
+源码开发模式公开 Web `3000` 和 API `8000`。停止服务不会删除 `data/`：
 
 ```bash
-# 拉取 .env 中 CLOUDSITE_IMAGE_TAG 指定的版本
-docker compose pull
+docker compose -f docker-compose.dev.yml down
+```
 
-# 使用预构建镜像启动或升级
+## 升级与回滚
+
+生产环境固定使用 `.env` 中的 `CLOUDSITE_IMAGE_TAG`。升级前先备份：
+
+```bash
+bash scripts/backup.sh
+docker compose pull
+docker compose up -d
+curl -f http://127.0.0.1:3000/
+```
+
+如果升级失败，把 `.env` 中的镜像标签改回原版本，再执行：
+
+```bash
+docker compose pull
 docker compose up -d
 ```
 
-Compose 默认固定为 `v0.1.2`；升级时可在 `.env` 设置新的 `CLOUDSITE_IMAGE_TAG`。需要跟随主分支最新镜像时可改为 `latest`，但生产环境不建议长期使用浮动标签。
-
-每次向 `main` 推送或创建 `v*` Git 标签时，GitHub Actions 会分别构建并发布：
-
-- `ghcr.io/nathanxiangang-web/cloudsite-api`
-- `ghcr.io/nathanxiangang-web/cloudsite-web`
-
-两个 Container package 设为 Public 后，服务器可匿名拉取；若保持 Private，需先用具备 `read:packages` 权限的令牌执行 `docker login ghcr.io`。
-
-默认配置使用外部网络 `my-servers_app-net` 和证书解析器 `myresolver`；如果你的 Traefik 名称不同，请先调整 `docker-compose.yml`。
+数据库需要回滚时，再使用升级前备份恢复。完整步骤与验证清单见 [`docs/部署升级与备份.md`](docs/部署升级与备份.md)。
 
 ## 常用操作
 
 ```bash
-# 查看服务状态
 docker compose ps
-
-# 查看实时日志
-docker compose logs -f
-
-# 停止服务（不会删除 data 目录）
+docker compose logs -f --tail=200
+docker compose restart
 docker compose down
-
-# 本地重新构建并启动
-docker compose -f docker-compose.dev.yml up -d --build
-
-# 生产环境升级到 .env 指定的 GHCR 版本
-docker compose pull
-docker compose up -d
 ```
 
-运行数据位于 `./data`，其中包含站点配置和可重建的内容索引。升级或迁移前请先备份该目录；`scripts/backup.sh` 与 `scripts/restore.sh` 可辅助执行备份和恢复。
+请勿执行 `docker compose down -v`，也不要在未备份时删除 `data/`。
 
 ## 开发与验证
-
-需要 Docker、Docker Compose、Python 3.12+，前端依赖使用 pnpm 10。
 
 ```bash
 # 后端测试
 docker compose -f docker-compose.dev.yml run --rm api pytest
 
-# 前端类型检查
+# 前端类型检查与生产构建
 docker compose -f docker-compose.dev.yml run --rm web npm run lint
+docker compose -f docker-compose.dev.yml run --rm web npm run build
 
-# 构建镜像
+# Compose 静态校验
+docker compose config
+docker compose -f docker-compose.traefik.yml config
+
+# 两个源码镜像构建冒烟
 docker compose -f docker-compose.dev.yml build
 ```
 
+GitHub Actions 对 pull request 和主分支执行以上质量检查；只有全部通过后，主分支或 `v*` 标签才发布 GHCR 镜像：
+
+- `ghcr.io/nathanxiangang-web/cloudsite-api`
+- `ghcr.io/nathanxiangang-web/cloudsite-web`
+
 ## 同步安全模型
 
-- 周期和普通手动同步使用 AList 已有目录状态，不强制逐目录刷新 Storage。
-- 一个同步任务按内容根顺序执行；同一时间只允许一个任务运行。
-- 内容根扫描成功后，索引以本次真实结果更新，未出现项目可直接标记为缺失。
-- 内容根扫描失败时保留该根旧数据，不把“没扫到”当成“已删除”。
-- 检测到 405、访问限制或异常大规模路径变化时，暂停提交并等待冷却，避免持续请求或误删索引。
+- 新实例和未完成首次同步的实例继续运行原有首次完整同步；Rolling 迁移前必须同时存在成功同步记录和有效 Folder 索引。
+- 迁移仅创建 Cycle、Window 和 Folder 队列状态，保留 Folder、Resource、合集、配置以及首次同步完成时间，不发起 AList 请求。
+- 同一时间只允许一个同步任务运行；Rolling Window 对计划内目录逐个校验并持久化进度，服务重启后从未完成项继续。
+- 目录扫描失败时保留旧索引，不把“没扫到”当作删除。
+- 第一个独立 Cycle 未见对象：`active → suspected_missing`；下一独立 Cycle 仍未见：`suspected_missing → missing`。
+- 对象在确认前重新出现时，状态、缺失次数和候选时间全部恢复。
+- 大规模候选新增/缺失触发 Scope 级零写入保护，只保存审计结果，不写入新项也不改变旧项。
+- `index.db` 丢失但 `state.db` 身份仍在时进入 `INDEX_RECOVERY`，不会退回首次安装或覆盖首次同步历史。
 
 ## 安全说明
 
-- `.env`、`data/`、备份、预览缓存和运行日志均已被 `.gitignore` 排除。
-- AList 管理账号仅用于服务端连接和后台身份验证；请使用独立账号并最小化权限。
-- 下载链接由 AList 临时生成，可能会过期；访问失败时在后台“下载诊断”中重新测试。
+- `.env`、`data/`、备份、预览缓存和日志均被 `.gitignore` 排除。
+- `CLOUDSITE_MASTER_KEY` 或其回退密钥一旦用于保存 AList 凭据，不可随意更换。
+- AList 账号应独立创建并遵循最小权限；不要把浏览器登录令牌写进 `.env`。
+- `CLOUDSITE_TRUSTED_PROXY_CIDRS` 只应包含实际反向代理网段，不能把普通客户端所在的整个局域网加入可信代理。
+- 下载入口由 AList 临时签名，失效时可在后台“下载诊断”重新测试。
 
 ## 许可证
 

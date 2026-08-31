@@ -6,7 +6,7 @@ services:
       CLOUDSITE_SECRET_KEY: ${CLOUDSITE_SECRET_KEY:-cloudsite-development-key-change-me}
       CLOUDSITE_MASTER_KEY: ${CLOUDSITE_MASTER_KEY:-}
       CLOUDSITE_DATA_DIR: /data
-      CLOUDSITE_CORS_ORIGINS: ${CLOUDSITE_CORS_ORIGINS:-http://localhost:3000}
+      CLOUDSITE_CORS_ORIGINS: https://${CLOUDSITE_DOMAIN:?请在 .env 设置 CLOUDSITE_DOMAIN}
       CLOUDSITE_TRUSTED_PROXY_CIDRS: ${CLOUDSITE_TRUSTED_PROXY_CIDRS:-127.0.0.1/32,::1/128,172.16.0.0/12}
       CLOUDSITE_OFFICE_CACHE_TTL_SECONDS: ${CLOUDSITE_OFFICE_CACHE_TTL_SECONDS:-3600}
       CLOUDSITE_OFFICE_CACHE_MAX_BYTES: ${CLOUDSITE_OFFICE_CACHE_MAX_BYTES:-209715200}
@@ -32,12 +32,26 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    ports:
-      - "${CLOUDSITE_WEB_BIND:-0.0.0.0}:${CLOUDSITE_WEB_PORT:-3000}:3000"
     restart: unless-stopped
     networks:
       - cloudsite-internal
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-my-servers_app-net}"
+      - "traefik.http.routers.cloudsite.rule=Host(`${CLOUDSITE_DOMAIN:?请在 .env 设置 CLOUDSITE_DOMAIN}`)"
+      - "traefik.http.routers.cloudsite.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.cloudsite.tls=true"
+      - "traefik.http.routers.cloudsite.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-myresolver}"
+      - "traefik.http.services.cloudsite.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.cloudsite-security.headers.contenttypenosniff=true"
+      - "traefik.http.middlewares.cloudsite-security.headers.framedeny=true"
+      - "traefik.http.middlewares.cloudsite-security.headers.referrerpolicy=strict-origin-when-cross-origin"
+      - "traefik.http.routers.cloudsite.middlewares=cloudsite-security@docker"
 
 networks:
   cloudsite-internal:
     driver: bridge
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-my-servers_app-net}

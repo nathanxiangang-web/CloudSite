@@ -9,10 +9,11 @@ export default function PrivacyPage() {
     <ul>
       <li>基础系统日志</li>
       <li>下载请求事件</li>
+      <li>用于下载频率保护的匿名 IP 摘要（不保存完整公网 IP）</li>
       <li>分享访问次数（Share View Count）</li>
       <li>错误日志</li>
     </ul>
-    <p>本站不使用广告追踪、指纹识别，不建立用户档案，不收集营销 Cookie。</p>
+    <p>下载频率状态只保存在服务器数据库中，浏览器倒计时不作为限制依据。本站不使用广告追踪、指纹识别，不建立用户档案，不收集营销 Cookie。</p>
     <p>以下敏感信息不会被公开：AList 密码与 Token、CloudSite 主密钥（Master Key）、Storage 凭据、访问码哈希。</p>
     <SiteFooter />
   </div></PublicShell>;

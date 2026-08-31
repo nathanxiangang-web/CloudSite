@@ -30,6 +30,7 @@ from .search import rebuild_search_index
 
 
 sync_lock = asyncio.Lock()
+MISSING_CANDIDATE_STATUSES = {"active", "suspected_missing"}
 
 
 @dataclass(slots=True)
@@ -75,6 +76,8 @@ def advance_missing_candidate(row: Folder | Resource, now: datetime, confirm_run
     row.indexed_at = now
     if row.missing_streak >= max(1, confirm_runs):
         row.status = "missing"
+    else:
+        row.status = "suspected_missing"
     return not was_missing and row.status == "missing"
 
 
@@ -462,18 +465,45 @@ async def _commit_root(
     added_candidates = sum(object_id not in existing_folders for object_id in scanned_folders)
     added_candidates += sum(object_id not in existing_resources for object_id in scanned_resources)
     missing_folders = [
-        row for object_id, row in existing_folders.items() if row.status == "active" and object_id not in scanned_folders
+        row
+        for object_id, row in existing_folders.items()
+        if row.status in MISSING_CANDIDATE_STATUSES and object_id not in scanned_folders
     ]
     missing_resources = [
-        row for object_id, row in existing_resources.items() if row.status == "active" and object_id not in scanned_resources
+        row
+        for object_id, row in existing_resources.items()
+        if row.status in MISSING_CANDIDATE_STATUSES and object_id not in scanned_resources
     ]
-    active_total = sum(row.status == "active" for row in existing_folders.values())
-    active_total += sum(row.status == "active" for row in existing_resources.values())
+    active_total = sum(row.status in MISSING_CANDIDATE_STATUSES for row in existing_folders.values())
+    active_total += sum(row.status in MISSING_CANDIDATE_STATUSES for row in existing_resources.values())
+    missing_candidates = len(missing_folders) + len(missing_resources)
     guarded = mass_change_guard_triggered(
-        added_candidates, len(missing_folders) + len(missing_resources), active_total
+        added_candidates, missing_candidates, active_total
     )
     added = updated = removed = 0
     now = datetime.now(timezone.utc)
+
+    if guarded:
+        session.add(
+            SyncRootResult(
+                sync_run_id=run.id,
+                root_mapping_id=root.id,
+                root_path=normalize_path(root.alist_path),
+                status="suspicious_churn",
+                folders_scanned=len(scanned_folders),
+                resources_scanned=len(scanned_resources),
+                added_count=added_candidates,
+                updated_count=0,
+                removed_count=missing_candidates,
+                error_message=(
+                    "检测到异常大规模路径变化，已对整个内容根执行零写入保护："
+                    f"候选新增 {added_candidates}，候选缺失 {missing_candidates}，"
+                    f"原活跃对象 {active_total}"
+                ),
+            )
+        )
+        await session.commit()
+        return 0, 0, 0, True
 
     for object_id, item in scanned_folders.items():
         row = existing_folders.get(object_id)
@@ -499,26 +529,24 @@ async def _commit_root(
             updated += 1
         _apply_resource(row, item, now, run.id)
 
-    if not guarded:
-        for object_type, rows in (("folder", missing_folders), ("resource", missing_resources)):
-            for row in rows:
-                if advance_missing_candidate(row, now, settings.sync_missing_confirm_runs):
-                    session.add(SyncChange(sync_run_id=run.id, object_type=object_type, object_id=row.id, change_type="removed", old_path=row.path))
-                    removed += 1
+    for object_type, rows in (("folder", missing_folders), ("resource", missing_resources)):
+        for row in rows:
+            if advance_missing_candidate(row, now, settings.sync_missing_confirm_runs):
+                session.add(SyncChange(sync_run_id=run.id, object_type=object_type, object_id=row.id, change_type="removed", old_path=row.path))
+                removed += 1
 
-    root_status = "suspicious_churn" if guarded else "success"
     session.add(
         SyncRootResult(
             sync_run_id=run.id,
             root_mapping_id=root.id,
             root_path=normalize_path(root.alist_path),
-            status=root_status,
+            status="success",
             folders_scanned=len(scanned_folders),
             resources_scanned=len(scanned_resources),
             added_count=added,
             updated_count=updated,
             removed_count=removed,
-            error_message=("检测到异常大规模路径变化，已阻止 missing 提交" if guarded else ""),
+            error_message="",
         )
     )
     await session.commit()

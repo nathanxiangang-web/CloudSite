@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Boxes, FolderKanban, Gauge, Globe2, LogOut, Settings, Share2 } from "lucide-react";
+import { Activity, Boxes, FolderKanban, Gauge, Globe2, LogOut, Settings, Share2, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,6 +11,7 @@ const items = [
   ["/admin/index", "内容索引", Boxes],
   ["/admin/collections", "精选合集", FolderKanban],
   ["/admin/shares", "分享管理", Share2],
+  ["/admin/users", "用户管理", Users],
   ["/admin/diagnostics", "下载诊断", Activity],
   ["/admin/site", "网站设置", Globe2],
   ["/admin/system", "系统", Settings],
