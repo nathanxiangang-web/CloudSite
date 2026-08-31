@@ -48,6 +48,31 @@ docker compose ps
 
 首次进入后台后，在“系统设置”中配置 AList 地址和独立账号，再配置内容根并执行同步。
 
+## 离线安装
+
+没有外网、不能访问 GHCR 的服务器，请从 GitHub Releases 下载当前版本的离线附件，不要执行 `docker compose pull`：
+
+- `cloudsite-api-v0.2.1-linux-amd64.tar.gz`
+- `cloudsite-web-v0.2.1-linux-amd64.tar.gz`
+- `cloudsite-v0.2.1-offline-deploy.zip`
+- `SHA256SUMS.txt`
+
+在联网电脑下载并校验附件，复制到离线服务器后导入两个镜像，再使用离线 Compose 覆盖文件启动：
+
+```bash
+sha256sum -c SHA256SUMS.txt
+gzip -dc cloudsite-api-v0.2.1-linux-amd64.tar.gz | docker load
+gzip -dc cloudsite-web-v0.2.1-linux-amd64.tar.gz | docker load
+unzip cloudsite-v0.2.1-offline-deploy.zip -d CloudSite
+cd CloudSite
+cp .env.example .env
+# 编辑 .env，至少替换 CLOUDSITE_SECRET_KEY
+docker compose -f docker-compose.yml -f docker-compose.offline.yml config --images
+docker compose -f docker-compose.yml -f docker-compose.offline.yml up -d --wait
+```
+
+离线包为 `linux/amd64`，目标服务器仍需事先安装 Docker Engine 与 Docker Compose Plugin。完整传输、安装、验收和离线升级步骤见 [`docs/离线安装.md`](docs/离线安装.md)。
+
 ## 使用现有 Traefik
 
 在 `.env` 中设置：

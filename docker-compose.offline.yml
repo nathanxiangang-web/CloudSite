@@ -1,0 +1,6 @@
+services:
+  api:
+    pull_policy: never
+
+  web:
+    pull_policy: never

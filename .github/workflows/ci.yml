@@ -61,6 +61,8 @@ jobs:
         run: docker compose -f docker-compose.traefik.yml config --quiet
       - name: Validate development Compose
         run: docker compose -f docker-compose.dev.yml config --quiet
+      - name: Validate offline Compose overlay
+        run: docker compose -f docker-compose.yml -f docker-compose.offline.yml config --quiet
 
   docker-smoke:
     runs-on: ubuntu-latest
