@@ -58,6 +58,22 @@ async def init_databases() -> None:
             await connection.exec_driver_sql(
                 "ALTER TABLE shares ADD COLUMN last_accessed_at DATETIME"
             )
+        for table, column, definition in (
+            ("users", "disabled_at", "DATETIME"),
+            ("users", "deleted_at", "DATETIME"),
+            ("users", "created_by_admin", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("user_sessions", "created_ip_hash", "VARCHAR(64)"),
+            ("user_sessions", "user_agent_hash", "VARCHAR(64)"),
+        ):
+            table_columns = await connection.exec_driver_sql(f"PRAGMA table_info({table})")
+            if column not in {row[1] for row in table_columns.fetchall()}:
+                await connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users (deleted_at)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_disabled_at ON users (disabled_at)"
+        )
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
         for table, column, definition in (

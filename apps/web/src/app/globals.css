@@ -146,7 +146,8 @@ button:disabled { opacity:.55; cursor:wait; }
 .users-toolbar { display:flex; align-items:center; gap:8px; }
 .users-toolbar select { min-height:38px; padding:0 28px 0 10px; border:1px solid var(--line); border-radius:8px; background:#fff; }
 .users-toolbar > button { width:38px; min-height:38px; padding:0; }
-.users-table-head,.users-table-row { grid-template-columns:minmax(180px,1.25fr) 90px 150px 150px 105px; }
+.users-toolbar > button.primary { width:auto; padding:0 12px; }
+.users-table-head,.users-table-row { grid-template-columns:minmax(180px,1.25fr) 90px 150px 150px 190px; }
 .users-table-row > span { min-width:0; color:#59677d; font-size:11px; }
 .users-table-row > span:first-child { display:flex; align-items:center; gap:10px; }
 .users-table-row b,.users-table-row small { display:block; }
@@ -157,6 +158,20 @@ button:disabled { opacity:.55; cursor:wait; }
 .user-status { width:max-content; padding:4px 8px; border-radius:99px; font-size:10px!important; }
 .user-status.active { color:#188d48; background:#e6f8ec; }
 .user-status.disabled { color:#c63d47; background:#ffeaec; }
+.user-status.deleted { color:#6b7280; background:#edf0f4; }
+.user-actions { display:flex; align-items:center; gap:5px; }
+.user-actions button { width:31px; padding:0; }
+.user-modal-backdrop { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:20px; background:rgba(15,23,42,.45); backdrop-filter:blur(2px); }
+.user-modal { position:relative; width:min(520px,100%); max-height:calc(100vh - 40px); padding:26px; overflow:auto; }
+.user-modal h2 { margin:0 36px 22px 0; font-size:20px; }
+.user-modal-close { position:absolute; top:16px; right:16px; width:34px; min-height:34px; padding:0; }
+.user-modal-close svg { width:17px; }
+.user-detail-list { margin:0; display:grid; gap:0; }
+.user-detail-list div { display:grid; grid-template-columns:130px 1fr; gap:18px; padding:11px 0; border-bottom:1px solid #edf0f5; }
+.user-detail-list div:last-child { border-bottom:0; }
+.user-detail-list dt { color:var(--muted); }
+.user-detail-list dd { margin:0; font-weight:600; word-break:break-word; }
+.modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
 .users-panel .pagination { padding:14px 20px; border-top:1px solid #edf0f5; }
 .users-panel > .form-error { padding:0 20px 16px; }
 

@@ -87,6 +87,21 @@ class UserStatusInput(BaseModel):
     status: Literal["active", "disabled"]
 
 
+class AdminUserCreateInput(BaseModel):
+    username: str = Field(max_length=200)
+    password: str = Field(max_length=200)
+    password_confirm: str = Field(max_length=200)
+
+
+class AdminUserUpdateInput(BaseModel):
+    username: str = Field(max_length=200)
+
+
+class AdminPasswordResetInput(BaseModel):
+    new_password: str = Field(max_length=200)
+    new_password_confirm: str = Field(max_length=200)
+
+
 class DownloadDiagnosticInput(BaseModel):
     resource_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     force_refresh: bool = True

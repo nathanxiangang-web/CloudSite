@@ -88,6 +88,17 @@ export type Share = {
   updated_at: string;
 };
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public code = "") {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+const sessionFailureCodes = new Set([
+  "AUTH_REQUIRED", "SESSION_INVALID", "SESSION_REVOKED", "SESSION_EXPIRED", "USER_DELETED", "USER_DISABLED",
+]);
+
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...options,
@@ -102,7 +113,12 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
       : typeof detail?.message === "string"
         ? `${detail.code ? `[${detail.code}] ` : ""}${detail.message}`
         : "请求失败，请稍后重试";
-    throw new Error(message);
+    const code = typeof detail?.code === "string" ? detail.code : "";
+    if (typeof window !== "undefined" && sessionFailureCodes.has(code) && !["/login", "/register"].includes(window.location.pathname)) {
+      const next = `${window.location.pathname}${window.location.search}`;
+      window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+    }
+    throw new ApiError(message, response.status, code);
   }
   return response.json();
 }

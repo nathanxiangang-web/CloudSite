@@ -140,6 +140,9 @@ class User(StateBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_by_admin: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class UserSession(StateBase):
@@ -151,6 +154,8 @@ class UserSession(StateBase):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class DownloadRateLimit(StateBase):

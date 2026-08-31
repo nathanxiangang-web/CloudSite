@@ -13,7 +13,7 @@ export function AuthMenu() {
     mutationFn: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
-      window.location.assign("/");
+      window.location.assign("/login");
     },
   });
 

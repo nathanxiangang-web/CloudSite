@@ -48,6 +48,14 @@ export function DownloadButton({
         credentials: "same-origin",
         headers: { Accept: "application/json" },
       });
+      if (response.status === 401 || response.status === 403) {
+        const payload = await response.json().catch(() => ({})) as { detail?: { code?: string } };
+        if (["AUTH_REQUIRED", "SESSION_INVALID", "SESSION_REVOKED", "SESSION_EXPIRED", "USER_DELETED", "USER_DISABLED"].includes(payload.detail?.code || "")) {
+          const next = `${window.location.pathname}${window.location.search}`;
+          window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+          return;
+        }
+      }
       if (response.status === 429) {
         const payload = await response.json() as RateLimitResponse;
         const retryAfter = Math.max(1, Number(payload.retry_after) || Number(response.headers.get("Retry-After")) || 60);

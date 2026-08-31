@@ -16,10 +16,11 @@ from .sessions import (
     USER_SESSION_COOKIE,
     clear_user_session_cookie,
     create_user_session,
-    resolve_user_session,
     revoke_session,
     revoke_user_sessions,
     set_user_session_cookie,
+    SessionValidationError,
+    validate_user_session,
 )
 
 
@@ -55,10 +56,13 @@ def user_dict(user: User) -> dict:
     return {
         "id": user.id,
         "username": user.username,
-        "status": user.status,
+        "status": "deleted" if user.deleted_at is not None else user.status,
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
         "password_changed_at": user.password_changed_at,
+        "disabled_at": user.disabled_at,
+        "deleted_at": user.deleted_at,
+        "created_by_admin": user.created_by_admin,
     }
 
 
@@ -87,10 +91,10 @@ def validate_request_origin(request: Request) -> None:
 
 
 async def require_user(session: AsyncSession, request: Request) -> tuple[object, User]:
-    pair = await resolve_user_session(session, request.cookies.get(USER_SESSION_COOKIE))
-    if not pair:
-        raise auth_error(401, "AUTH_REQUIRED", "请先登录")
-    return pair
+    try:
+        return await validate_user_session(session, request.cookies.get(USER_SESSION_COOKIE))
+    except SessionValidationError as exc:
+        raise auth_error(exc.status_code, exc.code, exc.message) from exc
 
 
 @router.post("/register", status_code=201)
@@ -116,7 +120,7 @@ async def register(payload: UserRegisterInput, request: Request, response: Respo
         session.add(user)
         try:
             await session.flush()
-            _, token = await create_user_session(session, user.id, now)
+            _, token = await create_user_session(session, user.id, now, request)
             session.add(OperationLog(level="INFO", module="auth", action="user_registered", message=f"用户 {user.username} 完成注册"))
             await session.commit()
         except IntegrityError as exc:
@@ -136,7 +140,7 @@ async def login(payload: UserLoginInput, request: Request, response: Response):
         normalized = ""
     async with StateSession() as session:
         user = await session.scalar(select(User).where(User.username_normalized == normalized)) if normalized else None
-        if not user or not verify_password(payload.password, user.password_hash):
+        if not user or user.deleted_at is not None or not verify_password(payload.password, user.password_hash):
             session.add(OperationLog(level="WARNING", module="auth", action="user_login_failed", message="前台用户登录失败"))
             await session.commit()
             raise auth_error(401, "INVALID_CREDENTIALS", "用户名或密码错误")
@@ -144,7 +148,7 @@ async def login(payload: UserLoginInput, request: Request, response: Response):
             raise auth_error(403, "USER_DISABLED", "当前账号已被停用")
         now = utcnow()
         user.last_login_at = now
-        _, token = await create_user_session(session, user.id, now)
+        _, token = await create_user_session(session, user.id, now, request)
         session.add(OperationLog(level="INFO", module="auth", action="user_login_success", message=f"用户 {user.username} 登录成功"))
         await session.commit()
         await session.refresh(user)
@@ -165,11 +169,9 @@ async def logout(request: Request, response: Response):
 @router.get("/me")
 async def me(request: Request):
     async with StateSession() as session:
-        pair = await resolve_user_session(session, request.cookies.get(USER_SESSION_COOKIE))
+        _, user = await require_user(session, request)
         await session.commit()
-        if not pair:
-            return {"authenticated": False, "user": None}
-        return {"authenticated": True, "user": user_dict(pair[1])}
+        return {"authenticated": True, "user": user_dict(user)}
 
 
 @router.post("/change-password")
@@ -187,7 +189,7 @@ async def change_password(payload: UserPasswordChangeInput, request: Request, re
         user.password_changed_at = now
         user.updated_at = now
         await revoke_user_sessions(session, user.id, now)
-        _, token = await create_user_session(session, user.id, now)
+        _, token = await create_user_session(session, user.id, now, request)
         session.add(OperationLog(level="INFO", module="auth", action="password_changed", message=f"用户 {user.username} 修改密码"))
         await session.commit()
     set_user_session_cookie(request, response, token)

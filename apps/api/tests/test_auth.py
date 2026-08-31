@@ -113,7 +113,9 @@ async def test_logout_revokes_current_session(monkeypatch):
         await register(client)
         response = await client.post("/api/auth/logout", headers=ORIGIN)
         assert response.status_code == 200
-        assert (await client.get("/api/auth/me")).json() == {"authenticated": False, "user": None}
+        me = await client.get("/api/auth/me")
+        assert me.status_code == 401
+        assert me.json()["detail"]["code"] == "AUTH_REQUIRED"
         async with factory() as session:
             active = await session.scalar(
                 select(func.count()).select_from(UserSession).where(UserSession.revoked_at.is_(None))
@@ -124,8 +126,8 @@ async def test_logout_revokes_current_session(monkeypatch):
 async def test_me_logged_out(monkeypatch):
     async with auth_client(monkeypatch) as (client, _):
         response = await client.get("/api/auth/me")
-        assert response.status_code == 200
-        assert response.json() == {"authenticated": False, "user": None}
+        assert response.status_code == 401
+        assert response.json()["detail"]["code"] == "AUTH_REQUIRED"
 
 
 async def test_disabled_user_cannot_login_and_sessions_are_revoked(monkeypatch):
@@ -139,7 +141,9 @@ async def test_disabled_user_cannot_login_and_sessions_are_revoked(monkeypatch):
         )
         assert disabled.status_code == 200
         assert disabled.json()["status"] == "disabled"
-        assert (await client.get("/api/auth/me")).json()["authenticated"] is False
+        me = await client.get("/api/auth/me")
+        assert me.status_code == 403
+        assert me.json()["detail"]["code"] == "USER_DISABLED"
         login = await client.post(
             "/api/auth/login",
             json={"username": "Nathan", "password": "password123"},
@@ -235,3 +239,69 @@ async def test_cross_origin_writes_are_rejected(monkeypatch):
         )
         assert response.status_code == 403
         assert response.json()["detail"]["code"] == "CSRF_ORIGIN_INVALID"
+
+
+async def test_admin_user_crud_reset_and_soft_delete(monkeypatch):
+    async with auth_client(monkeypatch) as (client, factory):
+        created = await client.post(
+            "/api/admin/users",
+            json={"username": "managed_user", "password": "managed-pass-123", "password_confirm": "managed-pass-123"},
+            headers=ORIGIN,
+        )
+        assert created.status_code == 201
+        user_id = created.json()["id"]
+        assert created.json()["created_by_admin"] is True
+        assert "password" not in created.json()
+        assert "password_hash" not in created.json()
+
+        renamed = await client.patch(
+            f"/api/admin/users/{user_id}", json={"username": "renamed_user"}, headers=ORIGIN
+        )
+        assert renamed.status_code == 200
+        assert renamed.json()["username"] == "renamed_user"
+
+        reset = await client.post(
+            f"/api/admin/users/{user_id}/reset-password",
+            json={"new_password": "new-managed-pass-456", "new_password_confirm": "new-managed-pass-456"},
+            headers=ORIGIN,
+        )
+        assert reset.status_code == 200
+        login = await client.post(
+            "/api/auth/login",
+            json={"username": "renamed_user", "password": "new-managed-pass-456"},
+            headers=ORIGIN,
+        )
+        assert login.status_code == 200
+
+        deleted = await client.delete(f"/api/admin/users/{user_id}", headers=ORIGIN)
+        assert deleted.status_code == 200
+        me = await client.get("/api/auth/me")
+        assert me.status_code == 401
+        assert me.json()["detail"]["code"] == "USER_DELETED"
+        deleted_list = await client.get("/api/admin/users?status=deleted")
+        assert deleted_list.json()["items"][0]["status"] == "deleted"
+
+        reserved = await register(client, "renamed_user", "another-pass-789")
+        assert reserved.status_code == 409
+        async with factory() as session:
+            user = await session.get(User, user_id)
+            assert user is not None and user.deleted_at is not None
+
+
+async def test_admin_reset_password_revokes_existing_sessions(monkeypatch):
+    async with auth_client(monkeypatch) as (client, factory):
+        user_id = (await register(client)).json()["id"]
+        old_token = client.cookies.get(USER_SESSION_COOKIE)
+        response = await client.post(
+            f"/api/admin/users/{user_id}/reset-password",
+            json={"new_password": "replacement-pass-456", "new_password_confirm": "replacement-pass-456"},
+            headers=ORIGIN,
+        )
+        assert response.status_code == 200
+        client.cookies.set(USER_SESSION_COOKIE, old_token)
+        me = await client.get("/api/auth/me")
+        assert me.status_code == 401
+        assert me.json()["detail"]["code"] == "SESSION_REVOKED"
+        async with factory() as session:
+            active = await session.scalar(select(func.count()).select_from(UserSession).where(UserSession.revoked_at.is_(None)))
+            assert active == 0

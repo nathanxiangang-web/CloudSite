@@ -27,7 +27,7 @@ export default function CollectionsPage() {
         ? <div className="empty error-state">合集暂时不可用：{query.error.message}</div>
         : collections.length
           ? <section className="collection-grid">{collections.map((collection, index) => <Link href={`/collections/${collection.id}`} className="collection-card" key={collection.id}>
-            <div className="cover"><ImageAsset src={collection.cover ? `/p/${collection.cover}` : `/assets/collection-${(index % 4) + 1}.png`} alt={collection.name} fill sizes="260px" /></div>
+            <div className="cover"><ImageAsset unoptimized src={collection.cover ? `/p/${collection.cover}` : `/assets/collection-${(index % 4) + 1}.png`} alt={collection.name} fill sizes="260px" /></div>
             <strong>{collection.name}</strong>
             <span className="collection-description">{collection.description || "精选资源合集"}</span>
             <div className="collection-meta"><span><FileImage /> {collection.item_count ?? 0} 个资源</span></div>

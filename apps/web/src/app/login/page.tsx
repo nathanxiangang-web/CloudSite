@@ -3,24 +3,22 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { LogIn, UserRound } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
-import { AUTH_QUERY_KEY, PublicUser, useAuth } from "@/lib/auth";
+import { AUTH_QUERY_KEY, PublicUser } from "@/lib/auth";
+import { safeNext } from "@/lib/navigation";
 
 export default function LoginPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
-  const auth = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  useEffect(() => { if (auth.data?.authenticated) router.replace("/account"); }, [auth.data?.authenticated, router]);
   const login = useMutation({
     mutationFn: () => api<PublicUser>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
-      router.push("/account");
+      const next = safeNext(new URLSearchParams(window.location.search).get("next"));
+      window.location.assign(next);
     },
   });
   const submit = (event: FormEvent) => { event.preventDefault(); login.mutate(); };

@@ -16,7 +16,7 @@ export default function AccountPage() {
   useEffect(() => { if (!auth.isLoading && !auth.data?.authenticated) router.replace("/login"); }, [auth.isLoading, auth.data?.authenticated, router]);
   const logout = useMutation({
     mutationFn: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY }); router.push("/"); },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY }); router.push("/login"); },
   });
   const user = auth.data?.user;
   return <PublicShell><div className="page account-page">

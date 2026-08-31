@@ -86,6 +86,7 @@ from .sync.rolling import (
     run_due_rolling_window,
 )
 from .users import router as users_router
+from .sessions import USER_SESSION_COOKIE, SessionValidationError, validate_user_session
 
 
 scheduler_task: asyncio.Task | None = None
@@ -236,15 +237,47 @@ app.include_router(users_router)
 @app.middleware("http")
 async def admin_session_middleware(request: Request, call_next):
     path = request.url.path
-    if not path.startswith("/api/admin") or path.startswith("/api/admin/auth/"):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    if path.startswith("/api/admin"):
+        if path.startswith("/api/admin/auth/"):
+            return await call_next(request)
+        async with StateSession() as session:
+            connection = await session.get(AListConnection, 1)
+        admin_authenticated = verify_session_token(request.cookies.get(SESSION_COOKIE))
+        if path.startswith("/api/admin/users") and not admin_authenticated:
+            return JSONResponse(
+                {"detail": {"code": "ADMIN_REQUIRED", "message": "请先登录管理后台"}},
+                status_code=403,
+            )
+        if connection and connection.enabled and not admin_authenticated:
+            return JSONResponse(
+                {"detail": {"code": "ADMIN_REQUIRED", "message": "请先登录管理后台"}},
+                status_code=403,
+            )
+        return await call_next(request)
+
+    public_api_paths = {"/api/health", "/api/auth/login", "/api/auth/register"}
+    requires_user = (
+        (path.startswith("/api/") and path not in public_api_paths)
+        or path.startswith("/d/")
+        or path.startswith("/p/")
+        or path.startswith("/office-files/")
+    )
+    if not requires_user:
         return await call_next(request)
     async with StateSession() as session:
-        connection = await session.get(AListConnection, 1)
-    if not connection or not connection.enabled:
-        return await call_next(request)
-    if verify_session_token(request.cookies.get(SESSION_COOKIE)):
-        return await call_next(request)
-    return JSONResponse({"detail": "请先登录管理后台"}, status_code=401)
+        try:
+            await validate_user_session(session, request.cookies.get(USER_SESSION_COOKIE))
+            await session.commit()
+        except SessionValidationError as exc:
+            await session.commit()
+            return JSONResponse(
+                {"detail": {"code": exc.code, "message": exc.message}},
+                status_code=exc.status_code,
+            )
+    return await call_next(request)
 
 
 @app.get("/api/health")

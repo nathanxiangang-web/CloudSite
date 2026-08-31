@@ -6,10 +6,13 @@ import { api } from "./api";
 export type PublicUser = {
   id: number;
   username: string;
-  status: "active" | "disabled";
+  status: "active" | "disabled" | "deleted";
   created_at: string;
   last_login_at: string | null;
   password_changed_at: string | null;
+  disabled_at: string | null;
+  deleted_at: string | null;
+  created_by_admin: boolean;
 };
 
 export type AuthState = {
