@@ -149,13 +149,22 @@ async def scheduler_loop() -> None:
             values = await get_system_values(session)
         if not values["automatic_sync"]:
             continue
-        with suppress(Exception):
+        try:
             if await migrate_existing_index_to_rolling():
                 await run_due_rolling_window()
             elif await automatic_sync_due(values["sync_interval_minutes"]):
                 # Freeze the existing first-index bootstrap path.  Rolling 1.1
                 # is enabled only after this legacy full sync succeeds.
                 await run_sync("scheduled")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await log_operation(
+                "sync",
+                "scheduler_failed",
+                f"自动同步调度失败：{type(exc).__name__}: {str(exc)[:900]}",
+                level="ERROR",
+            )
 
 
 async def _run_manual_sync_in_background(full: bool, force: bool) -> None:

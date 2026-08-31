@@ -583,7 +583,7 @@ async def _ensure_current_cycle(session, now: datetime) -> SyncCycle | None:
     return await _create_cycle(session, anchor, "normal")
 
 
-async def run_due_rolling_window(manual: bool = False, now: datetime | None = None) -> dict[str, Any]:
+async def _run_due_rolling_window(manual: bool = False, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     if not await migrate_existing_index_to_rolling(now):
         return {"status": "awaiting_initial_sync"}
@@ -629,10 +629,10 @@ async def run_due_rolling_window(manual: bool = False, now: datetime | None = No
                 (SyncCycleItem.status == "failed", 1),
                 else_=2,
             )
-            items = list(
+            item_ids = list(
                 (
                     await session.scalars(
-                        select(SyncCycleItem)
+                        select(SyncCycleItem.id)
                         .where(
                             SyncCycleItem.cycle_id == cycle.id,
                             SyncCycleItem.status.in_(PENDING_ITEM_STATUSES),
@@ -643,20 +643,25 @@ async def run_due_rolling_window(manual: bool = False, now: datetime | None = No
                 ).all()
             )
             window_index = min(cycle.windows_total, cycle.windows_completed + 1)
-            run = SyncRun(sync_type="rolling_window", status="running", roots_total=len(items))
+            run = SyncRun(sync_type="rolling_window", status="running", roots_total=len(item_ids))
             session.add(run)
             cycle.status = "running"
             cycle.started_at = cycle.started_at or now
             await session.commit()
             await session.refresh(run)
-            governor = SyncRequestGovernor(target_count=len(items))
+            cycle_id = cycle.id
+            run_id = run.id
+            governor = SyncRequestGovernor(target_count=len(item_ids))
             attempted = success = failed = changed = unchanged = 0
             added = updated_count = removed = 0
             circuit_opened = False
             client, _ = await load_client_and_roots()
 
             async with client:
-                for item in items:
+                for item_id in item_ids:
+                    item = await session.get(SyncCycleItem, item_id)
+                    if item is None:
+                        continue
                     item.status = "running"
                     item.window_index = window_index
                     item.error_message = ""
@@ -692,9 +697,14 @@ async def run_due_rolling_window(manual: bool = False, now: datetime | None = No
                             await session.rollback()
                             final_error = exc
                             governor.observe_response(time.monotonic() - request_started, completed=False)
-                            item = await session.get(SyncCycleItem, item.id)
-                            cycle = await session.get(SyncCycle, cycle.id)
-                            run = await session.get(SyncRun, run.id)
+                            item = await session.get(SyncCycleItem, item_id)
+                            cycle = await session.get(SyncCycle, cycle_id)
+                            run = await session.get(SyncRun, run_id)
+                            # The rollback also removes the request counters
+                            # incremented immediately before the AList call.
+                            item.attempts += 1
+                            cycle.alist_list_requests += 1
+                            await session.commit()
                             if is_access_restriction(exc):
                                 await open_sync_circuit(exc)
                                 circuit_opened = True
@@ -793,6 +803,42 @@ async def run_due_rolling_window(manual: bool = False, now: datetime | None = No
         if cycle.status != "success"
         else None,
     }
+
+
+async def _finalize_failed_rolling_window(exc: Exception) -> None:
+    finished_at = datetime.now(timezone.utc)
+    error_message = f"{type(exc).__name__}: {str(exc)}"[:1000]
+    async with IndexSession() as session:
+        await session.execute(
+            update(SyncCycleItem)
+            .where(SyncCycleItem.status == "running")
+            .values(status="pending", error_message="Rolling 窗口异常中断，已恢复为待处理")
+        )
+        await session.execute(
+            update(SyncRun)
+            .where(SyncRun.sync_type == "rolling_window", SyncRun.status == "running")
+            .values(status="failed", finished_at=finished_at, error_message=error_message)
+        )
+        await session.execute(
+            update(SyncCycle)
+            .where(SyncCycle.status == "running")
+            .values(status="partial")
+        )
+        await session.commit()
+    await log_operation(
+        "sync",
+        "rolling_window_failed",
+        f"Rolling 窗口异常中断，运行状态已收尾：{error_message}",
+        level="ERROR",
+    )
+
+
+async def run_due_rolling_window(manual: bool = False, now: datetime | None = None) -> dict[str, Any]:
+    try:
+        return await _run_due_rolling_window(manual=manual, now=now)
+    except Exception as exc:
+        await _finalize_failed_rolling_window(exc)
+        return {"status": "failed", "error": f"{type(exc).__name__}: {str(exc)}"[:1000]}
 
 
 async def rolling_status() -> dict[str, Any]:
