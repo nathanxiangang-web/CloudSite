@@ -29,7 +29,7 @@ export default function LoginPage() {
     <h1>登录 CloudSite</h1>
     <p>使用你的 CloudSite 用户名和密码继续。</p>
     <form className="form-stack" onSubmit={submit}>
-      <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" maxLength={32} required /></label>
+      <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" minLength={2} maxLength={16} required /></label>
       <label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={72} required /></label>
       {login.error && <p className="form-error">{login.error.message}</p>}
       <button className="primary user-auth-submit" disabled={login.isPending}><LogIn />{login.isPending ? "正在登录…" : "登录"}</button>

@@ -30,7 +30,7 @@ export default function RegisterPage() {
     <h1>创建账号</h1>
     <p>注册后会自动登录并进入 CloudSite。</p>
     <form className="form-stack" onSubmit={submit}>
-      <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" maxLength={32} pattern={"[A-Za-z0-9_\\-]{3,32}"} required /><small>3～32 位，仅允许字母、数字、下划线和短横线</small></label>
+      <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" minLength={2} maxLength={16} pattern={"[A-Za-z0-9_\\-]{2,16}"} required /><small>2～16 位，仅允许字母、数字、下划线和短横线</small></label>
       <label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} maxLength={72} required /><small>密码长度 8～72 位</small></label>
       <label>确认密码<input type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} autoComplete="new-password" minLength={8} maxLength={72} required /></label>
       {register.error && <p className="form-error">{register.error.message}</p>}

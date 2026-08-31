@@ -26,7 +26,7 @@ from .sessions import (
 
 router = APIRouter(prefix="/api/auth", tags=["public-auth"])
 password_hash = PasswordHash.recommended()
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,32}$")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{2,16}$")
 
 
 def auth_error(status_code: int, code: str, message: str) -> HTTPException:
@@ -35,7 +35,7 @@ def auth_error(status_code: int, code: str, message: str) -> HTTPException:
 
 def validate_username(username: str) -> tuple[str, str]:
     if username != username.strip() or not USERNAME_PATTERN.fullmatch(username):
-        raise auth_error(400, "USERNAME_INVALID", "用户名须为 3～32 位，仅允许字母、数字、下划线和短横线")
+        raise auth_error(400, "USERNAME_INVALID", "用户名须为 2～16 位，仅允许字母、数字、下划线和短横线")
     return username, username.lower()
 
 

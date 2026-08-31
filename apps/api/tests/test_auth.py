@@ -74,6 +74,12 @@ async def test_case_insensitive_duplicate_username(monkeypatch):
 
 async def test_username_and_password_rules(monkeypatch):
     async with auth_client(monkeypatch) as (client, _):
+        short_valid_name = await register(client, "JC")
+        assert short_valid_name.status_code == 201
+        assert short_valid_name.json()["username"] == "JC"
+        too_long_name = await register(client, "a" * 17)
+        assert too_long_name.status_code == 400
+        assert too_long_name.json()["detail"]["code"] == "USERNAME_INVALID"
         bad_name = await register(client, " bad name ")
         assert bad_name.status_code == 400
         assert bad_name.json()["detail"]["code"] == "USERNAME_INVALID"
