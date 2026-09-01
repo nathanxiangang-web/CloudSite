@@ -63,7 +63,7 @@ from .models import (
     utcnow,
 )
 from .office import OfficePreviewError, ensure_preview_cached, office_cache_filename, office_content_type
-from .preview import PreviewError, load_text_preview, preview_capability, resolve_preview_url
+from .preview import PreviewError, load_text_preview, preview_capability, resolve_preview_url, validate_preview_ticket
 from .request_context import request_is_https
 from .schemas import (
     AListInput,
@@ -376,7 +376,11 @@ async def admin_session_middleware(request: Request, call_next):
         return await call_next(request)
 
     public_api_paths = {"/api/health", "/api/auth/login", "/api/auth/register"}
-    requires_user = (
+    preview_ticket_valid = False
+    if path.startswith("/p/"):
+        resource_id = path.removeprefix("/p/")
+        preview_ticket_valid = validate_preview_ticket(resource_id, request.query_params.get("ticket"))
+    requires_user = not preview_ticket_valid and (
         (path.startswith("/api/") and path not in public_api_paths)
         or path.startswith("/d/")
         or path.startswith("/p/")

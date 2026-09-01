@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from cloudsite import auth, main
 from cloudsite.database import StateBase
 from cloudsite.models import AListConnection, User, utcnow
+from cloudsite.preview import PREVIEW_TICKET_TTL_SECONDS, create_preview_ticket
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
 
@@ -44,6 +45,42 @@ async def test_anonymous_whitelist_and_protected_api(monkeypatch):
         admin = await client.get("/api/admin/users")
         assert admin.status_code == 403
         assert admin.json()["detail"]["code"] == "ADMIN_REQUIRED"
+    await engine.dispose()
+
+
+async def test_preview_ticket_is_resource_bound_time_limited_and_does_not_open_other_routes(monkeypatch):
+    client, _, engine = await boundary_client(monkeypatch)
+    class EmptyIndexSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, *_args):
+            return None
+
+    monkeypatch.setattr(main, "IndexSession", EmptyIndexSession)
+    now = 1_800_000_000
+    ticket = create_preview_ticket("not-a-resource", now=now)
+    monkeypatch.setattr("cloudsite.preview.time.time", lambda: now)
+    async with client:
+        accepted = await client.get(f"/p/not-a-resource?ticket={ticket}", follow_redirects=False)
+        assert accepted.status_code == 302
+        assert accepted.headers["location"].startswith("/resource/not-a-resource?preview_error=")
+
+        wrong_resource = await client.get(f"/p/other-resource?ticket={ticket}", follow_redirects=False)
+        assert wrong_resource.status_code == 401
+        assert wrong_resource.json()["detail"]["code"] == "AUTH_REQUIRED"
+
+        monkeypatch.setattr("cloudsite.preview.time.time", lambda: now + PREVIEW_TICKET_TTL_SECONDS + 1)
+        expired = await client.get(f"/p/not-a-resource?ticket={ticket}", follow_redirects=False)
+        assert expired.status_code == 401
+        assert expired.json()["detail"]["code"] == "AUTH_REQUIRED"
+
+        protected = await client.get(f"/api/home?ticket={ticket}")
+        assert protected.status_code == 401
+        assert protected.json()["detail"]["code"] == "AUTH_REQUIRED"
     await engine.dispose()
 
 

@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+import hashlib
+import hmac
+import time
+from urllib.parse import urlencode
 
 import httpx
 
@@ -21,6 +25,7 @@ OFFICE_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
+PREVIEW_TICKET_TTL_SECONDS = 6 * 60 * 60
 
 
 class PreviewError(RuntimeError):
@@ -39,6 +44,24 @@ class PreviewResolution:
 
 
 preview_url_cache = DownloadUrlCache(settings.preview_cache_ttl_seconds, settings.preview_cache_max_entries)
+
+
+def create_preview_ticket(resource_id: str, now: int | None = None) -> str:
+    expires_at = int(time.time() if now is None else now) + PREVIEW_TICKET_TTL_SECONDS
+    payload = f"{resource_id}:{expires_at}"
+    signature = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{expires_at}.{signature}"
+
+
+def validate_preview_ticket(resource_id: str, ticket: str | None, now: int | None = None) -> bool:
+    if not ticket or "." not in ticket:
+        return False
+    expires_text, signature = ticket.split(".", 1)
+    if not expires_text.isdigit() or int(expires_text) < int(time.time() if now is None else now):
+        return False
+    payload = f"{resource_id}:{expires_text}"
+    expected = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature, expected)
 
 
 def preview_capability(resource) -> dict:
@@ -60,12 +83,15 @@ def preview_capability(resource) -> dict:
         preview_type = "none"
     can_preview = preview_type != "none" and getattr(resource, "status", "active") == "active"
     reason = "" if can_preview else ("资源当前不可用" if getattr(resource, "status", "active") != "active" else "当前文件格式不支持在线预览")
+    gateway_url = ""
+    if can_preview and preview_type not in {"text", "markdown", "office"}:
+        gateway_url = f"/p/{resource.id}?{urlencode({'ticket': create_preview_ticket(resource.id)})}"
     return {
         "preview_type": preview_type,
         "can_preview": can_preview,
         "preview_mode": "text" if preview_type in {"text", "markdown"} else "office" if preview_type == "office" else "direct" if can_preview else "none",
         "reason": reason,
-        "gateway_url": f"/p/{resource.id}" if can_preview and preview_type not in {"text", "markdown", "office"} else "",
+        "gateway_url": gateway_url,
         "can_download": getattr(resource, "status", "active") == "active",
     }
 

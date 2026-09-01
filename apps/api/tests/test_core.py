@@ -484,6 +484,16 @@ def test_preview_capability_uses_extension_and_never_claims_iso_or_exe_previewab
     assert preview_capability(resource("missing.jpg", "jpg", status="missing"))["can_preview"] is False
 
 
+def test_preview_capability_issues_a_resource_bound_gateway_ticket(monkeypatch):
+    monkeypatch.setattr(preview.time, "time", lambda: 1_800_000_000)
+    item = SimpleNamespace(id="r-test", name="movie.mp4", extension="mp4", mime_type="video/mp4", status="active")
+    capability = preview_capability(item)
+    assert capability["gateway_url"].startswith("/p/r-test?ticket=")
+    ticket = capability["gateway_url"].split("ticket=", 1)[1]
+    assert preview.validate_preview_ticket("r-test", ticket, now=1_800_000_000)
+    assert not preview.validate_preview_ticket("r-other", ticket, now=1_800_000_000)
+
+
 def test_preview_capability_detects_office_formats():
     def resource(name, extension):
         return SimpleNamespace(id="r1", name=name, extension=extension, mime_type="", status="active")

@@ -34,7 +34,8 @@ function PreviewRenderer({ item }: { item: ResourceDetail }) {
   const [retry, setRetry] = useState(false);
   const [failed, setFailed] = useState(false);
   const text = useQuery({ queryKey: ["text-preview", item.id, retry], queryFn: () => api<TextPreview>(`/api/resources/${item.id}/text-preview${retry ? "?refresh=1" : ""}`), enabled: item.capabilities.preview_type === "text" || item.capabilities.preview_type === "markdown", retry: false });
-  const previewUrl = `/p/${item.id}${retry ? "?refresh=1" : ""}`;
+  const previewGateway = item.capabilities.gateway_url || `/p/${item.id}`;
+  const previewUrl = `${previewGateway}${retry ? `${previewGateway.includes("?") ? "&" : "?"}refresh=1` : ""}`;
   const retryPreview = () => { setFailed(false); setRetry(true); text.refetch(); };
   if (!item.capabilities.can_preview || item.capabilities.preview_type === "none") return <article className="preview-panel"><Fallback item={item} message={item.capabilities.reason || "此文件适合下载后打开"} /></article>;
   if (item.capabilities.preview_type === "text" || item.capabilities.preview_type === "markdown") {
