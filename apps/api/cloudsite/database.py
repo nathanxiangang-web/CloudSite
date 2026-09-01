@@ -1,3 +1,6 @@
+import sqlite3
+from pathlib import Path
+
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -13,6 +16,103 @@ class IndexBase(DeclarativeBase):
     pass
 
 
+class DatabaseRecoveryRequired(RuntimeError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+STATE_REQUIRED_TABLES = {
+    "alist_connections",
+    "site_settings",
+    "system_settings",
+    "users",
+    "user_sessions",
+}
+INDEX_REQUIRED_TABLES = {
+    "folders",
+    "resources",
+    "sync_runs",
+}
+
+
+def _read_only_database_check(path: Path, required_tables: set[str], code: str) -> None:
+    try:
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            quick_check = connection.execute("PRAGMA quick_check(1)").fetchone()
+            if not quick_check or quick_check[0] != "ok":
+                raise DatabaseRecoveryRequired(code, f"{path.name} 完整性检查失败")
+            tables = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                )
+            }
+        finally:
+            connection.close()
+    except DatabaseRecoveryRequired:
+        raise
+    except (OSError, sqlite3.DatabaseError) as exc:
+        raise DatabaseRecoveryRequired(code, f"{path.name} 无法读取或已损坏") from exc
+    missing = sorted(required_tables - tables)
+    if missing:
+        raise DatabaseRecoveryRequired(code, f"{path.name} 缺少关键表：{', '.join(missing)}")
+
+
+def _database_has_rows(path: Path, tables: tuple[str, ...]) -> bool:
+    try:
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            return any(
+                connection.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone() is not None
+                for table in tables
+            )
+        finally:
+            connection.close()
+    except (OSError, sqlite3.DatabaseError) as exc:
+        raise DatabaseRecoveryRequired(
+            "STATE_RECOVERY_REQUIRED",
+            "无法确认数据库实例身份；请先恢复 state.db 备份",
+        ) from exc
+
+
+def validate_database_files(data_dir: Path | None = None) -> dict[str, str]:
+    root = (data_dir or settings.data_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    state_path = root / "state.db"
+    index_path = root / "index.db"
+
+    if not state_path.exists():
+        traces = [
+            item
+            for item in root.iterdir()
+            if item.name not in {"state.db-shm", "state.db-wal"}
+        ]
+        if index_path.exists() or traces:
+            raise DatabaseRecoveryRequired(
+                "STATE_RECOVERY_REQUIRED",
+                "state.db 丢失，但数据目录中存在既有实例痕迹；请恢复备份",
+            )
+        return {"state": "fresh", "index": "fresh"}
+
+    _read_only_database_check(state_path, STATE_REQUIRED_TABLES, "STATE_RECOVERY_REQUIRED")
+    if not index_path.exists():
+        return {"state": "ready", "index": "recovery_required"}
+    _read_only_database_check(index_path, INDEX_REQUIRED_TABLES, "INDEX_RECOVERY_REQUIRED")
+    state_has_identity = _database_has_rows(
+        state_path,
+        ("users", "alist_connections", "site_settings", "system_settings"),
+    )
+    index_has_content = _database_has_rows(index_path, ("folders", "resources", "sync_runs"))
+    if index_has_content and not state_has_identity:
+        raise DatabaseRecoveryRequired(
+            "STATE_RECOVERY_REQUIRED",
+            "index.db 包含既有索引，但 state.db 没有实例身份数据；请恢复 state.db 备份",
+        )
+    return {"state": "ready", "index": "ready"}
+
+
 state_engine = create_async_engine(settings.state_db_url)
 index_engine = create_async_engine(settings.index_db_url)
 StateSession = async_sessionmaker(state_engine, expire_on_commit=False, class_=AsyncSession)
@@ -25,6 +125,8 @@ for engine in (state_engine, index_engine):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA wal_autocheckpoint=1000")
         cursor.close()
 
 

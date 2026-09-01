@@ -1,12 +1,14 @@
 {
   "name": "cloudsite-web",
-  "version": "0.2.1",
+  "version": "0.3.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:security": "node --test tests/*.test.mts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",

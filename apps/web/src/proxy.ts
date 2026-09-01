@@ -1,36 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authRedirectTarget } from "./lib/navigation";
 
 const apiOrigin = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
-const publicPages = new Set(["/login", "/register"]);
 
-function safeNext(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("://")) return "/";
-  return value;
-}
+type SessionStatus = { authenticated: boolean; code: string };
 
-async function hasValidSession(request: NextRequest): Promise<boolean> {
+async function getSessionStatus(request: NextRequest): Promise<SessionStatus> {
   try {
     const response = await fetch(`${apiOrigin}/api/auth/me`, {
       headers: { cookie: request.headers.get("cookie") || "" },
       cache: "no-store",
     });
-    return response.ok;
+    if (response.ok) return { authenticated: true, code: "" };
+    const body = await response.json().catch(() => ({}));
+    return {
+      authenticated: false,
+      code: typeof body?.detail?.code === "string" ? body.detail.code : "",
+    };
   } catch {
-    return false;
+    return { authenticated: false, code: "" };
   }
 }
 
 export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const authenticated = await hasValidSession(request);
-  if (publicPages.has(pathname)) {
-    if (!authenticated) return NextResponse.next();
-    return NextResponse.redirect(new URL(safeNext(request.nextUrl.searchParams.get("next")), request.url));
-  }
-  if (authenticated) return NextResponse.next();
-  const login = new URL("/login", request.url);
-  login.searchParams.set("next", `${pathname}${search}`);
-  return NextResponse.redirect(login);
+  const session = await getSessionStatus(request);
+  const target = authRedirectTarget(
+    pathname,
+    search,
+    session.authenticated,
+    session.code,
+    request.nextUrl.searchParams.get("next"),
+  );
+  return target ? NextResponse.redirect(new URL(target, request.url)) : NextResponse.next();
 }
 
 export const config = {

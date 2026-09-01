@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import hmac
-import ipaddress
 import json
 import math
 from dataclasses import dataclass
@@ -13,6 +12,7 @@ from sqlalchemy import delete, select, text
 from .config import settings
 from .database import StateSession
 from .models import DownloadRateLimit, utcnow
+from .request_context import is_trusted_proxy, normalize_ip
 
 
 DOWNLOAD_RATE_MAX_ATTEMPTS = 3
@@ -34,32 +34,10 @@ class DownloadRateDecision:
     newly_blocked: bool = False
 
 
-def normalize_ip(value: str) -> str:
-    address = ipaddress.ip_address(value.strip())
-    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
-        address = address.ipv4_mapped
-    return address.compressed
-
-
-def _trusted_networks():
-    networks = []
-    for value in settings.trusted_proxy_cidr_list:
-        try:
-            networks.append(ipaddress.ip_network(value, strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
-
-
-def _is_trusted_proxy(address: str) -> bool:
-    parsed = ipaddress.ip_address(address)
-    return any(parsed.version == network.version and parsed in network for network in _trusted_networks())
-
-
 def get_effective_client_ip(request: Request) -> str:
     peer = normalize_ip(request.client.host if request.client else "127.0.0.1")
     forwarded = request.headers.get("x-forwarded-for")
-    if not forwarded or not _is_trusted_proxy(peer):
+    if not forwarded or not is_trusted_proxy(peer):
         return peer
 
     try:
@@ -72,7 +50,7 @@ def get_effective_client_ip(request: Request) -> str:
     # Walk from the socket peer towards the browser. Trusted hops are removed
     # from the right; the first untrusted hop is the effective client.
     for address in reversed([*chain, peer]):
-        if not _is_trusted_proxy(address):
+        if not is_trusted_proxy(address):
             return address
     return chain[0]
 

@@ -2,12 +2,16 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import select, text
+
+from .database import IndexSession, StateSession
+from .models import Folder, Resource, SystemSetting
 
 
 SEARCH_TYPES = {"software", "image", "video", "document", "file"}
 SEARCH_OBJECT_TYPES = {"all", "resource", "folder"}
 SEARCH_SORTS = {"relevance", "modified_at", "name", "size"}
+SEARCH_INDEX_DIRTY_KEY = "search_index_dirty"
 
 
 def normalize_search_query(value: str) -> str:
@@ -71,6 +75,32 @@ async def rebuild_search_index(session, folders: Iterable[Any], resources: Itera
     if rows:
         await session.execute(statement, rows)
     return len(rows)
+
+
+async def set_search_index_dirty(dirty: bool) -> None:
+    async with StateSession() as session:
+        row = await session.get(SystemSetting, SEARCH_INDEX_DIRTY_KEY)
+        value = "true" if dirty else "false"
+        if row is None:
+            session.add(SystemSetting(key=SEARCH_INDEX_DIRTY_KEY, value=value, value_type="boolean"))
+        else:
+            row.value = value
+            row.value_type = "boolean"
+        await session.commit()
+
+
+async def recover_search_index_if_dirty() -> int:
+    async with StateSession() as state:
+        row = await state.get(SystemSetting, SEARCH_INDEX_DIRTY_KEY)
+        if row is None or row.value != "true":
+            return 0
+    async with IndexSession() as session:
+        folders = list((await session.scalars(select(Folder).where(Folder.status == "active"))).all())
+        resources = list((await session.scalars(select(Resource).where(Resource.status == "active"))).all())
+        count = await rebuild_search_index(session, folders, resources)
+        await session.commit()
+    await set_search_index_dirty(False)
+    return count
 
 
 async def search_index(

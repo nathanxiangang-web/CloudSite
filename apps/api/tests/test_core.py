@@ -3,15 +3,15 @@ import asyncio
 import pytest
 from types import SimpleNamespace
 
-from cloudsite import main
+from cloudsite import download, main, preview
 from cloudsite.alist import AListClient, AListError, AListUrlBuilder
 from cloudsite.crypto import decrypt_secret, encrypt_secret
-from cloudsite.download import DownloadError, DownloadUrlCache, map_alist_error, validate_download_url, validate_resource_id
+from cloudsite.download import DownloadError, DownloadUrlCache, map_alist_error, resolve_download_entry, validate_download_url, validate_resource_id
 from cloudsite.indexer import advance_missing_candidate, join_path, mass_change_guard_triggered, normalize_path, preserve_existing_ids, scan_roots, should_ignore, stable_id, times_equal
 from cloudsite.main import breadcrumbs_for, create_session_token, folder_dict, resource_dict, verify_session_token
 from cloudsite.schemas import SystemInput
 from cloudsite.search import build_fts_query, classify_match, escape_like, normalize_search_query
-from cloudsite.preview import preview_capability, validate_download_url
+from cloudsite.preview import PreviewError, preview_capability, resolve_preview_url, validate_download_url
 
 
 def test_stable_ids_are_deterministic():
@@ -501,3 +501,129 @@ def test_preview_uses_same_safe_http_url_policy_as_download():
     assert validate_download_url("https://preview.example.com/file.jpg")[1] == "preview.example.com"
     with pytest.raises(DownloadError):
         validate_download_url("data:text/html,unsafe")
+
+
+async def test_preview_recovers_after_alist_returns_without_process_restart(monkeypatch):
+    resource = SimpleNamespace(
+        id="r-recover-preview",
+        name="photo.jpg",
+        path="/图片/photo.jpg",
+        extension="jpg",
+        mime_type="image/jpeg",
+        status="active",
+    )
+    connection = SimpleNamespace(
+        enabled=True,
+        base_url="https://alist.example",
+        username="user",
+        password_ciphertext="ciphertext",
+    )
+    attempts = 0
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get_preview_entry(self, _path):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise AListError("offline detail must not leak", "AL-002")
+            return SimpleNamespace(url="https://alist.example/d/photo.jpg", host="alist.example")
+
+    preview.preview_url_cache.clear()
+    monkeypatch.setattr(preview, "decrypt_secret", lambda _value: "password")
+    monkeypatch.setattr(preview, "AListClient", FakeClient)
+    with pytest.raises(PreviewError) as raised:
+        await resolve_preview_url(resource, connection)
+    assert raised.value.code == "PV-005"
+    assert raised.value.status_code == 503
+    assert "offline detail" not in raised.value.message
+    recovered = await resolve_preview_url(resource, connection)
+    assert recovered.url == "https://alist.example/d/photo.jpg"
+    assert recovered.cache_hit is False
+
+
+async def test_download_recovers_after_alist_returns_without_process_restart(monkeypatch):
+    resource = SimpleNamespace(path="/软件/tool.zip")
+    connection = SimpleNamespace(
+        enabled=True,
+        base_url="https://alist.example",
+        base_path="/",
+        username="user",
+        password_ciphertext="ciphertext",
+    )
+    attempts = 0
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get_download_entry(self, _path):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise AListError("offline detail must not leak", "AL-002")
+            return SimpleNamespace(
+                url="https://alist.example/d/tool.zip",
+                host="alist.example",
+                base_path="/",
+                has_sign=False,
+            )
+
+    monkeypatch.setattr(download, "decrypt_secret", lambda _value: "password")
+    monkeypatch.setattr(download, "AListClient", FakeClient)
+    with pytest.raises(DownloadError) as raised:
+        await resolve_download_entry(resource, connection)
+    assert raised.value.code == "DL-002"
+    assert raised.value.status_code == 503
+    assert "offline detail" not in raised.value.message
+    recovered = await resolve_download_entry(resource, connection)
+    assert recovered.url == "https://alist.example/d/tool.zip"
+
+
+async def test_image_and_video_preview_gateway_remain_302_redirects(monkeypatch):
+    class FakeSession:
+        def __init__(self, resource=None):
+            self.resource = resource
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, model, _key):
+            return self.resource if model.__name__ == "Resource" else SimpleNamespace(enabled=True)
+
+    async def resolved(resource, _connection, force_refresh=False):
+        assert resource.extension in {"jpg", "mp4"}
+        assert force_refresh is False
+        return SimpleNamespace(url=f"https://alist.example/d/{resource.name}")
+
+    monkeypatch.setattr(main, "IndexSession", lambda: FakeSession())
+    monkeypatch.setattr(main, "StateSession", lambda: FakeSession())
+    monkeypatch.setattr(main, "resolve_preview_url", resolved)
+    for extension in ("jpg", "mp4"):
+        resource = SimpleNamespace(
+            id=f"r-{extension}",
+            name=f"preview.{extension}",
+            extension=extension,
+            status="active",
+        )
+        monkeypatch.setattr(main, "IndexSession", lambda resource=resource: FakeSession(resource))
+        response = await main.preview(resource.id)
+        assert response.status_code == 302
+        assert response.headers["location"] == f"https://alist.example/d/{resource.name}"

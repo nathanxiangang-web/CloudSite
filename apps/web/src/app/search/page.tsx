@@ -7,13 +7,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, ReactNode, Suspense, useEffect, useMemo, useState } from "react";
 import { PublicShell } from "@/components/PublicShell";
 import { api, formatBytes, SearchResponse, SearchResult } from "@/lib/api";
+import { normalizeSearchQuery, SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
 
 type ContentRoots = { items: Array<{ content_type: string; display_name: string }> };
 
 function SearchContent() {
   const router = useRouter();
   const params = useSearchParams();
-  const query = (params.get("q") || "").trim();
+  const query = normalizeSearchQuery(params.get("q") || "");
   const selectedType = params.get("type") || "";
   const sort = params.get("sort") || "relevance";
   const requestedPage = Number.parseInt(params.get("page") || "1", 10);
@@ -37,7 +38,7 @@ function SearchContent() {
 
   const navigate = (next: { q?: string; type?: string; page?: number; sort?: string }) => {
     const values = new URLSearchParams();
-    const nextQuery = next.q ?? query;
+    const nextQuery = normalizeSearchQuery(next.q ?? query);
     const nextType = next.type ?? selectedType;
     const nextPage = next.page ?? page;
     const nextSort = next.sort ?? sort;
@@ -49,14 +50,14 @@ function SearchContent() {
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const nextQuery = input.trim();
+    const nextQuery = normalizeSearchQuery(input);
     if (nextQuery) navigate({ q: nextQuery, page: 1 });
   };
 
   return <PublicShell><div className="page search-page">
     <h1>搜索资源</h1>
     <p className="search-lead">从 CloudSite 索引中查找文件与文件夹，不会实时访问网盘。</p>
-    <form onSubmit={submit}><Search /><input autoFocus maxLength={200} value={input} onChange={(event) => setInput(event.target.value)} placeholder="搜索软件、图片、视频、文档和文件" /><button>搜索</button></form>
+    <form onSubmit={submit}><Search /><input autoFocus maxLength={SEARCH_QUERY_MAX_LENGTH} value={input} onChange={(event) => setInput(event.target.value)} placeholder="搜索软件、图片、视频、文档和文件" /><button>搜索</button></form>
 
     {query ? <>
       <div className="search-toolbar">

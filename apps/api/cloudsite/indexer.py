@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import mimetypes
 import random
 import re
@@ -15,18 +16,20 @@ from .alist import AListClient, AListError
 from .config import settings
 from .crypto import decrypt_secret
 from .database import IndexSession, StateSession
+from .identity import IdentityObservation, resolve_resource_identities
 from .models import (
     AListConnection,
     ContentRootMapping,
     Folder,
     OperationLog,
     Resource,
+    ResourceIdentityCandidate,
     SyncChange,
     SyncRootResult,
     SyncRun,
     SystemSetting,
 )
-from .search import rebuild_search_index
+from .search import rebuild_search_index, set_search_index_dirty
 
 
 sync_lock = asyncio.Lock()
@@ -51,7 +54,7 @@ class SyncRateLimiter:
 def is_access_restriction(exc: Exception) -> bool:
     text = str(exc).lower()
     return isinstance(exc, AListError) and (
-        exc.status_code == 429
+        exc.status_code in {405, 429}
         or "405" in text
         or "429" in text
         or "waf" in text
@@ -408,6 +411,54 @@ def preserve_existing_ids(
     return {item.id: item for item in folders.values()}, {item.id: item for item in resources.values()}
 
 
+async def resolve_scanned_resource_ids(
+    session,
+    resources: dict[str, ScannedResource],
+) -> dict[str, ScannedResource]:
+    """Resolve one complete full-scan batch before index rows are written."""
+    items = list(resources.values())
+    if not items:
+        return {}
+    observations = [
+        IdentityObservation(
+            path=item.path,
+            name=item.name,
+            root_mapping_id=item.root_mapping_id,
+            size=item.size,
+            modified_at=item.modified_at,
+            extension=item.extension,
+            mime_type=item.mime_type,
+        )
+        for item in items
+    ]
+    async with StateSession() as identity_session:
+        resolutions = await resolve_resource_identities(
+            identity_session,
+            observations,
+            visible_paths={item.path for item in items},
+        )
+    for item, resolution in zip(items, resolutions, strict=True):
+        item.id = resolution.resource_id
+        if resolution.ambiguous_resource_ids:
+            session.add(
+                ResourceIdentityCandidate(
+                    cycle_id=None,
+                    observed_path=item.path,
+                    matched_resource_id=None,
+                    candidate_resource_ids_json=json.dumps(resolution.ambiguous_resource_ids),
+                    match_type="ambiguous_fingerprint",
+                    confidence=0.0,
+                    status="ambiguous",
+                    size=item.size,
+                    modified_at=item.modified_at,
+                    extension=item.extension,
+                    mime_type=item.mime_type,
+                    fingerprint=resolution.fingerprint,
+                )
+            )
+    return {item.id: item for item in items}
+
+
 async def _running_sync_result() -> dict[str, Any]:
     async with IndexSession() as session:
         row = await session.scalar(select(SyncRun).where(SyncRun.status == "running").order_by(SyncRun.id.desc()).limit(1))
@@ -504,6 +555,13 @@ async def _commit_root(
         )
         await session.commit()
         return 0, 0, 0, True
+
+    scanned_resources = await resolve_scanned_resource_ids(session, scanned_resources)
+    missing_resources = [
+        row
+        for object_id, row in existing_resources.items()
+        if row.status in MISSING_CANDIDATE_STATUSES and object_id not in scanned_resources
+    ]
 
     for object_id, item in scanned_folders.items():
         row = existing_folders.get(object_id)
@@ -645,6 +703,7 @@ async def run_sync(sync_type: str = "manual", full: bool = False, force: bool = 
                             await open_sync_circuit(exc)
                             break
 
+            await set_search_index_dirty(True)
             all_folders = list((await session.scalars(select(Folder))).all())
             all_resources = list((await session.scalars(select(Resource))).all())
             await rebuild_search_index(session, all_folders, all_resources)
@@ -669,6 +728,7 @@ async def run_sync(sync_type: str = "manual", full: bool = False, force: bool = 
             run.finished_at = now
             run.duration_ms = int((time.perf_counter() - started) * 1000)
             await session.commit()
+            await set_search_index_dirty(False)
             if run.status == "success":
                 await reset_sync_circuit()
             level = "INFO" if run.status == "success" else "WARNING"

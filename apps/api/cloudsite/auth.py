@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import settings
 from .database import StateSession
 from .models import OperationLog, User, utcnow
+from .request_context import request_host, request_scheme
 from .schemas import UserLoginInput, UserPasswordChangeInput, UserRegisterInput
 from .sessions import (
     USER_SESSION_COOKIE,
@@ -81,8 +82,8 @@ def validate_request_origin(request: Request) -> None:
     if not supplied:
         return
     supplied_origin = _origin(supplied)
-    scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
-    host = request.headers.get("x-forwarded-host", request.headers.get("host", "")).split(",")[0].strip()
+    scheme = request_scheme(request)
+    host = request_host(request)
     allowed = {_origin(value) for value in settings.cors_origin_list}
     if host:
         allowed.add(_origin(f"{scheme}://{host}"))
@@ -161,6 +162,7 @@ async def logout(request: Request, response: Response):
     validate_request_origin(request)
     async with StateSession() as session:
         await revoke_session(session, request.cookies.get(USER_SESSION_COOKIE))
+        session.add(OperationLog(level="INFO", module="auth", action="user_logout", message="前台用户退出登录"))
         await session.commit()
     clear_user_session_cookie(response)
     return {"ok": True}

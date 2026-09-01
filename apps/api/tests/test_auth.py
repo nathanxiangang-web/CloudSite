@@ -129,6 +129,32 @@ async def test_logout_revokes_current_session(monkeypatch):
             assert active == 0
 
 
+async def test_multi_device_logout_current_only(monkeypatch):
+    async with auth_client(monkeypatch) as (client, factory):
+        await register(client)
+        first_token = client.cookies.get(USER_SESSION_COOKIE)
+        second_login = await client.post(
+            "/api/auth/login",
+            json={"username": "Nathan", "password": "password123"},
+            headers=ORIGIN,
+        )
+        assert second_login.status_code == 200
+        second_token = client.cookies.get(USER_SESSION_COOKIE)
+        assert first_token and second_token and first_token != second_token
+
+        client.cookies.clear()
+        client.cookies.set(USER_SESSION_COOKIE, first_token)
+        assert (await client.post("/api/auth/logout", headers=ORIGIN)).status_code == 200
+
+        client.cookies.clear()
+        client.cookies.set(USER_SESSION_COOKIE, second_token)
+        assert (await client.get("/api/auth/me")).status_code == 200
+        async with factory() as session:
+            rows = list((await session.scalars(select(UserSession).order_by(UserSession.id))).all())
+            assert rows[0].revoked_at is not None
+            assert rows[1].revoked_at is None
+
+
 async def test_me_logged_out(monkeypatch):
     async with auth_client(monkeypatch) as (client, _):
         response = await client.get("/api/auth/me")
@@ -311,3 +337,64 @@ async def test_admin_reset_password_revokes_existing_sessions(monkeypatch):
         async with factory() as session:
             active = await session.scalar(select(func.count()).select_from(UserSession).where(UserSession.revoked_at.is_(None)))
             assert active == 0
+
+
+async def test_disable_revokes_all_devices(monkeypatch):
+    async with auth_client(monkeypatch) as (client, factory):
+        user_id = (await register(client)).json()["id"]
+        await client.post(
+            "/api/auth/login",
+            json={"username": "Nathan", "password": "password123"},
+            headers=ORIGIN,
+        )
+        response = await client.patch(
+            f"/api/admin/users/{user_id}/status",
+            json={"status": "disabled"},
+            headers=ORIGIN,
+        )
+        assert response.status_code == 200
+        async with factory() as session:
+            assert await session.scalar(
+                select(func.count()).select_from(UserSession).where(UserSession.revoked_at.is_(None))
+            ) == 0
+            assert await session.scalar(select(func.count()).select_from(UserSession)) == 2
+
+
+async def test_delete_revokes_all_devices(monkeypatch):
+    async with auth_client(monkeypatch) as (client, factory):
+        user_id = (await register(client)).json()["id"]
+        await client.post(
+            "/api/auth/login",
+            json={"username": "Nathan", "password": "password123"},
+            headers=ORIGIN,
+        )
+        assert (await client.delete(f"/api/admin/users/{user_id}", headers=ORIGIN)).status_code == 200
+        async with factory() as session:
+            assert await session.scalar(
+                select(func.count()).select_from(UserSession).where(UserSession.revoked_at.is_(None))
+            ) == 0
+            assert await session.scalar(select(func.count()).select_from(UserSession)) == 2
+
+
+async def test_admin_reset_revokes_all_devices(monkeypatch):
+    async with auth_client(monkeypatch) as (client, factory):
+        user_id = (await register(client)).json()["id"]
+        await client.post(
+            "/api/auth/login",
+            json={"username": "Nathan", "password": "password123"},
+            headers=ORIGIN,
+        )
+        response = await client.post(
+            f"/api/admin/users/{user_id}/reset-password",
+            json={
+                "new_password": "replacement-pass-456",
+                "new_password_confirm": "replacement-pass-456",
+            },
+            headers=ORIGIN,
+        )
+        assert response.status_code == 200
+        async with factory() as session:
+            assert await session.scalar(
+                select(func.count()).select_from(UserSession).where(UserSession.revoked_at.is_(None))
+            ) == 0
+            assert await session.scalar(select(func.count()).select_from(UserSession)) == 2

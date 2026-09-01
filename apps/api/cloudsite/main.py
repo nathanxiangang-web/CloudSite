@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import math
 import random
 import secrets
@@ -12,8 +13,10 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import delete, desc, func, select, text
 
 from . import __version__
@@ -21,7 +24,7 @@ from .alist import AListClient, AListError
 from .auth import router as auth_router
 from .config import settings
 from .crypto import decrypt_secret, encrypt_secret
-from .database import IndexSession, StateSession, init_databases
+from .database import IndexSession, StateSession, init_databases, validate_database_files
 from .download import DownloadError, resolve_download_entry, validate_download_url, validate_resource_id
 from .download_rate_limit import (
     DOWNLOAD_RATE_CLEANUP_SECONDS,
@@ -30,6 +33,7 @@ from .download_rate_limit import (
     get_effective_client_ip,
     rate_limit_payload,
 )
+from .identity import backup_stable_id_databases, migrate_stable_resource_ids
 from .indexer import (
     automatic_sync_due,
     log_operation,
@@ -49,6 +53,9 @@ from .models import (
     Folder,
     OperationLog,
     Resource,
+    ResourceIdentity,
+    ResourceIdentityCandidate,
+    ResourceIdentityHistory,
     Share,
     SiteSettings,
     SyncRun,
@@ -57,6 +64,7 @@ from .models import (
 )
 from .office import OfficePreviewError, ensure_preview_cached, office_cache_filename, office_content_type
 from .preview import PreviewError, load_text_preview, preview_capability, resolve_preview_url
+from .request_context import request_is_https
 from .schemas import (
     AListInput,
     AdminLoginInput,
@@ -77,16 +85,34 @@ from .schemas import (
     SystemInput,
     TextPreviewOutput,
 )
-from .search import SEARCH_OBJECT_TYPES, SEARCH_SORTS, SEARCH_TYPES, classify_match, normalize_search_query, rebuild_search_index, search_index
+from .search import (
+    SEARCH_OBJECT_TYPES,
+    SEARCH_SORTS,
+    SEARCH_TYPES,
+    classify_match,
+    normalize_search_query,
+    rebuild_search_index,
+    recover_search_index_if_dirty,
+    search_index,
+    set_search_index_dirty,
+)
 from .sync.rolling import (
     migrate_existing_index_to_rolling,
+    prepare_index_recovery,
     recover_rolling_state,
+    resolve_rolling_mode,
     rolling_enabled,
     rolling_status,
     run_due_rolling_window,
 )
 from .users import router as users_router
-from .sessions import USER_SESSION_COOKIE, SessionValidationError, validate_user_session
+from .sessions import (
+    SESSION_CLEANUP_SECONDS,
+    USER_SESSION_COOKIE,
+    SessionValidationError,
+    cleanup_expired_user_sessions,
+    validate_user_session,
+)
 
 
 scheduler_task: asyncio.Task | None = None
@@ -94,8 +120,10 @@ manual_sync_task: asyncio.Task | None = None
 SESSION_COOKIE = "cloudsite_session"
 _storage_info_cache: dict = {"data": None, "fetched_at": 0.0}
 _last_rate_limit_cleanup_at = 0.0
+_last_session_cleanup_at = 0.0
 STORAGE_INFO_TTL_SECONDS = 600
 SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
+logger = logging.getLogger(__name__)
 
 
 def create_session_token(username: str) -> str:
@@ -137,14 +165,45 @@ async def get_system_values(session) -> dict:
     }
 
 
+async def _run_cleanup_job(action: str, label: str, cleanup) -> None:
+    try:
+        deleted = await cleanup()
+        await log_operation(
+            "maintenance",
+            action,
+            f"{label}完成：清理 {deleted} 条过期记录",
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        with suppress(Exception):
+            await log_operation(
+                "maintenance",
+                f"{action}_failed",
+                f"{label}失败：{type(exc).__name__}: {str(exc)[:900]}",
+                level="ERROR",
+            )
+
+
 async def scheduler_loop() -> None:
-    global _last_rate_limit_cleanup_at
+    global _last_rate_limit_cleanup_at, _last_session_cleanup_at
     while True:
         await asyncio.sleep(60)
-        if time.monotonic() - _last_rate_limit_cleanup_at >= DOWNLOAD_RATE_CLEANUP_SECONDS:
-            with suppress(Exception):
-                await cleanup_download_rate_limits()
-                _last_rate_limit_cleanup_at = time.monotonic()
+        monotonic_now = time.monotonic()
+        if monotonic_now - _last_session_cleanup_at >= SESSION_CLEANUP_SECONDS:
+            _last_session_cleanup_at = monotonic_now
+            await _run_cleanup_job(
+                "session_cleanup",
+                "Session 清理",
+                cleanup_expired_user_sessions,
+            )
+        if monotonic_now - _last_rate_limit_cleanup_at >= DOWNLOAD_RATE_CLEANUP_SECONDS:
+            _last_rate_limit_cleanup_at = monotonic_now
+            await _run_cleanup_job(
+                "download_rate_cleanup",
+                "下载限流清理",
+                cleanup_download_rate_limits,
+            )
         async with StateSession() as session:
             values = await get_system_values(session)
         if not values["automatic_sync"]:
@@ -191,10 +250,17 @@ async def _run_manual_sync_in_background(full: bool, force: bool) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global scheduler_task, manual_sync_task
+    validate_database_files()
+    backup_stable_id_databases()
     await init_databases()
+    validate_database_files()
+    await recover_search_index_if_dirty()
     await recover_interrupted_sync_runs()
+    await migrate_stable_resource_ids()
     await recover_rolling_state()
     await migrate_existing_index_to_rolling()
+    if await resolve_rolling_mode() == "INDEX_RECOVERY_REQUIRED":
+        await prepare_index_recovery()
     async with StateSession() as session:
         if not await session.get(SiteSettings, 1):
             session.add(SiteSettings(id=1))
@@ -232,6 +298,48 @@ async def _safe_startup_sync():
 
 
 app = FastAPI(title="CloudSite API", version=__version__, lifespan=lifespan)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def structured_http_error(_: Request, exc: StarletteHTTPException):
+    if isinstance(exc.detail, dict) and isinstance(exc.detail.get("code"), str):
+        detail = {
+            "code": exc.detail["code"],
+            "message": str(exc.detail.get("message") or "请求失败"),
+        }
+        for key, value in exc.detail.items():
+            if key not in detail:
+                detail[key] = value
+    else:
+        detail = {
+            "code": f"HTTP_{exc.status_code}",
+            "message": str(exc.detail or "请求失败"),
+        }
+    return JSONResponse({"detail": detail}, status_code=exc.status_code, headers=exc.headers)
+
+
+@app.exception_handler(RequestValidationError)
+async def structured_validation_error(_: Request, __: RequestValidationError):
+    return JSONResponse(
+        {"detail": {"code": "VALIDATION_ERROR", "message": "请求参数格式不正确"}},
+        status_code=422,
+    )
+
+
+@app.exception_handler(Exception)
+async def structured_internal_error(request: Request, exc: Exception):
+    logger.error(
+        "Unhandled API error on %s %s",
+        request.method,
+        request.url.path,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    return JSONResponse(
+        {"detail": {"code": "INTERNAL_ERROR", "message": "服务器暂时无法处理请求"}},
+        status_code=500,
+    )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -303,7 +411,7 @@ async def admin_auth_status(request: Request):
 
 
 @app.post("/api/admin/auth/login")
-async def admin_login(payload: AdminLoginInput, response: Response):
+async def admin_login(payload: AdminLoginInput, request: Request, response: Response):
     async with StateSession() as session:
         connection = await session.get(AListConnection, 1)
     if not connection or not connection.enabled:
@@ -312,7 +420,15 @@ async def admin_login(payload: AdminLoginInput, response: Response):
         await AListClient(connection.base_url, payload.username, payload.password).test()
     except Exception as exc:
         raise HTTPException(401, "账号或密码错误") from exc
-    response.set_cookie(SESSION_COOKIE, create_session_token(payload.username), max_age=86400 * 7, httponly=True, samesite="lax", secure=False, path="/")
+    response.set_cookie(
+        SESSION_COOKIE,
+        create_session_token(payload.username),
+        max_age=86400 * 7,
+        httponly=True,
+        samesite="lax",
+        secure=request_is_https(request),
+        path="/",
+    )
     return {"ok": True}
 
 
@@ -945,6 +1061,92 @@ async def download_diagnostic_history(limit: int = Query(20, ge=1, le=100)):
         return {"items": [download_diagnostic_dict(row) for row in rows]}
 
 
+def require_explicit_admin(request: Request) -> None:
+    if not verify_session_token(request.cookies.get(SESSION_COOKIE)):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "ADMIN_REQUIRED", "message": "请先登录管理后台"},
+        )
+
+
+@app.get("/api/admin/identities/stats")
+async def identity_stats(request: Request):
+    require_explicit_admin(request)
+    async with StateSession() as state:
+        total = int(await state.scalar(select(func.count()).select_from(ResourceIdentity)) or 0)
+        legacy = int(
+            await state.scalar(
+                select(func.count())
+                .select_from(ResourceIdentity)
+                .where(ResourceIdentity.created_from == "legacy_migration")
+            )
+            or 0
+        )
+        history_rows = (
+            await state.execute(
+                select(ResourceIdentityHistory.event_type, func.count())
+                .group_by(ResourceIdentityHistory.event_type)
+            )
+        ).all()
+    history = {event_type: int(count) for event_type, count in history_rows}
+    async with IndexSession() as index:
+        candidate_rows = (
+            await index.execute(
+                select(ResourceIdentityCandidate.status, func.count())
+                .group_by(ResourceIdentityCandidate.status)
+            )
+        ).all()
+    candidates = {status: int(count) for status, count in candidate_rows}
+    return {
+        "total": total,
+        "legacy_seeded": legacy,
+        "random_new": total - legacy,
+        "rename_preserved": history.get("rename", 0),
+        "move_preserved": history.get("move", 0),
+        "pending": candidates.get("pending", 0),
+        "ambiguous": candidates.get("ambiguous", 0),
+        "manual_repairs": history.get("manual_repair", 0),
+    }
+
+
+@app.get("/api/admin/identities/candidates")
+async def identity_candidates(
+    request: Request,
+    status: str = Query("open", pattern="^(open|pending|ambiguous|resolved_move|resolved_new|cancelled)$"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    require_explicit_admin(request)
+    statement = select(ResourceIdentityCandidate).order_by(ResourceIdentityCandidate.id.desc()).limit(limit)
+    if status == "open":
+        statement = statement.where(ResourceIdentityCandidate.status.in_(("pending", "ambiguous")))
+    else:
+        statement = statement.where(ResourceIdentityCandidate.status == status)
+    async with IndexSession() as index:
+        rows = list((await index.scalars(statement)).all())
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "cycle_id": row.cycle_id,
+                "observed_path": row.observed_path,
+                "matched_resource_id": row.matched_resource_id,
+                "candidate_resource_ids": json.loads(row.candidate_resource_ids_json or "[]"),
+                "match_type": row.match_type,
+                "confidence": row.confidence,
+                "status": row.status,
+                "size": row.size,
+                "modified_at": row.modified_at,
+                "extension": row.extension,
+                "mime_type": row.mime_type,
+                "fingerprint": row.fingerprint,
+                "created_at": row.created_at,
+                "resolved_at": row.resolved_at,
+            }
+            for row in rows
+        ]
+    }
+
+
 @app.get("/api/admin/alist")
 async def get_alist():
     async with StateSession() as session:
@@ -1163,11 +1365,13 @@ async def admin_run_rolling_window():
 
 @app.post("/api/admin/search/rebuild")
 async def rebuild_public_search_index():
+    await set_search_index_dirty(True)
     async with IndexSession() as session:
         folders = list((await session.scalars(select(Folder).where(Folder.status == "active"))).all())
         resources = list((await session.scalars(select(Resource).where(Resource.status == "active"))).all())
         count = await rebuild_search_index(session, folders, resources)
         await session.commit()
+    await set_search_index_dirty(False)
     await log_operation("search", "rebuild", f"搜索索引重建完成：{count} 个对象")
     return {"ok": True, "indexed": count, "folders": len(folders), "resources": len(resources)}
 
@@ -1395,6 +1599,7 @@ async def get_system():
             "timezone": "Asia/Shanghai",
             "resources": int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0),
             "folders": int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0),
+            "operation_logs": int(await state.scalar(select(func.count()).select_from(OperationLog)) or 0),
         })
         return values
 

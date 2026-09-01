@@ -98,6 +98,7 @@ export class ApiError extends Error {
 const sessionFailureCodes = new Set([
   "AUTH_REQUIRED", "SESSION_INVALID", "SESSION_REVOKED", "SESSION_EXPIRED", "USER_DELETED", "USER_DISABLED",
 ]);
+export const AUTH_FUSE_EVENT = "cloudsite:auth-fuse";
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -116,7 +117,11 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     const code = typeof detail?.code === "string" ? detail.code : "";
     if (typeof window !== "undefined" && sessionFailureCodes.has(code) && !["/login", "/register"].includes(window.location.pathname)) {
       const next = `${window.location.pathname}${window.location.search}`;
-      window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+      window.dispatchEvent(new CustomEvent(AUTH_FUSE_EVENT, { detail: { code } }));
+      const login = new URL("/login", window.location.origin);
+      login.searchParams.set("next", next);
+      if (code === "USER_DISABLED") login.searchParams.set("reason", "disabled");
+      window.location.replace(`${login.pathname}${login.search}`);
     }
     throw new ApiError(message, response.status, code);
   }

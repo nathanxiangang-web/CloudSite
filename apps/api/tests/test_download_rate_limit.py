@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi import Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import download_rate_limit, main
@@ -16,7 +17,7 @@ from cloudsite.download_rate_limit import (
     normalize_ip,
     rate_limit_payload,
 )
-from cloudsite.models import Resource
+from cloudsite.models import DownloadRateLimit, Resource
 
 
 BASE_TIME = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
@@ -143,6 +144,42 @@ async def test_api_restart_keeps_rate_limit_state(tmp_path, monkeypatch):
     assert after_restart.blocked_until == blocked.blocked_until
     assert after_restart.retry_after == 55
     await restarted_engine.dispose()
+
+
+async def test_download_rate_cleanup_removes_only_stale_inactive_rows(tmp_path, monkeypatch):
+    engine, factory = await rate_store(tmp_path, monkeypatch)
+    async with factory() as session:
+        session.add_all(
+            [
+                DownloadRateLimit(
+                    ip_key="a" * 64,
+                    blocked_until=BASE_TIME - timedelta(minutes=1),
+                    updated_at=BASE_TIME - timedelta(hours=25),
+                ),
+                DownloadRateLimit(
+                    ip_key="b" * 64,
+                    blocked_until=None,
+                    updated_at=BASE_TIME - timedelta(hours=25),
+                ),
+                DownloadRateLimit(
+                    ip_key="c" * 64,
+                    blocked_until=BASE_TIME + timedelta(hours=1),
+                    updated_at=BASE_TIME - timedelta(hours=25),
+                ),
+                DownloadRateLimit(
+                    ip_key="d" * 64,
+                    blocked_until=BASE_TIME - timedelta(minutes=1),
+                    updated_at=BASE_TIME - timedelta(hours=1),
+                ),
+            ]
+        )
+        await session.commit()
+
+    assert await download_rate_limit.cleanup_download_rate_limits(BASE_TIME) == 2
+    async with factory() as session:
+        remaining = set((await session.scalars(select(DownloadRateLimit.ip_key))).all())
+        assert remaining == {"c" * 64, "d" * 64}
+    await engine.dispose()
 
 
 def test_untrusted_x_forwarded_for_not_accepted(monkeypatch):

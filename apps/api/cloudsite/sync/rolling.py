@@ -1,4 +1,5 @@
 import hashlib
+import json
 import mimetypes
 import time
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ..config import settings
 from ..database import IndexSession, StateSession
+from ..identity import IdentityObservation, resolve_resource_identities
 from ..indexer import (
     MISSING_CANDIDATE_STATUSES,
     is_access_restriction,
@@ -29,13 +31,14 @@ from ..models import (
     Folder,
     FolderScanState,
     Resource,
+    ResourceIdentityCandidate,
     SyncChange,
     SyncCycle,
     SyncCycleItem,
     SyncRun,
     SystemSetting,
 )
-from ..search import rebuild_search_index
+from ..search import rebuild_search_index, set_search_index_dirty
 from .governor import SyncRequestGovernor
 from .planner import WINDOW_INTERVAL, calculate_window_target, next_cycle_anchor, next_window_due_at
 
@@ -340,6 +343,130 @@ def _observe_missing_in_cycle(row: Folder | Resource, cycle_id: int, now: dateti
     return not was_missing and row.status == "missing"
 
 
+async def _resolve_pending_for_parent(
+    session,
+    cycle: SyncCycle,
+    run: SyncRun,
+    source_parent: Folder,
+    now: datetime,
+) -> dict[str, int]:
+    """Finish cross-scope move/copy decisions once the old scope was observed."""
+    candidates = list(
+        (
+            await session.scalars(
+                select(ResourceIdentityCandidate).where(
+                    ResourceIdentityCandidate.cycle_id == cycle.id,
+                    ResourceIdentityCandidate.status == "pending",
+                    ResourceIdentityCandidate.matched_resource_id.is_not(None),
+                )
+            )
+        ).all()
+    )
+    added = updated = 0
+    for candidate in candidates:
+        source = await session.get(Resource, candidate.matched_resource_id)
+        if source is None:
+            candidate.status = "cancelled"
+            candidate.resolved_at = now
+            continue
+        if source.parent_id != source_parent.id:
+            continue
+        target_parent = await session.get(Folder, candidate.observed_parent_id)
+        if target_parent is None or target_parent.status != "active":
+            continue
+        observation = IdentityObservation(
+            path=candidate.observed_path,
+            name=candidate.observed_name,
+            root_mapping_id=candidate.root_mapping_id,
+            size=candidate.size,
+            modified_at=candidate.modified_at,
+            extension=candidate.extension,
+            mime_type=candidate.mime_type,
+        )
+        old_path = source.path
+        source_missing_this_cycle = source.missing_last_observed_cycle_id == cycle.id
+        async with StateSession() as identity_session:
+            resolution = (
+                await resolve_resource_identities(
+                    identity_session,
+                    [observation],
+                    visible_paths=(
+                        {candidate.observed_path}
+                        if source_missing_this_cycle
+                        else {source.path, candidate.observed_path}
+                    ),
+                    cycle_id=cycle.id,
+                    allowed_candidate_paths={source.path} if source_missing_this_cycle else set(),
+                )
+            )[0]
+        if source_missing_this_cycle:
+            if resolution.resource_id != source.id:
+                candidate.status = "ambiguous"
+                candidate.matched_resource_id = None
+                candidate.candidate_resource_ids_json = json.dumps([source.id, resolution.resource_id])
+                continue
+            row = source
+            row.path = candidate.observed_path
+            row.parent_id = target_parent.id
+            row.content_type = candidate.content_type
+            row.root_mapping_id = candidate.root_mapping_id
+            row.name = candidate.observed_name
+            row.extension = candidate.extension
+            row.mime_type = candidate.mime_type
+            row.size = candidate.size
+            row.modified_at = candidate.modified_at
+            row.thumbnail = candidate.thumbnail
+            row.indexed_at = now
+            row.status = "active"
+            row.missing_streak = 0
+            row.missing_candidate_at = None
+            row.missing_last_observed_cycle_id = None
+            row.last_seen_run_id = run.id
+            session.add(
+                SyncChange(
+                    sync_run_id=run.id,
+                    object_type="resource",
+                    object_id=row.id,
+                    change_type="updated",
+                    old_path=old_path,
+                    new_path=row.path,
+                )
+            )
+            candidate.status = "resolved_move"
+            updated += 1
+        else:
+            row = Resource(
+                id=resolution.resource_id,
+                name=candidate.observed_name,
+                path=candidate.observed_path,
+                parent_id=target_parent.id,
+                content_type=candidate.content_type,
+                root_mapping_id=candidate.root_mapping_id,
+                extension=candidate.extension,
+                mime_type=candidate.mime_type,
+                size=candidate.size,
+                modified_at=candidate.modified_at,
+                thumbnail=candidate.thumbnail,
+                indexed_at=now,
+                status="active",
+                last_seen_run_id=run.id,
+            )
+            session.add(row)
+            session.add(
+                SyncChange(
+                    sync_run_id=run.id,
+                    object_type="resource",
+                    object_id=row.id,
+                    change_type="added",
+                    new_path=row.path,
+                )
+            )
+            candidate.status = "resolved_new"
+            added += 1
+        candidate.resolved_at = now
+    return {"added": added, "updated": updated}
+
+
 async def _commit_scope(
     session,
     cycle: SyncCycle,
@@ -371,6 +498,7 @@ async def _commit_scope(
     )
     folder_by_path = {row.path: row for row in existing_folders}
     resource_by_path = {row.path: row for row in existing_resources}
+    resource_by_id = {row.id: row for row in existing_resources}
     incoming_paths = {entry["path"] for entry in entries}
     added_candidates = sum(
         entry["path"] not in (folder_by_path if entry["is_dir"] else resource_by_path)
@@ -385,6 +513,68 @@ async def _commit_scope(
         len(existing_folders) + len(existing_resources),
     ):
         return {"added": 0, "updated": 0, "removed": 0, "guarded": True, "new_folders": 0}
+
+    resource_entries = [entry for entry in entries if not entry["is_dir"]]
+    if resource_entries:
+        observations = [
+            IdentityObservation(
+                path=entry["path"],
+                name=entry["name"],
+                root_mapping_id=parent.root_mapping_id,
+                size=entry["size"],
+                modified_at=entry["modified_at"],
+                extension=PurePosixPath(entry["name"]).suffix.lower().lstrip("."),
+                mime_type=entry["mime_type"],
+            )
+            for entry in resource_entries
+        ]
+        async with StateSession() as identity_session:
+            resolutions = await resolve_resource_identities(
+                identity_session,
+                observations,
+                visible_paths={entry["path"] for entry in resource_entries},
+                cycle_id=cycle.id,
+                allowed_candidate_paths={row.path for row in missing_resources},
+                defer_unseen_candidates=True,
+            )
+        for entry, resolution in zip(resource_entries, resolutions, strict=True):
+            entry["resource_id"] = resolution.resource_id
+            entry["identity_fingerprint"] = resolution.fingerprint
+            entry["identity_match_type"] = resolution.match_type
+            if resolution.ambiguous_resource_ids or resolution.match_type == "pending_move_or_copy":
+                candidate = await session.scalar(
+                    select(ResourceIdentityCandidate).where(
+                        ResourceIdentityCandidate.cycle_id == cycle.id,
+                        ResourceIdentityCandidate.observed_path == entry["path"],
+                    )
+                )
+                if candidate is None:
+                    candidate = ResourceIdentityCandidate(
+                        cycle_id=cycle.id,
+                        observed_path=entry["path"],
+                    )
+                    session.add(candidate)
+                candidate.observed_name = entry["name"]
+                candidate.observed_parent_id = parent.id
+                candidate.root_mapping_id = parent.root_mapping_id
+                candidate.content_type = parent.content_type
+                candidate.matched_resource_id = resolution.resource_id if resolution.match_type == "pending_move_or_copy" else None
+                candidate.candidate_resource_ids_json = json.dumps(resolution.ambiguous_resource_ids)
+                candidate.match_type = "move_or_copy" if resolution.match_type == "pending_move_or_copy" else "ambiguous_fingerprint"
+                candidate.confidence = 0.75 if resolution.match_type == "pending_move_or_copy" else 0.0
+                candidate.status = "pending" if resolution.match_type == "pending_move_or_copy" else "ambiguous"
+                candidate.size = entry["size"]
+                candidate.modified_at = entry["modified_at"]
+                candidate.extension = PurePosixPath(entry["name"]).suffix.lower().lstrip(".")
+                candidate.mime_type = entry["mime_type"]
+                candidate.thumbnail = entry["thumbnail"]
+                candidate.fingerprint = resolution.fingerprint
+        resolved_resource_ids = {
+            entry["resource_id"]
+            for entry in resource_entries
+            if entry["identity_match_type"] != "pending_move_or_copy"
+        }
+        missing_resources = [row for row in missing_resources if row.id not in resolved_resource_ids]
 
     now = datetime.now(timezone.utc)
     added = updated = removed = new_folders = 0
@@ -455,9 +645,12 @@ async def _commit_scope(
             if scan_state is None:
                 session.add(FolderScanState(folder_id=row.id, path=row.path))
         else:
-            row = resource_by_path.get(entry["path"])
+            if entry["identity_match_type"] == "pending_move_or_copy":
+                continue
+            resource_id = entry["resource_id"]
+            row = resource_by_path.get(entry["path"]) or resource_by_id.get(resource_id)
             if row is None:
-                row = Resource(id=stable_id("resource", entry["path"]))
+                row = Resource(id=resource_id)
                 session.add(row)
                 session.add(SyncChange(sync_run_id=run.id, object_type="resource", object_id=row.id, change_type="added", new_path=entry["path"]))
                 added += 1
@@ -496,6 +689,10 @@ async def _commit_scope(
             if _observe_missing_in_cycle(row, cycle.id, now):
                 session.add(SyncChange(sync_run_id=run.id, object_type=object_type, object_id=row.id, change_type="removed", old_path=row.path))
                 removed += 1
+
+    pending_result = await _resolve_pending_for_parent(session, cycle, run, parent, now)
+    added += pending_result["added"]
+    updated += pending_result["updated"]
 
     parent.child_folder_count = sum(entry["is_dir"] for entry in entries)
     parent.resource_count = sum(not entry["is_dir"] for entry in entries)
@@ -557,7 +754,21 @@ async def _scan_cycle_item(session, client, cycle: SyncCycle, item: SyncCycleIte
         )
         or 0
     )
-    if state and state.fingerprint == fingerprint and suspected == 0:
+    pending_identity = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(ResourceIdentityCandidate)
+            .where(
+                ResourceIdentityCandidate.cycle_id == cycle.id,
+                ResourceIdentityCandidate.status == "pending",
+                ResourceIdentityCandidate.matched_resource_id.in_(
+                    select(Resource.id).where(Resource.parent_id == parent.id)
+                ),
+            )
+        )
+        or 0
+    )
+    if state and state.fingerprint == fingerprint and suspected == 0 and pending_identity == 0:
         await _mark_unchanged(session, cycle, item, parent, fingerprint)
         return {"changed": False, "superseded": False, "added": 0, "updated": 0, "removed": 0}
     result = await _commit_scope(session, cycle, item, run, parent, entries, fingerprint)
@@ -721,6 +932,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
                         break
 
             if changed:
+                await set_search_index_dirty(True)
                 folders = list((await session.scalars(select(Folder).where(Folder.status == "active"))).all())
                 resources = list((await session.scalars(select(Resource).where(Resource.status == "active"))).all())
                 await rebuild_search_index(session, folders, resources)
@@ -780,6 +992,8 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
             run.duration_ms = int((time.monotonic() - governor.started_at) * 1000)
             run.error_message = "访问限制已打开熔断" if circuit_opened else ""
             await session.commit()
+            if changed:
+                await set_search_index_dirty(False)
 
     await log_operation(
         "sync",

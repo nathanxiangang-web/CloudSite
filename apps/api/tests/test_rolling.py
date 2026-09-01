@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from cloudsite import indexer, search
+from cloudsite.alist import AListError
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import (
     ContentRootMapping,
@@ -135,6 +138,8 @@ async def _factories(monkeypatch):
         await connection.run_sync(IndexBase.metadata.create_all)
     monkeypatch.setattr(rolling, "StateSession", state_factory)
     monkeypatch.setattr(rolling, "IndexSession", index_factory)
+    monkeypatch.setattr(search, "StateSession", state_factory)
+    monkeypatch.setattr(search, "IndexSession", index_factory)
 
     async def no_log(*_, **__):
         return None
@@ -346,6 +351,9 @@ async def test_changed_scope_updates_direct_child_and_rebuilds_fts_once(monkeypa
         assert resource.size == 20
         assert cycle.fts_rebuilt_count == 1
         assert fts_count == 2
+    async with state_factory() as session:
+        dirty = await session.get(SystemSetting, "search_index_dirty")
+        assert dirty is not None and dirty.value == "false"
     await state_engine.dispose()
     await index_engine.dispose()
 
@@ -507,6 +515,123 @@ async def test_unhandled_window_error_is_finalized_instead_of_left_running(monke
         assert run.status == "failed"
         assert run.finished_at is not None
         assert "AList connection unavailable" in run.error_message
+        assert cycle.status == "partial"
+        assert item.status == "pending"
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+async def test_rolling_restart_resume_keeps_cycle_and_completed_items(monkeypatch):
+    state_engine, index_engine, _, index_factory = await _factories(monkeypatch)
+    monkeypatch.setattr(indexer, "IndexSession", index_factory)
+    anchor = datetime(2026, 8, 30, tzinfo=timezone.utc)
+    async with index_factory() as session:
+        cycle = SyncCycle(status="running", cycle_type="normal", anchor_at=anchor, planned_folder_count=3)
+        session.add(cycle)
+        await session.flush()
+        session.add_all(
+            [
+                SyncCycleItem(cycle_id=cycle.id, folder_id="done", folder_path="/done", status="success"),
+                SyncCycleItem(cycle_id=cycle.id, folder_id="active", folder_path="/active", status="running"),
+                SyncCycleItem(cycle_id=cycle.id, folder_id="later", folder_path="/later", status="pending"),
+                SyncRun(sync_type="rolling_window", status="running", roots_total=2),
+            ]
+        )
+        await session.commit()
+        cycle_id = cycle.id
+
+    await indexer.recover_interrupted_sync_runs()
+    await rolling.recover_rolling_state()
+
+    async with index_factory() as session:
+        cycle = await session.get(SyncCycle, cycle_id)
+        items = dict(
+            (
+                await session.execute(
+                    select(SyncCycleItem.folder_id, SyncCycleItem.status).order_by(SyncCycleItem.id)
+                )
+            ).all()
+        )
+        run = await session.scalar(select(SyncRun).order_by(SyncRun.id.desc()).limit(1))
+        assert cycle.id == cycle_id
+        assert items == {"done": "success", "active": "pending", "later": "pending"}
+        assert run.status == "failed"
+        assert run.finished_at is not None
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("status_code", "message"),
+    [(405, "method not allowed"), (429, "请求过于频繁")],
+)
+async def test_rolling_405_and_429_open_circuit_and_stop_window(monkeypatch, status_code, message):
+    state_engine, index_engine, state_factory, index_factory = await _factories(monkeypatch)
+    anchor = datetime(2026, 8, 30, tzinfo=timezone.utc)
+    async with state_factory() as session:
+        session.add_all(
+            [
+                SystemSetting(key="sync_engine_version", value="1.1"),
+                SystemSetting(key="instance_initialized_at", value="2026-08-28T00:00:00+00:00"),
+                SystemSetting(key="initial_index_completed_at", value="2026-08-28T01:00:00+00:00"),
+            ]
+        )
+        await session.commit()
+    async with index_factory() as session:
+        folder = Folder(
+            id="f-root",
+            name="软件",
+            path="/软件",
+            parent_id=None,
+            content_type="software",
+            root_mapping_id=1,
+            status="active",
+        )
+        cycle = SyncCycle(status="planned", cycle_type="normal", anchor_at=anchor, planned_folder_count=1)
+        session.add_all([folder, cycle])
+        await session.flush()
+        session.add(SyncCycleItem(cycle_id=cycle.id, folder_id=folder.id, folder_path=folder.path))
+        await session.commit()
+
+    class LimitedClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def list_path(self, *_args, **_kwargs):
+            raise AListError(message, "AL-005", status_code=status_code)
+
+    async def fake_load():
+        return LimitedClient(), []
+
+    async def circuit_closed():
+        return {"open": False, "until": None, "reason": "", "failures": 0}
+
+    opened = []
+
+    async def open_circuit(exc):
+        opened.append(exc)
+
+    async def no_wait(self):
+        self.request_count += 1
+        return 0
+
+    monkeypatch.setattr(rolling, "load_client_and_roots", fake_load)
+    monkeypatch.setattr(rolling, "sync_circuit_status", circuit_closed)
+    monkeypatch.setattr(rolling, "open_sync_circuit", open_circuit)
+    monkeypatch.setattr(SyncRequestGovernor, "wait_before_request", no_wait)
+
+    result = await rolling.run_due_rolling_window(manual=True, now=anchor + timedelta(hours=6))
+
+    assert result["status"] == "failed"
+    assert result["attempted"] == 1
+    assert len(opened) == 1
+    async with index_factory() as session:
+        cycle = await session.scalar(select(SyncCycle))
+        item = await session.scalar(select(SyncCycleItem))
+        assert cycle.windows_completed == 0
         assert cycle.status == "partial"
         assert item.status == "pending"
     await state_engine.dispose()

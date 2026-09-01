@@ -43,7 +43,10 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+        origins = [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+        if "*" in origins:
+            raise ValueError("CLOUDSITE_CORS_ORIGINS 使用凭据认证时不能包含通配符 '*'")
+        return origins
 
     @property
     def trusted_proxy_cidr_list(self) -> list[str]:

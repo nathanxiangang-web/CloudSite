@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import auth, main
 from cloudsite.database import StateBase
-from cloudsite.models import User, utcnow
+from cloudsite.models import AListConnection, User, utcnow
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
 
@@ -38,6 +38,9 @@ async def test_anonymous_whitelist_and_protected_api(monkeypatch):
         download = await client.get("/d/not-a-resource")
         assert download.status_code == 401
         assert download.json()["detail"]["code"] == "AUTH_REQUIRED"
+        share = await client.get("/api/shares/not-a-share")
+        assert share.status_code == 401
+        assert share.json()["detail"]["code"] == "AUTH_REQUIRED"
         admin = await client.get("/api/admin/users")
         assert admin.status_code == 403
         assert admin.json()["detail"]["code"] == "ADMIN_REQUIRED"
@@ -75,4 +78,42 @@ async def test_valid_forged_and_expired_sessions(monkeypatch):
         expired = await client.get("/api/auth/me", cookies={USER_SESSION_COOKIE: token})
         assert expired.status_code == 401
         assert expired.json()["detail"]["code"] == "SESSION_EXPIRED"
+    await engine.dispose()
+
+
+async def test_username_admin_and_user_cookie_do_not_grant_admin_access(monkeypatch):
+    client, factory, engine = await boundary_client(monkeypatch)
+    async with factory() as session:
+        now = utcnow()
+        user = User(
+            username="admin",
+            username_normalized="admin",
+            password_hash=auth.password_hash.hash("admin-pass-123"),
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        session.add_all(
+            [
+                user,
+                AListConnection(
+                    id=1,
+                    base_url="https://alist.example",
+                    username="alist-admin",
+                    password_ciphertext="not-used",
+                    enabled=True,
+                ),
+            ]
+        )
+        await session.flush()
+        _, token = await create_user_session(session, user.id, now)
+        await session.commit()
+
+    async with client:
+        response = await client.get(
+            "/api/admin/system",
+            cookies={USER_SESSION_COOKIE: token},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "ADMIN_REQUIRED"
     await engine.dispose()

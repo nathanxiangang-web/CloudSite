@@ -4,16 +4,20 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request, Response
-from sqlalchemy import select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .database import StateSession
 from .models import User, UserSession, utcnow
+from .request_context import request_is_https
 from .config import settings
 
 
 USER_SESSION_COOKIE = "cloudsite_user_session"
 USER_SESSION_MAX_AGE = 30 * 24 * 60 * 60
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
+SESSION_RETENTION_DAYS = 7
+SESSION_CLEANUP_SECONDS = 6 * 60 * 60
 
 
 class SessionValidationError(Exception):
@@ -121,14 +125,32 @@ async def revoke_user_sessions(session: AsyncSession, user_id: int, now: datetim
     )
 
 
+async def cleanup_expired_user_sessions(
+    now: datetime | None = None,
+    retention_days: int = SESSION_RETENTION_DAYS,
+) -> int:
+    current = as_utc(now or utcnow())
+    cutoff = current - timedelta(days=max(0, retention_days))
+    async with StateSession() as session:
+        result = await session.execute(
+            delete(UserSession).where(
+                or_(
+                    UserSession.expires_at < cutoff,
+                    UserSession.revoked_at < cutoff,
+                )
+            )
+        )
+        await session.commit()
+        return int(result.rowcount or 0)
+
+
 def set_user_session_cookie(request: Request, response: Response, token: str) -> None:
-    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
     response.set_cookie(
         USER_SESSION_COOKIE,
         token,
         max_age=USER_SESSION_MAX_AGE,
         httponly=True,
-        secure=secure,
+        secure=request_is_https(request),
         samesite="lax",
         path="/",
     )

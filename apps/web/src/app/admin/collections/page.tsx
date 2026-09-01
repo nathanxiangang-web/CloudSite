@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Collection, formatBytes, SearchResponse } from "@/lib/api";
+import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
 
 type AdminCollectionItem = { resource_id: string; name: string | null; content_type: string; extension: string; size: number; active: boolean };
 type AdminCollectionDetail = { id: number; name: string; description: string; cover: string; status: "active" | "hidden"; visible_on_home: boolean; sort_order: number; items: AdminCollectionItem[] };
@@ -95,7 +96,7 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
     <div className="picker-items">{itemIds.map((resourceId, index) => { const item = query.data?.items.find((i) => i.resource_id === resourceId); const label = item?.name ?? resourceId; const missing = item?.active === false; return <div className="picker-item" key={resourceId}><span className={`picker-item-icon ${missing ? "missing" : `type-${item?.content_type || "file"}`}`}><FolderKanban /></span><span className="picker-item-copy"><strong>{missing ? `${label}（已失效）` : label}</strong>{!missing && item && <small>{typeLabel[item.content_type] ?? item.content_type}{item.extension ? ` · ${item.extension.toUpperCase()}` : ""}{item.size ? ` · ${formatBytes(item.size)}` : ""}</small>}</span><button onClick={() => moveItem(index, -1)} disabled={index === 0}><ArrowUp /></button><button onClick={() => moveItem(index, 1)} disabled={index === itemIds.length - 1}><ArrowDown /></button><button className="danger" onClick={() => removeItem(resourceId)}><Trash2 /></button></div>; })}</div>
 
     <h3>添加资源</h3>
-    <div className="small-search"><Search /><input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索资源名称或类型，如 Chrome / pdf / 摄影" /></div>
+    <div className="small-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索资源名称或类型，如 Chrome / pdf / 摄影" /></div>
     <div className="picker-results">{search.isLoading ? <div className="loading">搜索中…</div> : search.data?.items.filter((r) => r.object_type === "resource").map((resource) => { const added = addedIds.has(resource.id); return <div className="picker-item" key={resource.id}><span className={`picker-item-icon type-${resource.content_type || "file"}`}><FolderKanban /></span><span className="picker-item-copy"><strong>{resource.name}</strong><small>{typeLabel[resource.content_type] ?? resource.content_type}{resource.extension ? ` · ${resource.extension.toUpperCase()}` : ""}{resource.size != null ? ` · ${formatBytes(resource.size)}` : ""}</small></span>{added ? <button disabled><Check />已添加</button> : <button className="primary" onClick={() => addItem(resource.id)}><Plus />添加</button>}</div>; })}</div>
 
     <div className="form-actions"><button onClick={onClose}>取消</button><button className="primary" onClick={persistAll} disabled={save.isPending || saveItems.isPending}>保存</button></div>

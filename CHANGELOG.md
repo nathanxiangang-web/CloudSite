@@ -2,6 +2,33 @@
 
 本项目按里程碑（M0.1 → M10）开发，版本 `0.1.0` 为 CloudSite V0.1 首个完整版本。
 
+## [0.3.0] - 2026-09-01
+
+### Stable Resource ID
+
+- 现有 Resource ID 原样种入 `state.db` 身份注册表，不进行破坏性的批量换 ID；新资源改用 128-bit 随机 ID。
+- 完整扫描与 Rolling Scan 统一使用保守身份解析：同路径直接复用，可靠的 Rename / Move 保留 ID，Copy 与 Path Reuse 生成新 ID，歧义场景不自动合并。
+- 跨目录 Rolling Move / Copy 先进入 Pending，等源目录在同一 Cycle 完成扫描后再决定复用旧 ID 或生成新 ID。
+- 新增身份历史、候选队列、后台统计和迁移前自动 SQLite 快照；`index.db` 重建时可从 `state.db` 恢复同路径身份。
+
+### 用户邮箱投稿与搜索布局
+
+- 新增登录后 `/submit` 投稿页，固定发送至 `nathxo@outlook.com`；只生成本地 `mailto:` 模板，不新增上传、SMTP、Submission DB 或 AList 写权限。
+- 投稿页支持复制邮箱、复制正文、无邮件客户端降级、HTTP(S) 链接校验、隐私与版权提示。
+- About 与 Footer 增加投稿入口；搜索页补齐长搜索词、超长无空格文件名和窄屏的收缩与断行边界。
+
+## [0.2.2] - 2026-09-01
+
+### 长期运行与安全收口
+
+- 新增 Session 与下载限流定时清理，保留有效会话并限制高频 `last_seen_at` 写入。
+- 新增 `state.db` / `index.db` 启动前只读健康检查，阻止旧实例在 `state.db` 丢失后被误判为首次安装。
+- FTS 重建加入持久化 dirty 标记，重启后可直接从现有索引恢复，不依赖 AList 在线。
+- Rolling Window 在 405 与 429 时统一打开熔断，并保留未完成队列供恢复后继续。
+- 仅信任已配置反向代理网段的 `X-Forwarded-*`，统一 HTTPS Cookie、来源校验和真实客户端地址边界；带凭据 CORS 禁止通配符。
+- 后端错误响应统一为带稳定 `code` 与可理解 `message` 的 JSON，前端鉴权熔断统一清缓存并返回登录页。
+- 新增安全、迁移、数据库恢复、AList 断线恢复和 Rolling 重启回归测试。
+
 ## [0.2.1] - 2026-08-31
 
 ### 发布与安装

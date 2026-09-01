@@ -4,6 +4,8 @@ const api = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  agentRules: false,
+  turbopack: { root: process.cwd() },
   allowedDevOrigins: ["localhost", "127.0.0.1"],
   async rewrites() {
     return [
