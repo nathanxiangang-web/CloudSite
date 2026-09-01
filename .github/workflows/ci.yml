@@ -120,16 +120,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/CloudSite
-          docker pull "ghcr.io/${IMAGE_OWNER}/cloudsite-api:${RELEASE_TAG}"
-          docker pull "ghcr.io/${IMAGE_OWNER}/cloudsite-web:${RELEASE_TAG}"
-          docker save "ghcr.io/${IMAGE_OWNER}/cloudsite-api:${RELEASE_TAG}" | gzip -1 > "artifacts/cloudsite-api-${RELEASE_TAG}-linux-amd64.tar.gz"
-          docker save "ghcr.io/${IMAGE_OWNER}/cloudsite-web:${RELEASE_TAG}" | gzip -1 > "artifacts/cloudsite-web-${RELEASE_TAG}-linux-amd64.tar.gz"
+          for arch in amd64 arm64; do
+            for component in api web; do
+              image="ghcr.io/${IMAGE_OWNER}/cloudsite-${component}:${RELEASE_TAG}"
+              archive="artifacts/cloudsite-${component}-${RELEASE_TAG}-linux-${arch}.tar.gz"
+              docker pull --platform "linux/${arch}" "$image"
+              docker save "$image" | gzip -1 > "$archive"
+              docker image rm "$image"
+            done
+          done
           cp docker-compose.yml docker-compose.offline.yml .env.example README.md LICENSE artifacts/CloudSite/
           cp -R scripts docs artifacts/CloudSite/
           (cd artifacts && zip -qr "cloudsite-${RELEASE_TAG}-offline-deploy.zip" CloudSite)
           (cd artifacts && sha256sum \
             "cloudsite-api-${RELEASE_TAG}-linux-amd64.tar.gz" \
+            "cloudsite-api-${RELEASE_TAG}-linux-arm64.tar.gz" \
             "cloudsite-web-${RELEASE_TAG}-linux-amd64.tar.gz" \
+            "cloudsite-web-${RELEASE_TAG}-linux-arm64.tar.gz" \
             "cloudsite-${RELEASE_TAG}-offline-deploy.zip" > SHA256SUMS.txt)
       - name: Create or update GitHub Release
         env:
