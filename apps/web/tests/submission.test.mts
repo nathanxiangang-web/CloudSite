@@ -21,7 +21,7 @@ test("submission mailto keeps recipient fixed and encodes Chinese and reserved c
   assert.equal(parsed.searchParams.get("subject"), "[CloudSite资源投稿] 工具 & 教程?");
   assert.match(parsed.searchParams.get("body") || "", /站内账号：JC/);
   assert.match(parsed.searchParams.get("body") || "", /第一行\n第二行 = #1/);
-  assert.match(parsed.searchParams.get("body") || "", /submitted_from：CloudSite 0\.3\.0/);
+  assert.match(parsed.searchParams.get("body") || "", /submitted_from：CloudSite 0\.3\.1/);
 });
 
 

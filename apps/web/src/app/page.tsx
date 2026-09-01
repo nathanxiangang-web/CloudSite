@@ -6,6 +6,7 @@ import ImageAsset from "next/image";
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { PublicShell } from "@/components/PublicShell";
+import { MobilePrimaryNavigation } from "@/components/PublicNavigation";
 import { SiteFooter } from "@/components/SiteFooter";
 import { api, Collection, formatBytes, Resource } from "@/lib/api";
 import { normalizeSearchQuery, SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
@@ -27,20 +28,25 @@ export default function HomePage() {
   const site = data?.site ?? { site_name: "CloudSite", home_title: "把网盘变成好看的资源网站", description: "软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享" };
   const collections = data?.collections ?? [];
   const popular = data?.popular.length ? data.popular.slice(0, 6) : null;
+  const accent = "资源网站";
+  const titleLead = site.home_title.endsWith(accent) ? site.home_title.slice(0, -accent.length) : site.home_title;
+  const titleAccent = site.home_title.endsWith(accent) ? accent : "";
 
   return <PublicShell><div className="page home-page">
     <section className="hero">
-      <div className="hero-copy"><h1>{site.home_title.slice(0, 7)}<em>{site.home_title.slice(7)}</em></h1><p>{site.description}</p>
+      <div className="hero-copy"><h1><span>{titleLead}</span>{titleAccent && <em>{titleAccent}</em>}</h1><p>{site.description}</p>
         <form className="hero-search" onSubmit={submit}><Search size={21} /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资源、文件夹、标签..." /><button type="submit">搜索</button></form>
         <div className="hot"><span>热门搜索：</span>{["Windows 11", "Photoshop", "Office", "Python", "设计素材", "教程"].map((word) => <Link key={word} href={`/search?q=${encodeURIComponent(word)}`}>{word}</Link>)}</div>
       </div>
       <div className="hero-art"><ImageAsset src="/assets/hero-cloud.png" alt="CloudSite 云端资源插画" fill priority sizes="330px" /></div>
     </section>
 
+    <MobilePrimaryNavigation />
+
     <section className="category-grid">{(Object.keys(typeMeta) as Array<keyof typeof typeMeta>).slice(0, 4).map((type) => { const meta = typeMeta[type]; const Icon = meta.icon; return <Link href={`/resources/${type}`} className="category-card" key={type}><span className={`category-icon type-${type}`}><Icon /></span><span><strong>{meta.label}</strong><small>{formatCount(data?.counts[type] ?? 0)} {meta.unit}</small></span><ArrowRight size={18} /></Link>; })}</section>
 
     <SectionTitle title="精选合集" href="/collections" />
-    {collections.length ? <section className="collection-grid">{collections.map((collection, index) => <Link href={`/collections/${collection.id}`} className="collection-card" key={collection.id}><div className="cover"><ImageAsset unoptimized src={collection.cover ? `/p/${collection.cover}` : `/assets/collection-${(index % 4) + 1}.png`} alt={collection.name} fill sizes="260px" /></div><strong>{collection.name}</strong><span className="collection-description">{collection.description}</span><div className="collection-meta"><span><FileImage /> {formatCount(collection.item_count ?? 0)} 个资源</span></div></Link>)}</section> : <div className="empty">还没有精选合集，管理员可在后台创建。</div>}
+    {collections.length ? <section className="collection-grid">{collections.map((collection, index) => <Link href={`/collections/${collection.id}`} className="collection-card" key={collection.id}><div className="cover"><ImageAsset unoptimized priority={index === 0} src={collection.cover ? `/p/${collection.cover}` : `/assets/collection-${(index % 4) + 1}.png`} alt={collection.name} fill sizes="260px" /></div><strong>{collection.name}</strong><span className="collection-description">{collection.description}</span><div className="collection-meta"><span><FileImage /> {formatCount(collection.item_count ?? 0)} 个资源</span></div></Link>)}</section> : <div className="empty">还没有精选合集，管理员可在后台创建。</div>}
 
     <SectionTitle title="最近更新" href="/resources/file" />
     <section className="recent-table">{isLoading ? <div className="loading">正在读取资源索引…</div> : error ? <div className="empty error-state">资源索引暂时不可用：{error.message}</div> : data?.recent.length ? data.recent.slice(0, 6).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}</section>

@@ -21,7 +21,7 @@ export default function AboutPage() {
     <h2>投稿与合作</h2>
     <p>欢迎分享优质软件、图片、视频、文档及其他资源。投稿邮箱：<a href="mailto:nathxo@outlook.com">nathxo@outlook.com</a>。</p>
     <p>也可以前往 <Link href="/submit">资源投稿</Link> 页面生成标准投稿模板。CloudSite 不接收用户直接上传，也不会保存邮箱凭据。</p>
-    <p className="static-meta">当前版本 v0.3.0</p>
+    <p className="static-meta">当前版本 v0.3.1</p>
     <SiteFooter />
   </div></PublicShell>;
 }
