@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, KeyRound, LogIn, LogOut, UserRound, UserRoundPlus } from "lucide-react";
+import { ChevronDown, KeyRound, LogIn, LogOut, Share2, UserRound, UserRoundPlus } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, useAuth } from "@/lib/auth";
@@ -30,6 +30,7 @@ export function AuthMenu() {
     <summary><span className="user-avatar">{user.username.slice(0, 1).toUpperCase()}</span><strong>{user.username}</strong><ChevronDown /></summary>
     <div className="auth-dropdown">
       <Link href="/account"><UserRound />我的账号</Link>
+      <Link href="/account/shares"><Share2 />我的分享</Link>
       <Link href="/account/security"><KeyRound />修改密码</Link>
       <button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut />{logout.isPending ? "正在退出…" : "退出登录"}</button>
     </div>

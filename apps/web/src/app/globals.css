@@ -184,6 +184,61 @@ button:disabled { opacity:.55; cursor:wait; }
 .users-panel .pagination { padding:14px 20px; border-top:1px solid #edf0f5; }
 .users-panel > .form-error { padding:0 20px 16px; }
 
+/* 0.3.3 用户文件分享 */
+.detail-actions { margin-top:22px; display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.detail-actions .download-main { margin-top:0; }
+.detail-actions > * { white-space:nowrap; }
+.share-dialog-backdrop { position:fixed; inset:0; z-index:1300; padding:20px; display:grid; place-items:center; background:rgba(15,23,42,.45); backdrop-filter:blur(3px); }
+.share-dialog { position:relative; width:min(520px,100%); max-height:calc(100dvh - 40px); padding:26px; overflow:auto; border:1px solid var(--line); border-radius:8px; background:#fff; box-shadow:0 24px 70px #17233a30; }
+.share-dialog-close { position:absolute; top:14px; right:14px; width:34px; min-height:34px; padding:0; }
+.share-dialog-close svg { width:17px; }
+.share-dialog-heading { padding-right:42px; display:grid; grid-template-columns:48px minmax(0,1fr); gap:13px; align-items:center; }
+.share-dialog-heading > span { width:48px; height:48px; display:grid; place-items:center; border-radius:8px; background:var(--blue-soft); color:var(--blue); }
+.share-dialog-heading > span svg { width:24px; }
+.share-dialog-heading h2 { margin:0 0 5px; font-size:20px; }
+.share-dialog-heading p { margin:0; overflow:hidden; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.share-dialog-form { margin-top:24px; display:grid; gap:16px; }
+.share-dialog-form fieldset { margin:0; padding:0; border:0; }
+.share-dialog-form legend,.share-dialog-form > label { width:100%; color:#33415a; font-size:12px; font-weight:700; }
+.share-dialog-form input,.share-dialog-form select { width:100%; min-height:42px; margin-top:7px; padding:0 12px; border:1px solid #d8e1ed; border-radius:8px; outline:0; background:#fff; }
+.share-dialog-form input:focus,.share-dialog-form select:focus { border-color:#81aaf4; box-shadow:0 0 0 3px #1769ff12; }
+.share-mode-control { margin-top:7px; padding:3px; display:grid; grid-template-columns:1fr 1fr; gap:3px; border:1px solid #d8e1ed; border-radius:8px; background:#f6f8fb; }
+.share-mode-control button { min-height:40px; border:0; border-radius:6px; background:transparent; box-shadow:none; }
+.share-mode-control button.active { color:var(--blue); background:#fff; box-shadow:0 2px 8px #17233a12; }
+.share-dialog-note { margin:0; display:flex; align-items:flex-start; gap:7px; color:var(--muted); font-size:11px; line-height:1.65; }
+.share-dialog-note svg { width:15px; height:15px; flex:0 0 auto; margin-top:2px; }
+.share-dialog-result { display:grid; justify-items:center; text-align:center; }
+.share-result-icon { width:52px; height:52px; display:grid; place-items:center; border-radius:50%; color:#188d48; background:#e6f8ec; }
+.share-result-icon svg { width:27px; }
+.share-dialog-result h2 { margin:15px 0 6px; font-size:21px; }
+.share-dialog-result > p { margin:0; color:var(--muted); font-size:12px; }
+.share-dialog-result dl { width:100%; margin:22px 0 16px; text-align:left; }
+.share-dialog-result dl > div { padding:11px 0; display:grid; grid-template-columns:76px minmax(0,1fr); gap:12px; border-bottom:1px solid #edf0f5; }
+.share-dialog-result dt { color:var(--muted); font-size:11px; }
+.share-dialog-result dd { margin:0; overflow-wrap:anywhere; font-size:12px; font-weight:600; }
+.share-dialog-result .share-result-code { color:var(--blue); font-size:19px; letter-spacing:0; }
+.share-copy-button { width:100%; }
+.my-shares-page { max-width:1040px; }
+.my-shares-heading { margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; }
+.my-shares-heading p { margin:0; color:var(--blue); font-size:11px; font-weight:700; }
+.my-shares-heading h1 { margin:4px 0 6px; font-size:28px; }
+.my-shares-heading span { color:var(--muted); font-size:11px; }
+.my-shares-heading > svg { width:42px; height:42px; color:#7ba5ee; }
+.my-shares-panel { padding:0 22px; overflow:hidden; }
+.my-share-item { min-height:112px; padding:18px 0; display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:14px; border-bottom:1px solid #edf0f5; }
+.my-share-item:last-child { border-bottom:0; }
+.my-share-icon { width:42px; height:42px; display:grid; place-items:center; border-radius:8px; color:var(--blue); background:var(--blue-soft); }
+.my-share-icon svg { width:21px; }
+.my-share-copy { min-width:0; }
+.my-share-copy > div { display:flex; align-items:center; gap:8px; }
+.my-share-copy strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.my-share-copy p,.my-share-copy small { display:block; margin:5px 0 0; overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.my-share-status { flex:0 0 auto; padding:3px 7px; border-radius:99px; color:#188d48; background:#e6f8ec; font-size:9px; }
+.my-share-status.cancelled,.my-share-status.expired,.my-share-status.invalid_target { color:#bd3d48; background:#ffeaec; }
+.my-share-actions { display:flex; align-items:center; gap:5px; }
+.my-share-actions button,.my-share-actions a { min-height:34px; padding:0 9px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:10px; }
+.my-share-actions svg { width:15px; }
+
 @media (max-width:900px) {
   .account-grid { grid-template-columns:1fr; }
   .users-toolbar { width:100%; flex-wrap:wrap; }
@@ -202,6 +257,16 @@ button:disabled { opacity:.55; cursor:wait; }
   .security-heading { align-items:flex-start; }
   .users-table-head,.users-table-row { grid-template-columns:minmax(140px,1fr) 82px; }
   .users-table-head span:nth-child(2),.users-table-row > span:nth-child(2) { display:none; }
+  .detail-actions { grid-template-columns:1fr 1fr; }
+  .share-dialog-backdrop { padding:10px; align-items:end; }
+  .share-dialog { width:100%; max-height:calc(100dvh - 20px); padding:23px 20px; }
+  .share-mode-control { grid-template-columns:1fr; }
+  .share-dialog .modal-actions { display:grid; grid-template-columns:1fr 1fr; }
+  .my-shares-heading > svg { display:none; }
+  .my-shares-panel { padding:0 16px; }
+  .my-share-item { grid-template-columns:38px minmax(0,1fr); align-items:start; }
+  .my-share-icon { width:38px; height:38px; }
+  .my-share-actions { grid-column:1/-1; justify-content:flex-end; flex-wrap:wrap; }
 }
 .home-shell .progress i { width:51%; }
 .home-page { width:min(1120px,calc(100% - 40px)); padding:12px 0 28px; }

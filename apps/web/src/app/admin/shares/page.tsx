@@ -101,7 +101,7 @@ export default function SharesPage() {
         const status = currentStatus(share);
         return <div className="table-row share-table-row" key={share.token}>
           <span><Share2 /><b>{share.title || "未命名分享"}<small>/s/{share.token} · {share.access_mode === "direct" ? "无分享码直下" : share.has_code ? "分享码已设置" : "待升级"}</small></b></span>
-          <span><b>{share.target_name ?? "对象已失效"}</b><small>{objectLabel[share.object_type] ?? share.object_type} · {share.object_id.slice(0, 16)}...</small></span>
+          <span><b>{share.target_name ?? "对象已失效"}</b><small>{objectLabel[share.object_type] ?? share.object_type} · {share.creator_username ? `用户 ${share.creator_username}` : "管理员"}</small></span>
           <span><b>{share.download_count} / {share.download_limit}</b><small>访问 {share.view_count ?? share.access_count} · 剩余 {share.remaining_downloads}</small></span>
           <span className="share-expiry">{editingToken === share.token ? <><select value={editingDuration} onChange={(event) => setEditingDuration(event.target.value as Duration)}>{Object.entries(durationLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="primary" onClick={() => action.mutate({ share, body: { duration: editingDuration } })}>保存</button><button onClick={() => setEditingToken(null)}>取消</button></> : <><b className={status === "expired" ? "warn" : ""}>{share.expires_at ? formatTime(share.expires_at) : "永久"}</b><small>{statusLabel[status]}{share.cancel_reason === "download_limit" ? " · 达到下载上限" : ""}</small><button onClick={() => { setEditingToken(share.token); setEditingDuration("24h"); }}>改期</button></>}</span>
           <span className="share-actions">

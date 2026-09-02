@@ -119,6 +119,7 @@ class CollectionItem(StateBase):
 class Share(StateBase):
     __tablename__ = "shares"
     token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    creator_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     object_type: Mapped[str] = mapped_column(String(20), index=True)
     object_id: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[str] = mapped_column(String(200), default="")

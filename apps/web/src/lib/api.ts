@@ -95,6 +95,7 @@ export type Share = {
   expired?: boolean;
   status?: "active" | "cancelled" | "expired" | "invalid_target" | "migration_pending";
   target_name?: string | null;
+  creator_username?: string | null;
   code?: string | null;
   created_at: string;
   updated_at: string;

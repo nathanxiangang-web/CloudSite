@@ -20,7 +20,7 @@ from sqlalchemy import delete, desc, func, select, text
 
 from . import __version__
 from .alist import AListClient, AListError
-from .auth import router as auth_router
+from .auth import require_user, router as auth_router, validate_request_origin
 from .config import settings
 from .crypto import decrypt_secret, encrypt_secret
 from .database import IndexSession, StateSession, init_databases, validate_database_files
@@ -59,6 +59,7 @@ from .models import (
     SiteSettings,
     SyncRun,
     SystemSetting,
+    User,
     utcnow,
 )
 from .office import OfficePreviewError, ensure_preview_cached, office_cache_filename, office_content_type
@@ -1827,6 +1828,119 @@ async def delete_collection(collection_id: int):
         return {"ok": True}
 
 
+async def owned_share(state, token: str, user_id: int) -> Share:
+    row = await state.scalar(
+        select(Share).where(Share.token == token, Share.creator_user_id == user_id)
+    )
+    if not row:
+        raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "分享不存在"})
+    return row
+
+
+@app.get("/api/my/shares")
+async def my_shares(request: Request):
+    async with StateSession() as state, IndexSession() as index:
+        _, user = await require_user(state, request)
+        rows = list(
+            (
+                await state.scalars(
+                    select(Share)
+                    .where(Share.creator_user_id == user.id)
+                    .order_by(desc(Share.created_at))
+                )
+            ).all()
+        )
+        resource_ids = [row.object_id for row in rows if row.object_type == "resource"]
+        names = {
+            item.id: item.name
+            for item in (
+                await index.scalars(select(Resource).where(Resource.id.in_(resource_ids)))
+            ).all()
+        } if resource_ids else {}
+        items = []
+        for row in rows:
+            status = share_status(row, await target_valid_for_share(state, index, row))
+            items.append(
+                share_dict(row)
+                | {
+                    "expired": status == "expired",
+                    "status": status,
+                    "target_name": names.get(row.object_id),
+                }
+            )
+        await state.commit()
+        return {"items": items}
+
+
+@app.post("/api/my/shares")
+async def create_my_share(payload: ShareInput, request: Request):
+    validate_request_origin(request)
+    if payload.object_type != "resource":
+        raise HTTPException(
+            400,
+            {"code": "USER_SHARE_RESOURCE_ONLY", "message": "普通用户目前只支持分享单个文件"},
+        )
+    async with StateSession() as state, IndexSession() as index:
+        _, user = await require_user(state, request)
+        created = await create_share_row(
+            state,
+            index,
+            payload,
+            creator_user_id=user.id,
+        )
+        state.add(
+            OperationLog(
+                level="INFO",
+                module="share",
+                action="user_share_created",
+                message=f"用户 {user.username} 创建分享 {created.share.token}",
+            )
+        )
+        await state.commit()
+        return share_dict(created.share) | {"code": created.code}
+
+
+@app.patch("/api/my/shares/{token}")
+async def update_my_share(token: str, payload: ShareUpdate, request: Request):
+    validate_request_origin(request)
+    async with StateSession() as state:
+        _, user = await require_user(state, request)
+        row = await owned_share(state, token, user.id)
+        if payload.action == "cancel" or payload.enabled is False:
+            await cancel_share_row(state, row)
+        elif payload.action == "restore" or payload.enabled is True:
+            await restore_share(state, row, payload.duration)
+        elif payload.action == "reset_code":
+            code = await reset_share_code(state, row)
+            await state.commit()
+            return share_dict(row) | {"code": code}
+        elif payload.action == "upgrade":
+            raise HTTPException(400, {"code": "SHARE_ACTION_NOT_ALLOWED", "message": "当前操作不可用"})
+        if payload.duration and payload.action != "restore":
+            await update_share_duration(state, row, payload.duration)
+        await state.commit()
+        return share_dict(row)
+
+
+@app.delete("/api/my/shares/{token}")
+async def delete_my_share(token: str, request: Request):
+    validate_request_origin(request)
+    async with StateSession() as state:
+        _, user = await require_user(state, request)
+        row = await owned_share(state, token, user.id)
+        state.add(
+            OperationLog(
+                level="INFO",
+                module="share",
+                action="user_share_deleted",
+                message=f"用户 {user.username} 删除分享 {token}",
+            )
+        )
+        await state.delete(row)
+        await state.commit()
+        return {"ok": True}
+
+
 @app.get("/api/admin/shares")
 async def admin_shares():
     async with StateSession() as state, IndexSession() as index:
@@ -1834,7 +1948,14 @@ async def admin_shares():
         resource_ids = [row.object_id for row in rows if row.object_type == "resource"]
         folder_ids = [row.object_id for row in rows if row.object_type == "folder"]
         collection_ids = [int(row.object_id) for row in rows if row.object_type == "collection" and row.object_id.isdigit()]
+        creator_ids = {row.creator_user_id for row in rows if row.creator_user_id is not None}
         names: dict[str, str] = {}
+        creators = {
+            row.id: row.username
+            for row in (
+                await state.scalars(select(User).where(User.id.in_(creator_ids)))
+            ).all()
+        } if creator_ids else {}
         if resource_ids:
             names.update({row.id: row.name for row in (await index.scalars(select(Resource).where(Resource.id.in_(resource_ids)))).all()})
         if folder_ids:
@@ -1845,7 +1966,15 @@ async def admin_shares():
         for row in rows:
             target_valid = await target_valid_for_share(state, index, row)
             status = share_status(row, target_valid)
-            items.append(share_dict(row) | {"expired": status == "expired", "status": status, "target_name": names.get(row.object_id)})
+            items.append(
+                share_dict(row)
+                | {
+                    "expired": status == "expired",
+                    "status": status,
+                    "target_name": names.get(row.object_id),
+                    "creator_username": creators.get(row.creator_user_id),
+                }
+            )
         return {"items": items}
 
 

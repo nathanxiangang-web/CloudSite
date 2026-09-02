@@ -139,7 +139,13 @@ async def target_valid_for_share(state: AsyncSession, index: AsyncSession, share
     return await collection_in_publication_scope(state, index, collection)
 
 
-async def create_share(state: AsyncSession, index: AsyncSession, payload) -> CreatedShare:
+async def create_share(
+    state: AsyncSession,
+    index: AsyncSession,
+    payload,
+    *,
+    creator_user_id: int | None = None,
+) -> CreatedShare:
     if payload.access_mode == "direct" and payload.object_type != "resource":
         raise HTTPException(400, {"code": "SHARE_DIRECT_RESOURCE_ONLY", "message": "无分享码直下只支持单文件"})
     if payload.object_type == "resource":
@@ -159,6 +165,7 @@ async def create_share(state: AsyncSession, index: AsyncSession, payload) -> Cre
     code = generate_share_code() if payload.access_mode == "code" else None
     row = Share(
         token=token,
+        creator_user_id=creator_user_id,
         object_type=payload.object_type,
         object_id=payload.object_id,
         title=payload.title,

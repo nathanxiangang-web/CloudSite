@@ -50,30 +50,30 @@ def request_from(peer: str, forwarded: str | None = None) -> Request:
     )
 
 
-async def test_download_first_three_allowed(tmp_path, monkeypatch):
+async def test_download_first_five_allowed(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    decisions = [await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=i)) for i in range(3)]
-    assert [item.allowed for item in decisions] == [True, True, True]
+    decisions = [await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=i)) for i in range(5)]
+    assert [item.allowed for item in decisions] == [True, True, True, True, True]
     await engine.dispose()
 
 
-async def test_download_fourth_blocked(tmp_path, monkeypatch):
+async def test_download_sixth_blocked(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    for offset in (0, 10, 20):
+    for offset in (0, 10, 20, 30, 40):
         assert (await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))).allowed
-    denied = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=30))
+    denied = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=50))
     assert denied.allowed is False
     assert denied.retry_after == 60
-    assert denied.blocked_until == BASE_TIME + timedelta(seconds=90)
+    assert denied.blocked_until == BASE_TIME + timedelta(seconds=110)
     assert rate_limit_payload(denied)["code"] == "DOWNLOAD_RATE_LIMITED"
     await engine.dispose()
 
 
 async def test_download_retry_after_uses_persisted_remaining_time(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    for offset in (0, 10, 20, 30):
+    for offset in (0, 10, 20, 30, 40, 50):
         decision = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
-    again = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=50))
+    again = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=70))
     assert decision.retry_after == 60
     assert again.retry_after == 40
     await engine.dispose()
@@ -81,35 +81,35 @@ async def test_download_retry_after_uses_persisted_remaining_time(tmp_path, monk
 
 async def test_refresh_does_not_reset_block(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    for offset in (0, 10, 20, 30):
+    for offset in (0, 10, 20, 30, 40, 50):
         blocked = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
     refreshed = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=61))
     assert refreshed.allowed is False
     assert refreshed.blocked_until == blocked.blocked_until
-    assert refreshed.retry_after == 29
+    assert refreshed.retry_after == 49
     await engine.dispose()
 
 
 async def test_blocked_retry_does_not_extend_wait(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    for offset in (0, 10, 20, 30):
+    for offset in (0, 10, 20, 30, 40, 50):
         first = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
-    repeated = [await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset)) for offset in (40, 50, 70)]
+    repeated = [await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset)) for offset in (60, 70, 90)]
     assert all(item.blocked_until == first.blocked_until for item in repeated)
     await engine.dispose()
 
 
 async def test_wait_expires(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    for offset in (0, 10, 20, 30):
+    for offset in (0, 10, 20, 30, 40, 50):
         await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
-    assert (await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=90))).allowed
+    assert (await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=110))).allowed
     await engine.dispose()
 
 
 async def test_different_ip_independent(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    for offset in (0, 10, 20, 30):
+    for offset in (0, 10, 20, 30, 40, 50):
         blocked = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
     assert blocked.allowed is False
     assert (await check_download_rate("203.0.113.11", BASE_TIME + timedelta(seconds=30))).allowed
@@ -122,24 +122,24 @@ def test_ipv6_normalization():
     assert normalize_ip("::ffff:192.0.2.10") == "192.0.2.10"
 
 
-async def test_concurrent_four_requests_only_three_pass(tmp_path, monkeypatch):
+async def test_concurrent_six_requests_only_five_pass(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    results = await asyncio.gather(*(check_download_rate("203.0.113.10", BASE_TIME) for _ in range(4)))
-    assert sum(item.allowed for item in results) == 3
+    results = await asyncio.gather(*(check_download_rate("203.0.113.10", BASE_TIME) for _ in range(6)))
+    assert sum(item.allowed for item in results) == 5
     assert sum(not item.allowed for item in results) == 1
     await engine.dispose()
 
 
 async def test_api_restart_keeps_rate_limit_state(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
-    for offset in (0, 10, 20, 30):
+    for offset in (0, 10, 20, 30, 40, 50):
         blocked = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
     await engine.dispose()
 
     restarted_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'rate.db'}")
     restarted_factory = async_sessionmaker(restarted_engine, expire_on_commit=False)
     monkeypatch.setattr(download_rate_limit, "StateSession", restarted_factory)
-    after_restart = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=35))
+    after_restart = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=55))
     assert after_restart.allowed is False
     assert after_restart.blocked_until == blocked.blocked_until
     assert after_restart.retry_after == 55
@@ -233,7 +233,7 @@ async def test_rate_limit_runs_before_alist(monkeypatch):
     assert json.loads(response.body)["code"] == "DOWNLOAD_RATE_LIMITED"
 
 
-async def test_download_route_first_three_302_fourth_429(tmp_path, monkeypatch):
+async def test_download_route_first_five_302_sixth_429(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
 
     class FakeSession:
@@ -261,7 +261,7 @@ async def test_download_route_first_three_302_fourth_429(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "_download_event", no_event)
     monkeypatch.setattr(main, "resolve_download_entry", resolved)
     request = request_from("198.51.100.20")
-    responses = [await main.download("r_1234567890", request) for _ in range(4)]
-    assert [response.status_code for response in responses] == [302, 302, 302, 429]
+    responses = [await main.download("r_1234567890", request) for _ in range(6)]
+    assert [response.status_code for response in responses] == [302, 302, 302, 302, 302, 429]
     assert responses[-1].headers["retry-after"] == "60"
     await engine.dispose()

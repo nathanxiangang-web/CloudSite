@@ -15,7 +15,7 @@ from .models import DownloadRateLimit, utcnow
 from .request_context import is_trusted_proxy, normalize_ip
 
 
-DOWNLOAD_RATE_MAX_ATTEMPTS = 3
+DOWNLOAD_RATE_MAX_ATTEMPTS = 5
 DOWNLOAD_RATE_WINDOW_SECONDS = 60
 DOWNLOAD_RATE_BLOCK_SECONDS = 60
 DOWNLOAD_RATE_CLEANUP_SECONDS = 6 * 60 * 60

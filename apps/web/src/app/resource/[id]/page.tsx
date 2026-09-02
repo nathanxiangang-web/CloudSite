@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Download, File, FileText, Image as ImageIcon, Package2, RefreshCw, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, File, FileText, Image as ImageIcon, Package2, RefreshCw, Share2, Video } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import remarkGfm from "remark-gfm";
 import { PublicShell } from "@/components/PublicShell";
 import { DownloadButton } from "@/components/DownloadButton";
 import { ResourceCard } from "@/components/ResourceCard";
+import { ShareDialog } from "@/components/ShareDialog";
 import OfficePreview from "@/components/OfficePreview";
 import PdfPreview from "@/components/PdfPreview";
 import { api, formatBytes, PreviewCapability, Resource } from "@/lib/api";
@@ -21,13 +22,14 @@ const detailIcons = { software: Package2, image: ImageIcon, video: Video, docume
 export default function ResourceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
+  const [shareOpen, setShareOpen] = useState(false);
   const query = useQuery({ queryKey: ["resource", id], queryFn: () => api<ResourceDetail>(`/api/resources/${id}`) });
   const item = query.data;
   if (query.isLoading) return <PublicShell><div className="page loading">正在加载资源…</div></PublicShell>;
   if (query.error) return <PublicShell><div className="page state-page"><strong>404</strong><h1>资源不可用</h1><p>{query.error.message}</p><Link href="/">返回首页</Link></div></PublicShell>;
   if (!item) return null;
   const Icon = detailIcons[item.content_type as keyof typeof detailIcons] || File;
-  return <PublicShell><div className="page detail-page"><nav className="breadcrumb"><Link href="/">资源库</Link>{item.breadcrumbs.map((crumb) => <span key={crumb.id}>› <Link href={`/folder/${crumb.id}`}>{crumb.name}</Link></span>)}<span>› {item.name}</span></nav>{params.get("preview_error") && <div className="preview-notice">当前资源暂时无法预览（{params.get("preview_error")}），你仍可直接下载文件。</div>}<section className="detail-grid"><PreviewRenderer item={item} /><aside className="detail-meta"><span className={`detail-icon type-${item.content_type}`}><Icon /></span><h1>{item.name}</h1><p>{item.parent ? `所在目录：${item.parent.name}` : "CloudSite 已索引资源"}</p><dl><div><dt>类型</dt><dd>{item.extension?.toUpperCase() || item.content_type}</dd></div><div><dt>大小</dt><dd>{formatBytes(item.size)}</dd></div><div><dt>更新时间</dt><dd>{item.modified_at ? new Date(item.modified_at).toLocaleString("zh-CN") : "未知"}</dd></div></dl>{item.capabilities.can_download && <DownloadButton resourceId={item.id} className="button primary download-main"><><Download />立即下载</></DownloadButton>}</aside></section>{item.capabilities.preview_type === "image" && (item.previous || item.next) && <nav className="preview-neighbors">{item.previous ? <Link href={`/resource/${item.previous.id}`}><ChevronLeft />上一张</Link> : <span />}{item.next ? <Link href={`/resource/${item.next.id}`}>下一张<ChevronRight /></Link> : <span />}</nav>}{item.related.length > 0 && <><h2 className="subheading">同目录资源</h2><section className="resource-grid">{item.related.map((related) => <ResourceCard key={related.id} item={related} />)}</section></>}</div></PublicShell>;
+  return <PublicShell><div className="page detail-page"><nav className="breadcrumb"><Link href="/">资源库</Link>{item.breadcrumbs.map((crumb) => <span key={crumb.id}>› <Link href={`/folder/${crumb.id}`}>{crumb.name}</Link></span>)}<span>› {item.name}</span></nav>{params.get("preview_error") && <div className="preview-notice">当前资源暂时无法预览（{params.get("preview_error")}），你仍可直接下载文件。</div>}<section className="detail-grid"><PreviewRenderer item={item} /><aside className="detail-meta"><span className={`detail-icon type-${item.content_type}`}><Icon /></span><h1>{item.name}</h1><p>{item.parent ? `所在目录：${item.parent.name}` : "CloudSite 已索引资源"}</p><dl><div><dt>类型</dt><dd>{item.extension?.toUpperCase() || item.content_type}</dd></div><div><dt>大小</dt><dd>{formatBytes(item.size)}</dd></div><div><dt>更新时间</dt><dd>{item.modified_at ? new Date(item.modified_at).toLocaleString("zh-CN") : "未知"}</dd></div></dl>{item.capabilities.can_download && <div className="detail-actions"><DownloadButton resourceId={item.id} className="button primary download-main"><><Download />下载</></DownloadButton><button type="button" onClick={() => setShareOpen(true)}><Share2 />分享</button></div>}</aside></section>{item.capabilities.preview_type === "image" && (item.previous || item.next) && <nav className="preview-neighbors">{item.previous ? <Link href={`/resource/${item.previous.id}`}><ChevronLeft />上一张</Link> : <span />}{item.next ? <Link href={`/resource/${item.next.id}`}>下一张<ChevronRight /></Link> : <span />}</nav>}{item.related.length > 0 && <><h2 className="subheading">同目录资源</h2><section className="resource-grid">{item.related.map((related) => <ResourceCard key={related.id} item={related} />)}</section></>}{shareOpen && <ShareDialog resource={item} onClose={() => setShareOpen(false)} />}</div></PublicShell>;
 }
 
 function PreviewRenderer({ item }: { item: ResourceDetail }) {

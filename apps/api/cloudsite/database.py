@@ -163,6 +163,7 @@ async def init_databases() -> None:
         share_columns = await connection.exec_driver_sql("PRAGMA table_info(shares)")
         share_column_names = {row[1] for row in share_columns.fetchall()}
         for column, definition in (
+            ("creator_user_id", "INTEGER"),
             ("last_accessed_at", "DATETIME"),
             ("access_mode", "VARCHAR(20) NOT NULL DEFAULT 'code'"),
             ("code_hash", "VARCHAR(64)"),
@@ -195,6 +196,9 @@ async def init_databases() -> None:
         )
         await connection.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_shares_access_mode ON shares (access_mode)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_creator_user_id ON shares (creator_user_id)"
         )
         await connection.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_shares_cancelled_at ON shares (cancelled_at)"
