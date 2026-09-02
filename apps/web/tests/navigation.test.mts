@@ -29,6 +29,12 @@ test("anonymous login and register pages do not redirect-loop", () => {
 });
 
 
+test("all share pages stay public without a CloudSite session", () => {
+  assert.equal(authRedirectTarget("/s/AbC123", "", false, "AUTH_REQUIRED", null), null);
+  assert.equal(authRedirectTarget("/s/AbC123/content", "", false, "AUTH_REQUIRED", null), null);
+});
+
+
 test("disabled session redirects with safe next and a limited reason", () => {
   const target = authRedirectTarget("/search", "?q=office", false, "USER_DISABLED", null);
   const location = new URL(target || "", "http://testserver");

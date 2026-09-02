@@ -53,12 +53,19 @@ class ShareInput(BaseModel):
     object_type: str = Field(pattern=r"^(resource|folder|collection)$")
     object_id: str = Field(min_length=1, max_length=64)
     title: str = Field(default="", max_length=200)
-    expires_at: datetime | None = None
+    access_mode: Literal["code", "direct"] = "code"
+    duration: Literal["5m", "1h", "6h", "24h", "7d", "permanent"] = "24h"
 
 
 class ShareUpdate(BaseModel):
     enabled: bool | None = None
-    expires_at: datetime | None = None
+    duration: Literal["5m", "1h", "6h", "24h", "7d", "permanent"] | None = None
+    action: Literal["cancel", "restore", "reset_code", "upgrade"] | None = None
+
+
+class ShareVerifyInput(BaseModel):
+    code: str = Field(min_length=1, max_length=16)
+    captcha_token: str | None = Field(default=None, max_length=2000)
 
 
 class AdminLoginInput(BaseModel):

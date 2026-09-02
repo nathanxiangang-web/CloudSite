@@ -79,11 +79,23 @@ export type Share = {
   object_id: string;
   title: string;
   enabled: boolean;
+  access_mode: "code" | "direct";
+  has_code: boolean;
+  code_version: number;
   expires_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: "manual" | "download_limit" | null;
   access_count: number;
+  view_count: number;
+  download_count: number;
+  download_limit: number;
+  remaining_downloads: number;
   last_accessed_at: string | null;
+  last_downloaded_at: string | null;
   expired?: boolean;
+  status?: "active" | "cancelled" | "expired" | "invalid_target" | "migration_pending";
   target_name?: string | null;
+  code?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -101,10 +113,13 @@ const sessionFailureCodes = new Set([
 export const AUTH_FUSE_EVENT = "cloudsite:auth-fuse";
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  const isFormData = typeof FormData !== "undefined" && options?.body instanceof FormData;
+  if (!isFormData && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const response = await fetch(path, {
     ...options,
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers,
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

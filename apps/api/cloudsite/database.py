@@ -155,11 +155,73 @@ async def init_databases() -> None:
             await connection.exec_driver_sql(
                 "ALTER TABLE collections ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
             )
-        share_columns = await connection.exec_driver_sql("PRAGMA table_info(shares)")
-        if "last_accessed_at" not in {row[1] for row in share_columns.fetchall()}:
+        site_columns = await connection.exec_driver_sql("PRAGMA table_info(site_settings)")
+        if "share_image_name" not in {row[1] for row in site_columns.fetchall()}:
             await connection.exec_driver_sql(
-                "ALTER TABLE shares ADD COLUMN last_accessed_at DATETIME"
+                "ALTER TABLE site_settings ADD COLUMN share_image_name VARCHAR(255) NOT NULL DEFAULT ''"
             )
+        share_columns = await connection.exec_driver_sql("PRAGMA table_info(shares)")
+        share_column_names = {row[1] for row in share_columns.fetchall()}
+        for column, definition in (
+            ("last_accessed_at", "DATETIME"),
+            ("access_mode", "VARCHAR(20) NOT NULL DEFAULT 'code'"),
+            ("code_hash", "VARCHAR(64)"),
+            ("code_version", "INTEGER NOT NULL DEFAULT 0"),
+            ("cancelled_at", "DATETIME"),
+            ("cancel_reason", "VARCHAR(30)"),
+            ("view_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("download_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_downloaded_at", "DATETIME"),
+        ):
+            if column not in share_column_names:
+                await connection.exec_driver_sql(f"ALTER TABLE shares ADD COLUMN {column} {definition}")
+        await connection.exec_driver_sql(
+            "UPDATE shares SET view_count = access_count WHERE view_count = 0 AND access_count > 0"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET access_mode = 'code' WHERE access_mode IS NULL OR access_mode = ''"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET code_version = 0 WHERE code_version IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET download_count = 0 WHERE download_count IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET view_count = 0 WHERE view_count IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET cancelled_at = CURRENT_TIMESTAMP WHERE enabled = 0 AND cancelled_at IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_access_mode ON shares (access_mode)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_cancelled_at ON shares (cancelled_at)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_last_downloaded_at ON shares (last_downloaded_at)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS share_verify_attempts ("
+            "id INTEGER NOT NULL PRIMARY KEY, "
+            "share_token VARCHAR(64) NOT NULL, "
+            "ip_hash VARCHAR(64) NOT NULL, "
+            "fail_count INTEGER NOT NULL DEFAULT 0, "
+            "window_started_at DATETIME NOT NULL, "
+            "challenge_required_until DATETIME, "
+            "updated_at DATETIME NOT NULL, "
+            "UNIQUE (share_token, ip_hash))"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_share_verify_attempts_share_token ON share_verify_attempts (share_token)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_share_verify_attempts_ip_hash ON share_verify_attempts (ip_hash)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_share_verify_attempts_challenge_required_until ON share_verify_attempts (challenge_required_until)"
+        )
         for table, column, definition in (
             ("users", "disabled_at", "DATETIME"),
             ("users", "deleted_at", "DATETIME"),

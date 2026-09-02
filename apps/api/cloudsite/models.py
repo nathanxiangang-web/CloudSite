@@ -32,6 +32,7 @@ class SiteSettings(StateBase):
     site_name: Mapped[str] = mapped_column(String(100), default="CloudSite")
     home_title: Mapped[str] = mapped_column(String(200), default="把网盘变成好看的资源网站")
     description: Mapped[str] = mapped_column(String(500), default="软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享")
+    share_image_name: Mapped[str] = mapped_column(String(255), default="")
     recent_limit: Mapped[int] = mapped_column(Integer, default=6)
     popular_limit: Mapped[int] = mapped_column(Integer, default=6)
     collection_limit: Mapped[int] = mapped_column(Integer, default=4)
@@ -122,11 +123,31 @@ class Share(StateBase):
     object_id: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[str] = mapped_column(String(200), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    access_mode: Mapped[str] = mapped_column(String(20), default="code", index=True)
+    code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    code_version: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancel_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     access_count: Mapped[int] = mapped_column(Integer, default=0)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    download_count: Mapped[int] = mapped_column(Integer, default=0)
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ShareVerifyAttempt(StateBase):
+    __tablename__ = "share_verify_attempts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    share_token: Mapped[str] = mapped_column(String(64), index=True)
+    ip_hash: Mapped[str] = mapped_column(String(64), index=True)
+    fail_count: Mapped[int] = mapped_column(Integer, default=0)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    challenge_required_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (UniqueConstraint("share_token", "ip_hash"),)
 
 
 class User(StateBase):

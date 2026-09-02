@@ -9,14 +9,14 @@ CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分
 - 使用 AList 凭据连接网盘，配置在服务端加密保存。
 - 扫描任意深度目录，按软件、图片、视频、文档等类型浏览和搜索。
 - 支持图片、视频、PDF、文本、Markdown 和常见 Office 文档预览。
-- 支持精选合集、资源分享链接、有效期与访问统计。
+- 支持精选合集、4 位分享码、单文件无分享码直下、固定有效期与查看/下载统计；每个分享最多成功下载 404 次。
 - 支持独立的前台用户注册、强制登录、账户安全与后台用户完整生命周期管理；用户名为 2～16 位字母、数字、下划线或短横线，普通用户身份不与 AList 管理员身份混用。
 - 资源下载由 `/d/{resource_id}` 解析 Resource，向 AList 获取文件信息及签名，构造 AList Native `/d/` 下载入口并返回 HTTP 302。
 - 登录用户下载按真实客户端 IP 固定执行滑动 60 秒最多 3 次、第 4 次等待 60 秒；状态持久化在 `state.db`，刷新页面或重启 API 均不能绕过。
 - 0.3.0 起 Resource 使用持久身份注册表：已有 ID 原样保留，新资源使用随机 Stable ID，可靠 Rename / Move 不改变资源链接，Copy 与歧义场景采用保守策略。
 - 登录用户可在 `/submit` 生成发送至 `nathxo@outlook.com` 的标准投稿邮件；CloudSite 不接收用户上传、不连接 SMTP、不给普通用户 AList 写权限。
 - CloudSite 不解析最终 Storage `raw_url`、不代理文件主体，也不按文件大小选择下载策略。
-- 内置后台概览、内容索引、合集、分享、下载诊断、站点设置、同步历史和 AList 后台认证。
+- 内置后台概览、内容索引、合集、分享、下载诊断、站点设置、同步历史和 AList 后台认证；站点设置可自定义桌面分享页右侧展示图。
 - 首次同步保持原有完整内容根扫描流程不变；Sync Engine 1.1 只在首次同步成功并已有索引后迁移接管，迁移不请求 AList、不重建现有索引。
 - 后续校验按 24 小时 Cycle、4 个 6 小时 Window 覆盖全部目录；请求默认随机间隔 5～15 秒，并根据窗口工作量动态调速，绝对不超过约 2 RPS。
 - Rolling Scope 严格校验 AList 响应；缺失对象需跨两个独立 Cycle 确认，大规模路径变化按目录 Scope 零写入保护。
@@ -46,7 +46,7 @@ docker compose ps
 
 打开 `http://服务器IP:3000`。默认 Compose 只公开 Web 端口 `3000`，API 仅在内部网络提供服务，运行数据保存在 `./data`。
 
-除登录和注册外，前台页面、资源接口、分享、预览和下载均要求有效 CloudSite 用户登录。管理后台继续使用独立的 AList 管理员认证。
+除登录、注册和 `/s/{token}` 匿名分享网关外，前台页面、资源接口、预览和普通下载均要求有效 CloudSite 用户登录。所有分享模式都不要求 CloudSite 账号登录：无分享码模式直接下载，分享码模式验证 4 位分享码后只获得当前分享路径下的短时票据，不能访问站内其他资源；管理后台继续使用独立的 AList 管理员认证。
 
 首次进入后台后，在“系统设置”中配置 AList 地址和独立账号，再配置内容根并执行同步。
 
@@ -54,11 +54,11 @@ docker compose ps
 
 没有外网、不能访问 GHCR 的服务器，请从 GitHub Releases 下载当前版本的离线附件，不要执行 `docker compose pull`：
 
-- `cloudsite-api-v0.3.2-linux-amd64.tar.gz`
-- `cloudsite-api-v0.3.2-linux-arm64.tar.gz`
-- `cloudsite-web-v0.3.2-linux-amd64.tar.gz`
-- `cloudsite-web-v0.3.2-linux-arm64.tar.gz`
-- `cloudsite-v0.3.2-offline-deploy.zip`
+- `cloudsite-api-v0.3.3-linux-amd64.tar.gz`
+- `cloudsite-api-v0.3.3-linux-arm64.tar.gz`
+- `cloudsite-web-v0.3.3-linux-amd64.tar.gz`
+- `cloudsite-web-v0.3.3-linux-arm64.tar.gz`
+- `cloudsite-v0.3.3-offline-deploy.zip`
 - `SHA256SUMS.txt`
 
 在联网电脑下载并校验附件，复制到离线服务器后导入两个镜像，再使用离线 Compose 覆盖文件启动：
@@ -66,9 +66,9 @@ docker compose ps
 ```bash
 sha256sum -c SHA256SUMS.txt
 arch=arm64 # x86_64 服务器改为 amd64
-gzip -dc "cloudsite-api-v0.3.2-linux-${arch}.tar.gz" | docker load
-gzip -dc "cloudsite-web-v0.3.2-linux-${arch}.tar.gz" | docker load
-unzip cloudsite-v0.3.2-offline-deploy.zip -d CloudSite
+gzip -dc "cloudsite-api-v0.3.3-linux-${arch}.tar.gz" | docker load
+gzip -dc "cloudsite-web-v0.3.3-linux-${arch}.tar.gz" | docker load
+unzip cloudsite-v0.3.3-offline-deploy.zip -d CloudSite
 cd CloudSite
 cp .env.example .env
 # 编辑 .env，至少替换 CLOUDSITE_SECRET_KEY

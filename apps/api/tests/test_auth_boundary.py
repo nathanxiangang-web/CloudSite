@@ -3,7 +3,7 @@ from datetime import timedelta
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from cloudsite import auth, main
+from cloudsite import auth, main, site_assets
 from cloudsite.database import StateBase
 from cloudsite.models import AListConnection, User, utcnow
 from cloudsite.preview import PREVIEW_TICKET_TTL_SECONDS, create_preview_ticket
@@ -42,9 +42,46 @@ async def test_anonymous_whitelist_and_protected_api(monkeypatch):
         share = await client.get("/api/shares/not-a-share")
         assert share.status_code == 401
         assert share.json()["detail"]["code"] == "AUTH_REQUIRED"
+        public_share = await client.get("/api/public/shares/not-a-share")
+        assert public_share.status_code == 404
+        assert public_share.json()["detail"]["code"] == "SHARE_NOT_FOUND"
+        share_page = await client.get("/api/public/share-page")
+        assert share_page.status_code == 200
+        assert share_page.json() == {"site_name": "CloudSite", "share_image_url": ""}
+        short_share = await client.get("/s/not-a-share", follow_redirects=False)
+        assert short_share.status_code == 404
+        assert short_share.json()["detail"]["code"] == "SHARE_NOT_FOUND"
         admin = await client.get("/api/admin/users")
         assert admin.status_code == 403
         assert admin.json()["detail"]["code"] == "ADMIN_REQUIRED"
+    await engine.dispose()
+
+
+async def test_share_page_image_upload_public_read_and_remove(monkeypatch, tmp_path):
+    client, _, engine = await boundary_client(monkeypatch)
+    monkeypatch.setattr(site_assets.settings, "data_dir", tmp_path)
+    image = b"\x89PNG\r\n\x1a\ncloudsite-share-page"
+
+    async with client:
+        uploaded = await client.post(
+            "/api/admin/site/share-image",
+            files={"file": ("share.png", image, "image/png")},
+        )
+        assert uploaded.status_code == 200
+        assert uploaded.json()["share_image_url"] == "/api/public/share-page/image"
+
+        settings = await client.get("/api/public/share-page")
+        assert settings.json()["share_image_url"] == "/api/public/share-page/image"
+
+        public_image = await client.get("/api/public/share-page/image")
+        assert public_image.status_code == 200
+        assert public_image.headers["content-type"] == "image/png"
+        assert public_image.content == image
+
+        removed = await client.delete("/api/admin/site/share-image")
+        assert removed.status_code == 200
+        assert (await client.get("/api/public/share-page/image")).status_code == 404
+
     await engine.dispose()
 
 

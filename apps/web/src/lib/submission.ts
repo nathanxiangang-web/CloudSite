@@ -50,7 +50,7 @@ export function buildSubmission(input: SubmissionInput): { subject: string; body
     "备注：",
     input.note.trim(),
     "",
-    "submitted_from：CloudSite 0.3.2",
+    "submitted_from：CloudSite 0.3.3",
   ].join("\n");
   const mailto = `mailto:${SUBMISSION_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   return { subject, body, mailto };

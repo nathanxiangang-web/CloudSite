@@ -6,13 +6,12 @@ import json
 import logging
 import math
 import random
-import secrets
 import time
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -80,11 +79,33 @@ from .schemas import (
     SearchOutput,
     ShareInput,
     ShareUpdate,
+    ShareVerifyInput,
     SiteInput,
     SyncInput,
     SystemInput,
     TextPreviewOutput,
 )
+from .shares.code import verify_share_code
+from .shares.service import (
+    MAX_SHARE_DOWNLOADS,
+    cancel_share as cancel_share_row,
+    captcha_token_valid,
+    challenge_required,
+    cleanup_share_verify_attempts,
+    cleanup_terminal_shares,
+    clear_verify_attempts,
+    create_share as create_share_row,
+    ensure_share_active,
+    reserve_share_download,
+    resource_in_publication_scope,
+    reset_share_code,
+    restore_share,
+    share_status,
+    target_valid_for_share,
+    update_share_duration,
+    verify_attempt_failed,
+)
+from .shares.ticket import create_share_ticket, share_cookie_name, validate_share_ticket
 from .search import (
     SEARCH_OBJECT_TYPES,
     SEARCH_SORTS,
@@ -96,6 +117,7 @@ from .search import (
     search_index,
     set_search_index_dirty,
 )
+from .site_assets import SHARE_IMAGE_MAX_BYTES, remove_share_image, save_share_image, share_image_path
 from .sync.rolling import (
     migrate_existing_index_to_rolling,
     prepare_index_recovery,
@@ -121,6 +143,8 @@ SESSION_COOKIE = "cloudsite_session"
 _storage_info_cache: dict = {"data": None, "fetched_at": 0.0}
 _last_rate_limit_cleanup_at = 0.0
 _last_session_cleanup_at = 0.0
+_last_share_cleanup_at = 0.0
+SHARE_CLEANUP_SECONDS = 3600
 STORAGE_INFO_TTL_SECONDS = 600
 SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
 logger = logging.getLogger(__name__)
@@ -186,7 +210,7 @@ async def _run_cleanup_job(action: str, label: str, cleanup) -> None:
 
 
 async def scheduler_loop() -> None:
-    global _last_rate_limit_cleanup_at, _last_session_cleanup_at
+    global _last_rate_limit_cleanup_at, _last_session_cleanup_at, _last_share_cleanup_at
     while True:
         await asyncio.sleep(60)
         monotonic_now = time.monotonic()
@@ -204,6 +228,10 @@ async def scheduler_loop() -> None:
                 "下载限流清理",
                 cleanup_download_rate_limits,
             )
+        if monotonic_now - _last_share_cleanup_at >= SHARE_CLEANUP_SECONDS:
+            _last_share_cleanup_at = monotonic_now
+            await _run_cleanup_job("share_cleanup", "分享清理", cleanup_terminal_shares)
+            await _run_cleanup_job("share_verify_attempt_cleanup", "分享验证码状态清理", cleanup_share_verify_attempts)
         async with StateSession() as session:
             values = await get_system_values(session)
         if not values["automatic_sync"]:
@@ -381,9 +409,14 @@ async def admin_session_middleware(request: Request, call_next):
         resource_id = path.removeprefix("/p/")
         preview_ticket_valid = validate_preview_ticket(resource_id, request.query_params.get("ticket"))
     requires_user = not preview_ticket_valid and (
-        (path.startswith("/api/") and path not in public_api_paths)
+        (
+            path.startswith("/api/")
+            and path not in public_api_paths
+            and not path.startswith("/api/public/shares/")
+            and not path.startswith("/api/public/share-page")
+        )
         or path.startswith("/d/")
-        or path.startswith("/p/")
+        or (path.startswith("/p/") and not path.startswith("/s/"))
         or path.startswith("/office-files/")
     )
     if not requires_user:
@@ -520,17 +553,37 @@ async def collection_dict(state, index, row: Collection, include_items: bool = F
 
 
 def share_dict(row: Share) -> dict:
+    view_count = row.view_count if row.view_count is not None else row.access_count
     return {
         "token": row.token,
         "object_type": row.object_type,
         "object_id": row.object_id,
         "title": row.title,
         "enabled": row.enabled,
+        "access_mode": row.access_mode,
+        "has_code": bool(row.code_hash),
+        "code_version": row.code_version,
         "expires_at": row.expires_at,
+        "cancelled_at": row.cancelled_at,
+        "cancel_reason": row.cancel_reason,
         "access_count": row.access_count,
+        "view_count": view_count,
+        "download_count": row.download_count,
+        "download_limit": MAX_SHARE_DOWNLOADS,
+        "remaining_downloads": max(MAX_SHARE_DOWNLOADS - (row.download_count or 0), 0),
         "last_accessed_at": row.last_accessed_at,
+        "last_downloaded_at": row.last_downloaded_at,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
+    }
+
+
+def site_settings_dict(row: SiteSettings) -> dict:
+    return {
+        "site_name": row.site_name or "CloudSite",
+        "home_title": row.home_title or "把网盘变成好看的资源网站",
+        "description": row.description or "",
+        "share_image_url": "/api/public/share-page/image" if row.share_image_name else "",
     }
 
 
@@ -539,6 +592,52 @@ def share_is_expired(row: Share) -> bool:
         return False
     expires_at = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=timezone.utc)
     return expires_at <= datetime.now(timezone.utc)
+
+
+async def build_share_target_payload(state, index, row: Share) -> dict:
+    if row.object_type == "resource":
+        target = await index.get(Resource, row.object_id)
+        if not target or not await target_valid_for_share(state, index, row):
+            raise HTTPException(404, {"code": "SHARE_TARGET_INVALID", "message": "分享的资源不存在或不可用"})
+        return resource_dict(target)
+    if row.object_type == "folder":
+        target = await index.get(Folder, row.object_id)
+        if not target or not await target_valid_for_share(state, index, row):
+            raise HTTPException(404, {"code": "SHARE_TARGET_INVALID", "message": "分享的文件夹不存在或不可用"})
+        child_folders = list((await index.scalars(select(Folder).where(Folder.parent_id == target.id, Folder.status == "active").order_by(Folder.name))).all())
+        child_resources = list((await index.scalars(select(Resource).where(Resource.parent_id == target.id, Resource.status == "active").order_by(Resource.name))).all())
+        return {"folder": folder_dict(target), "folders": [folder_dict(item) for item in child_folders], "resources": [resource_dict(item) for item in child_resources]}
+    target = await state.get(Collection, int(row.object_id)) if row.object_id.isdigit() else None
+    if not target or not await target_valid_for_share(state, index, row):
+        raise HTTPException(404, {"code": "SHARE_TARGET_INVALID", "message": "分享的合集不存在或不可用"})
+    return await collection_dict(state, index, target, include_items=True)
+
+
+async def resolve_share_download_resource(state, index, row: Share, resource_id: str | None):
+    if row.object_type == "resource":
+        selected_id = resource_id or row.object_id
+        if selected_id != row.object_id:
+            raise HTTPException(403, {"code": "SHARE_RESOURCE_NOT_ALLOWED", "message": "资源不属于当前分享"})
+        resource = await index.get(Resource, row.object_id)
+    elif row.object_type == "folder":
+        if not resource_id:
+            raise HTTPException(400, {"code": "SHARE_RESOURCE_REQUIRED", "message": "请选择要下载的资源"})
+        resource = await index.get(Resource, resource_id)
+        if not resource or resource.parent_id != row.object_id:
+            raise HTTPException(403, {"code": "SHARE_RESOURCE_NOT_ALLOWED", "message": "资源不属于当前分享"})
+    else:
+        if not resource_id:
+            raise HTTPException(400, {"code": "SHARE_RESOURCE_REQUIRED", "message": "请选择要下载的资源"})
+        collection_id = int(row.object_id) if row.object_id.isdigit() else -1
+        allowed = await state.scalar(
+            select(CollectionItem.id).where(CollectionItem.collection_id == collection_id, CollectionItem.resource_id == resource_id)
+        )
+        if not allowed:
+            raise HTTPException(403, {"code": "SHARE_RESOURCE_NOT_ALLOWED", "message": "资源不属于当前分享"})
+        resource = await index.get(Resource, resource_id)
+    if not await resource_in_publication_scope(state, resource):
+        raise HTTPException(404, {"code": "SHARE_TARGET_INVALID", "message": "分享资源已不可用"})
+    return resource
 
 
 @app.get("/api/home")
@@ -898,6 +997,199 @@ async def public_share(token: str):
         row.last_accessed_at = utcnow()
         await state.commit()
         return {"share": share_dict(row), "target": payload}
+
+
+@app.get("/api/public/share-page")
+async def public_share_page_settings():
+    async with StateSession() as state:
+        row = await state.get(SiteSettings, 1) or SiteSettings(id=1)
+        return {
+            "site_name": row.site_name or "CloudSite",
+            "share_image_url": "/api/public/share-page/image" if row.share_image_name else "",
+        }
+
+
+@app.get("/api/public/share-page/image")
+async def public_share_page_image():
+    async with StateSession() as state:
+        row = await state.get(SiteSettings, 1)
+        path = share_image_path(row.share_image_name) if row else None
+    if not path:
+        raise HTTPException(404, {"code": "SHARE_IMAGE_NOT_FOUND", "message": "分享页图片尚未配置"})
+    media_type = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}.get(path.suffix.lower())
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/api/public/shares/{token}")
+async def public_share_meta(token: str):
+    async with StateSession() as state, IndexSession() as index:
+        row = await state.get(Share, token)
+        if not row:
+            raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "分享不存在"})
+        target_valid = await target_valid_for_share(state, index, row)
+        status = share_status(row, target_valid)
+        if status == "active" and row.access_mode == "direct":
+            return {
+                "token": row.token,
+                "status": "direct",
+                "title": row.title or "CloudSite 资源分享",
+                "access_mode": row.access_mode,
+                "expires_at": row.expires_at,
+                "download_count": row.download_count,
+                "download_limit": MAX_SHARE_DOWNLOADS,
+                "remaining_downloads": max(MAX_SHARE_DOWNLOADS - (row.download_count or 0), 0),
+            }
+        if status == "active":
+            return {
+                "token": row.token,
+                "status": "code_required",
+                "title": row.title or "CloudSite 资源分享",
+                "access_mode": row.access_mode,
+                "expires_at": row.expires_at,
+            }
+        return {
+            "token": row.token,
+            "status": status,
+            "title": row.title or "CloudSite 资源分享",
+            "access_mode": row.access_mode,
+            "expires_at": row.expires_at,
+            "cancel_reason": row.cancel_reason,
+        }
+
+
+@app.post("/api/public/shares/{token}/verify")
+async def public_share_verify(token: str, payload: ShareVerifyInput, request: Request, response: Response):
+    async with StateSession() as state, IndexSession() as index:
+        row = await state.get(Share, token)
+        if not row:
+            raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "分享不存在"})
+        ensure_share_active(row, share_status(row, await target_valid_for_share(state, index, row)))
+        if row.access_mode != "code":
+            raise HTTPException(400, {"code": "SHARE_CODE_NOT_REQUIRED", "message": "当前分享不需要分享码"})
+        address = get_effective_client_ip(request)
+        if await challenge_required(state, token, address):
+            if not await captcha_token_valid(payload.captcha_token):
+                raise HTTPException(403, {"code": "SHARE_CAPTCHA_REQUIRED", "message": "请先完成验证码验证"})
+        if not verify_share_code(row.token, payload.code, row.code_hash):
+            needs_captcha = await verify_attempt_failed(state, token, address)
+            await state.commit()
+            raise HTTPException(
+                403,
+                {
+                    "code": "SHARE_CODE_INVALID",
+                    "message": "分享码错误，请重新输入。",
+                    "captcha_required": needs_captcha,
+                },
+            )
+        await clear_verify_attempts(state, token, address)
+        row.view_count += 1
+        row.access_count = row.view_count
+        row.last_accessed_at = utcnow()
+        await state.commit()
+        expires_at = row.expires_at
+        if expires_at and not expires_at.tzinfo:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        ticket = create_share_ticket(
+            row.token,
+            row.code_version,
+            share_expires_at=int(expires_at.timestamp()) if expires_at else None,
+        )
+        response.set_cookie(
+            share_cookie_name(row.token),
+            ticket,
+            max_age=3600,
+            httponly=True,
+            secure=request_is_https(request),
+            samesite="lax",
+            path=f"/s/{row.token}",
+        )
+        return {"ok": True, "ticket_expires_in": 3600}
+
+
+@app.get("/api/public/shares/{token}/content")
+async def public_share_content(token: str, request: Request):
+    async with StateSession() as state, IndexSession() as index:
+        row = await state.get(Share, token)
+        if not row:
+            raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "分享不存在"})
+        ensure_share_active(row, share_status(row, await target_valid_for_share(state, index, row)))
+        if row.access_mode == "code":
+            cookie = request.cookies.get(share_cookie_name(row.token))
+            if not validate_share_ticket(row.token, row.code_version, cookie):
+                raise HTTPException(401, {"code": "SHARE_TICKET_INVALID", "message": "请先输入正确分享码"})
+        elif row.access_mode == "direct":
+            row.view_count += 1
+            row.access_count = row.view_count
+            row.last_accessed_at = utcnow()
+        payload = await build_share_target_payload(state, index, row)
+        await state.commit()
+        return {"share": share_dict(row), "target": payload}
+
+
+async def _share_download_response(token: str, request: Request, resource_id: str | None = None):
+    started = time.perf_counter()
+    async with StateSession() as state, IndexSession() as index:
+        row = await state.get(Share, token)
+        if not row:
+            raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "分享不存在"})
+        ensure_share_active(row, share_status(row, await target_valid_for_share(state, index, row)))
+        if (row.download_count or 0) >= MAX_SHARE_DOWNLOADS:
+            raise HTTPException(410, {"code": "SHARE_DOWNLOAD_LIMIT_REACHED", "message": "分享下载次数已用完"})
+        if row.access_mode == "code":
+            cookie = request.cookies.get(share_cookie_name(row.token))
+            if not validate_share_ticket(row.token, row.code_version, cookie):
+                raise HTTPException(401, {"code": "SHARE_TICKET_INVALID", "message": "请先输入正确分享码"})
+        elif row.access_mode == "direct" and row.object_type != "resource":
+            raise HTTPException(400, {"code": "SHARE_DIRECT_RESOURCE_ONLY", "message": "无分享码直下只支持单文件"})
+        resource = await resolve_share_download_resource(state, index, row, resource_id)
+        rate = await check_download_rate(get_effective_client_ip(request))
+        if not rate.allowed:
+            await _download_event(state, resource.id, "failed", "DOWNLOAD_RATE_LIMITED", started, source="share")
+            return JSONResponse(rate_limit_payload(rate), status_code=429, headers={"Retry-After": str(rate.retry_after)})
+        connection = await state.get(AListConnection, 1)
+        try:
+            resolution = await resolve_download_entry(resource, connection)
+            await reserve_share_download(state, row.token)
+            await _download_event(state, resource.id, "success", None, started, source="share")
+            return RedirectResponse(resolution.url, status_code=302)
+        except DownloadError as exc:
+            await _download_event(state, resource.id, "failed", exc.code, started, source="share")
+            raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+
+
+@app.get("/api/public/shares/{token}/download")
+async def public_share_download(token: str, request: Request):
+    return await _share_download_response(token, request)
+
+
+@app.get("/api/public/shares/{token}/download/{resource_id}")
+async def public_share_download_resource(token: str, resource_id: str, request: Request):
+    return await _share_download_response(token, request, resource_id)
+
+
+@app.get("/s/{token}")
+async def short_share_direct_download(token: str, request: Request):
+    async with StateSession() as state:
+        row = await state.get(Share, token)
+        if not row:
+            raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "分享不存在"})
+        if row.access_mode != "direct":
+            raise HTTPException(409, {"code": "SHARE_CODE_REQUIRED", "message": "请通过分享页面输入分享码"})
+    return await _share_download_response(token, request)
+
+
+@app.get("/s/{token}/d")
+async def short_share_download(token: str, request: Request):
+    return await _share_download_response(token, request)
+
+
+@app.get("/s/{token}/d/{resource_id}")
+async def short_share_download_resource(token: str, resource_id: str, request: Request):
+    return await _share_download_response(token, request, resource_id)
 
 
 @app.get("/d/{resource_id}")
@@ -1549,25 +1841,20 @@ async def admin_shares():
             names.update({row.id: row.name for row in (await index.scalars(select(Folder).where(Folder.id.in_(folder_ids)))).all()})
         if collection_ids:
             names.update({str(row.id): row.name for row in (await state.scalars(select(Collection).where(Collection.id.in_(collection_ids)))).all()})
-        return {"items": [share_dict(row) | {"expired": share_is_expired(row), "target_name": names.get(row.object_id)} for row in rows]}
+        items = []
+        for row in rows:
+            target_valid = await target_valid_for_share(state, index, row)
+            status = share_status(row, target_valid)
+            items.append(share_dict(row) | {"expired": status == "expired", "status": status, "target_name": names.get(row.object_id)})
+        return {"items": items}
 
 
 @app.post("/api/admin/shares")
 async def create_share(payload: ShareInput):
-    token = secrets.token_urlsafe(12)
     async with StateSession() as state, IndexSession() as index:
-        if payload.object_type == "resource":
-            target = await index.get(Resource, payload.object_id)
-        elif payload.object_type == "folder":
-            target = await index.get(Folder, payload.object_id)
-        else:
-            target = await state.get(Collection, int(payload.object_id)) if payload.object_id.isdigit() else None
-        if not target or getattr(target, "status", "active") != "active":
-            raise HTTPException(400, "分享对象不存在或不可用")
-        row = Share(token=token, **payload.model_dump())
-        state.add(row)
+        created = await create_share_row(state, index, payload)
         await state.commit()
-        return share_dict(row)
+        return share_dict(created.share) | {"code": created.code}
 
 
 @app.patch("/api/admin/shares/{token}")
@@ -1576,8 +1863,16 @@ async def update_share(token: str, payload: ShareUpdate):
         row = await session.get(Share, token)
         if not row:
             raise HTTPException(404, "分享不存在")
-        for key, value in payload.model_dump(exclude_unset=True).items():
-            setattr(row, key, value)
+        if payload.action == "cancel" or payload.enabled is False:
+            await cancel_share_row(session, row)
+        elif payload.action == "restore" or payload.enabled is True:
+            await restore_share(session, row, payload.duration)
+        elif payload.action in {"reset_code", "upgrade"}:
+            code = await reset_share_code(session, row)
+            await session.commit()
+            return share_dict(row) | {"code": code}
+        if payload.duration:
+            await update_share_duration(session, row, payload.duration)
         await session.commit()
         return share_dict(row)
 
@@ -1588,6 +1883,7 @@ async def delete_share(token: str):
         row = await session.get(Share, token)
         if not row:
             raise HTTPException(404, "分享不存在")
+        session.add(OperationLog(level="INFO", module="share", action="share_deleted", message=f"删除分享 {token}"))
         await session.delete(row)
         await session.commit()
         return {"ok": True}
@@ -1622,8 +1918,8 @@ async def save_system(payload: SystemInput):
 @app.get("/api/admin/site")
 async def get_site():
     async with StateSession() as session:
-        row = await session.get(SiteSettings, 1)
-        return {"site_name": row.site_name, "home_title": row.home_title, "description": row.description}
+        row = await session.get(SiteSettings, 1) or SiteSettings(id=1)
+        return site_settings_dict(row)
 
 
 @app.put("/api/admin/site")
@@ -1633,4 +1929,45 @@ async def save_site(payload: SiteInput):
         row.site_name, row.home_title, row.description = payload.site_name, payload.home_title, payload.description
         session.add(row)
         await session.commit()
-        return {"ok": True}
+        return {"ok": True, **site_settings_dict(row)}
+
+
+@app.post("/api/admin/site/share-image")
+async def upload_share_page_image(file: UploadFile = File(...)):
+    data = await file.read(SHARE_IMAGE_MAX_BYTES + 1)
+    await file.close()
+    if not data:
+        raise HTTPException(400, {"code": "SHARE_IMAGE_EMPTY", "message": "请选择图片文件"})
+    if len(data) > SHARE_IMAGE_MAX_BYTES:
+        raise HTTPException(413, {"code": "SHARE_IMAGE_TOO_LARGE", "message": "图片不能超过 8MB"})
+    try:
+        new_name = save_share_image(data)
+    except ValueError as exc:
+        raise HTTPException(400, {"code": "SHARE_IMAGE_INVALID", "message": str(exc)}) from exc
+    old_name = ""
+    try:
+        async with StateSession() as session:
+            row = await session.get(SiteSettings, 1) or SiteSettings(id=1)
+            old_name = row.share_image_name or ""
+            row.share_image_name = new_name
+            session.add(row)
+            await session.commit()
+    except Exception:
+        remove_share_image(new_name)
+        raise
+    if old_name and old_name != new_name:
+        remove_share_image(old_name)
+    return {"ok": True, "share_image_url": "/api/public/share-page/image"}
+
+
+@app.delete("/api/admin/site/share-image")
+async def delete_share_page_image():
+    async with StateSession() as session:
+        row = await session.get(SiteSettings, 1)
+        old_name = row.share_image_name if row else ""
+        if row:
+            row.share_image_name = ""
+            await session.commit()
+    if old_name:
+        remove_share_image(old_name)
+    return {"ok": True}

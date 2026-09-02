@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
     return [
       { source: "/api/:path*", destination: `${api}/api/:path*` },
       { source: "/d/:path*", destination: `${api}/d/:path*` },
+      { source: "/s/:token/verify", destination: `${api}/api/public/shares/:token/verify` },
+      { source: "/s/:token/content", destination: `${api}/api/public/shares/:token/content` },
+      { source: "/s/:token/d", destination: `${api}/s/:token/d` },
+      { source: "/s/:token/d/:path*", destination: `${api}/s/:token/d/:path*` },
       { source: "/p/:path*", destination: `${api}/p/:path*` },
       { source: "/office-files/:path*", destination: `${api}/office-files/:path*` },
     ];

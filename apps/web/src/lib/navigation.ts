@@ -18,6 +18,10 @@ export function safeNext(value: string | null | undefined, fallback = "/"): stri
 
 const publicAuthPages = new Set(["/login", "/register"]);
 
+function isPublicSharePath(pathname: string): boolean {
+  return pathname === "/s" || pathname.startsWith("/s/");
+}
+
 export function authRedirectTarget(
   pathname: string,
   search: string,
@@ -28,6 +32,7 @@ export function authRedirectTarget(
   if (publicAuthPages.has(pathname)) {
     return authenticated ? safeNext(next) : null;
   }
+  if (isPublicSharePath(pathname)) return null;
   if (authenticated) return null;
   const query = new URLSearchParams({ next: `${pathname}${search}` });
   if (code === "USER_DISABLED") query.set("reason", "disabled");
