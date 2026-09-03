@@ -1091,6 +1091,24 @@ async def rolling_status() -> dict[str, Any]:
         latest_window_run = await session.scalar(
             select(SyncRun).where(SyncRun.sync_type == "rolling_window").order_by(SyncRun.id.desc()).limit(1)
         )
+        completed = int(
+            await session.scalar(
+                select(func.count()).select_from(SyncCycleItem).where(
+                    SyncCycleItem.cycle_id == cycle.id,
+                    SyncCycleItem.status == "success",
+                )
+            )
+            or 0
+        )
+        failed = int(
+            await session.scalar(
+                select(func.count()).select_from(SyncCycleItem).where(
+                    SyncCycleItem.cycle_id == cycle.id,
+                    SyncCycleItem.status == "failed",
+                )
+            )
+            or 0
+        )
         target = calculate_window_target(remaining, cycle.windows_completed, cycle.windows_total)
         return {
             "engine_version": values.get("sync_engine_version", "1.0"),
@@ -1106,8 +1124,8 @@ async def rolling_status() -> dict[str, Any]:
                 "windows_completed": cycle.windows_completed,
                 "next_window_at": next_window_due_at(_utc(cycle.anchor_at), cycle.windows_completed),
                 "planned_folder_count": cycle.planned_folder_count,
-                "completed_folder_count": cycle.completed_folder_count,
-                "failed_folder_count": cycle.failed_folder_count,
+                "completed_folder_count": completed,
+                "failed_folder_count": failed,
                 "remaining_folder_count": remaining,
                 "next_window_target": target,
                 "alist_list_requests": cycle.alist_list_requests,
