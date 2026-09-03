@@ -141,6 +141,9 @@ class PreviewCapability(BaseModel):
     preview_type: str
     can_preview: bool
     preview_mode: str
+    browser_native: bool = False
+    mime_type: str = ""
+    extension: str = ""
     reason: str = ""
     gateway_url: str = ""
     can_download: bool

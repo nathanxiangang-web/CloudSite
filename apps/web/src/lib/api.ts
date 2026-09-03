@@ -15,6 +15,9 @@ export type PreviewCapability = {
   preview_type: "image" | "video" | "pdf" | "office" | "text" | "markdown" | "none";
   can_preview: boolean;
   preview_mode: "direct" | "office" | "text" | "none";
+  browser_native: boolean;
+  mime_type: string;
+  extension: string;
   reason: string;
   gateway_url: string;
   can_download: boolean;

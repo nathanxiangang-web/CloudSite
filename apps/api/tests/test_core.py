@@ -516,6 +516,20 @@ def test_preview_capability_issues_a_resource_bound_gateway_ticket(monkeypatch):
     assert not preview.validate_preview_ticket("r-other", ticket, now=1_800_000_000)
 
 
+def test_preview_capability_exposes_browser_native_contract_for_video():
+    video = SimpleNamespace(id="r1", name="movie.mp4", extension="mp4", mime_type="video/mp4", status="active")
+    capability = preview_capability(video)
+    assert capability["preview_type"] == "video"
+    assert capability["browser_native"] is True
+    assert capability["mime_type"] == "video/mp4"
+    assert capability["extension"] == "mp4"
+
+    text = SimpleNamespace(id="r2", name="readme.txt", extension="txt", mime_type="text/plain", status="active")
+    text_cap = preview_capability(text)
+    assert text_cap["preview_type"] == "text"
+    assert text_cap["browser_native"] is False
+
+
 def test_preview_capability_detects_office_formats():
     def resource(name, extension):
         return SimpleNamespace(id="r1", name=name, extension=extension, mime_type="", status="active")

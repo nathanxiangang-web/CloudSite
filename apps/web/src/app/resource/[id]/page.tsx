@@ -13,6 +13,7 @@ import { ResourceCard } from "@/components/ResourceCard";
 import { ShareDialog } from "@/components/ShareDialog";
 import OfficePreview from "@/components/OfficePreview";
 import PdfPreview from "@/components/PdfPreview";
+import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { api, formatBytes, PreviewCapability, Resource } from "@/lib/api";
 
 type ResourceDetail = Resource & { breadcrumbs: Array<{ id: string; name: string }>; related: Resource[]; capabilities: PreviewCapability; previous: Resource | null; next: Resource | null };
@@ -46,7 +47,7 @@ function PreviewRenderer({ item }: { item: ResourceDetail }) {
   }
   if (failed) return <article className="preview-panel"><Fallback item={item} message="当前文件暂时无法在线预览，可重新尝试或直接下载。" retry={retryPreview} /></article>;
   if (item.capabilities.preview_type === "image") return <article className="preview-panel"><img src={previewUrl} alt={item.name} onError={() => setFailed(true)} /></article>;
-  if (item.capabilities.preview_type === "video") return <article className="preview-panel"><video controls preload="metadata" src={previewUrl} onError={() => setFailed(true)} /></article>;
+  if (item.capabilities.preview_type === "video") return <article className="preview-panel video-preview-panel"><VideoPlayer resourceId={item.id} name={item.name} gatewayUrl={item.capabilities.gateway_url || `/p/${item.id}`} mimeType={item.capabilities.mime_type} extension={item.capabilities.extension} /></article>;
   if (item.capabilities.preview_type === "pdf") return <article className="preview-panel pdf-preview-panel"><PdfPreview key={retry ? "r" : "i"} id={item.id} /><div className="pdf-hint">PDF 已缓存到服务器（约 1 小时自动清理），由浏览器原生阅读器显示。</div></article>;
   if (item.capabilities.preview_type === "office") return <article className="preview-panel office-preview-panel"><OfficePreview key={retry ? "r" : "i"} id={item.id} extension={item.extension} /><div className="pdf-hint">文档已缓存到服务器（约 1 小时自动清理），在浏览器端直接渲染。</div></article>;
   return <article className="preview-panel"><Fallback item={item} message="当前格式不支持在线预览" /></article>;
