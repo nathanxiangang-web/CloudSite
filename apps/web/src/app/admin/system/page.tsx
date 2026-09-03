@@ -1,14 +1,15 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CheckCircle2, ChevronRight, Database, Eye, EyeOff, Folder, FolderPlus, FolderSearch, Link2, Pencil, Power, RefreshCw, Save, Server, Trash2, X } from "lucide-react";
+import { Boxes, Check, CheckCircle2, ChevronRight, Database, Eye, EyeOff, Folder, FolderPlus, FolderSearch, Link2, Pencil, Power, RefreshCw, Save, Server, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api } from "@/lib/api";
 
 type AListSettings = { base_url: string; username: string; enabled: boolean; remember_credentials: boolean; connection_status: string; last_test_status: string; last_test_message: string; last_test_at: string | null; has_password: boolean };
 type Mapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean; sort_order: number };
-type SystemSettings = { automatic_sync: boolean; sync_interval_minutes: number; sync_on_startup: boolean; version: string; database: string; timezone: string; resources: number; folders: number; operation_logs: number };
+type SystemSettings = { automatic_sync: boolean; sync_interval_minutes: number; sync_on_startup: boolean; version: string; database: string; timezone: string; resources: number; folders: number; operation_logs: number; provider: ProviderInfo };
+type ProviderInfo = { provider_type: string; adapter_version: string; strategy: string; fallback_reason: string; capabilities: Record<string, string> };
 type DirectoryItem = { name: string; path: string; modified: string | null };
 type DirectoryResponse = { path: string; parent_path: string; items: DirectoryItem[] };
 
@@ -27,6 +28,18 @@ function inferContentType(name: string) {
 
 function pathName(path: string) {
   return path.split("/").filter(Boolean).at(-1) || "根目录";
+}
+
+function capLabel(value: string | undefined) {
+  if (value === "yes") return "支持";
+  if (value === "no") return "不支持";
+  return "未知";
+}
+
+function strategyLabel(value: string | undefined) {
+  if (value === "delta") return "增量同步";
+  if (value === "webhook_delta") return "Webhook + 增量";
+  return "滚动全量校验";
 }
 
 export default function SystemPage() {
@@ -116,6 +129,7 @@ export default function SystemPage() {
     </section>
 
     <section className="panel"><h2><RefreshCw />自动同步</h2><div className="setting-row"><span><strong>自动同步</strong><small>按间隔低速同步 AList 变化</small></span><input className="toggle" type="checkbox" checked={systemForm.automatic_sync} onChange={(e) => setSystemForm({ ...systemForm, automatic_sync: e.target.checked })} /></div><label className="select-label">同步间隔<select value={systemForm.sync_interval_minutes} onChange={(e) => setSystemForm({ ...systemForm, sync_interval_minutes: Number(e.target.value) })}><option value={180}>3 小时</option><option value={360}>6 小时</option><option value={720}>12 小时</option><option value={1440}>24 小时</option></select></label><div className="setting-row"><span><strong>启动到期检查</strong><small>仅当距离上次成功同步已超过设定周期，才在启动后延迟同步</small></span><input className="toggle" type="checkbox" checked={systemForm.sync_on_startup} onChange={(e) => setSystemForm({ ...systemForm, sync_on_startup: e.target.checked })} /></div><button className="primary" onClick={() => saveSystem.mutate()}><Save />保存同步设置</button></section>
+    <section className="panel"><h2><Boxes />Provider 能力</h2><dl><div><dt>Provider</dt><dd>{system.data?.provider?.provider_type === "generic_alist" ? "Generic AList" : system.data?.provider?.provider_type ?? "Generic AList"}</dd></div><div><dt>同步策略</dt><dd>{strategyLabel(system.data?.provider?.strategy)}</dd></div><div><dt>Delta</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_delta)}</dd></div><div><dt>Change Cursor</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_change_cursor)}</dd></div><div><dt>Webhook</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_webhook)}</dd></div><div><dt>Stable Object ID</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_stable_object_id)}</dd></div><div><dt>Range</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_range)}</dd></div><div><dt>Direct Preview</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_direct_preview)}</dd></div>{system.data?.provider?.fallback_reason && <div><dt>回退原因</dt><dd>{system.data.provider.fallback_reason}</dd></div>}</dl></section>
     <section className="panel"><h2><Server />服务信息</h2><dl><div><dt>API 版本</dt><dd>v{system.data?.version ?? "0.3.4"}</dd></div><div><dt>部署模式</dt><dd>Docker Compose</dd></div><div><dt>健康状态</dt><dd className="ok-text">健康</dd></div><div><dt>时区</dt><dd>{system.data?.timezone ?? "Asia/Shanghai"}</dd></div></dl></section>
   </div>
 

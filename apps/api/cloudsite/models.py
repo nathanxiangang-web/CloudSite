@@ -22,6 +22,10 @@ class AListConnection(StateBase):
     last_test_status: Mapped[str] = mapped_column(String(40), default="untested")
     last_test_message: Mapped[str] = mapped_column(Text, default="")
     last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_type: Mapped[str] = mapped_column(String(40), default="generic_alist")
+    provider_capability_version: Mapped[int] = mapped_column(Integer, default=1)
+    provider_capabilities_json: Mapped[str] = mapped_column(Text, default="")
+    capabilities_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -396,3 +400,20 @@ class FolderScanState(IndexBase):
     last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ProviderSyncState(IndexBase):
+    __tablename__ = "provider_sync_state"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    connection_id: Mapped[int] = mapped_column(Integer, index=True)
+    root_mapping_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    strategy: Mapped[str] = mapped_column(String(30), default="rolling")
+    cursor: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cursor_version: Mapped[int] = mapped_column(Integer, default=0)
+    provider_generation: Mapped[str] = mapped_column(String(100), default="")
+    last_delta_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_full_verify_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="idle")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (UniqueConstraint("connection_id", "root_mapping_id"),)

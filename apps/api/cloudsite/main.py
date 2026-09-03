@@ -64,6 +64,7 @@ from .models import (
 )
 from .office import OfficePreviewError, ensure_preview_cached, office_cache_filename, office_content_type
 from .preview import PreviewError, load_text_preview, preview_capability, resolve_preview_url, validate_preview_ticket
+from .providers.service import provider_info
 from .request_context import request_is_https
 from .schemas import (
     AListInput,
@@ -2041,7 +2042,8 @@ async def get_system():
             "folders": int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0),
             "operation_logs": int(await state.scalar(select(func.count()).select_from(OperationLog)) or 0),
         })
-        return values
+    values["provider"] = await provider_info()
+    return values
 
 
 @app.put("/api/admin/system")

@@ -146,10 +146,19 @@ async def init_databases() -> None:
                 "ALTER TABLE download_events ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'public'"
             )
         alist_columns = await connection.exec_driver_sql("PRAGMA table_info(alist_connections)")
-        if "base_path" not in {row[1] for row in alist_columns.fetchall()}:
+        alist_column_names = {row[1] for row in alist_columns.fetchall()}
+        if "base_path" not in alist_column_names:
             await connection.exec_driver_sql(
                 "ALTER TABLE alist_connections ADD COLUMN base_path VARCHAR(1000) NOT NULL DEFAULT '/'"
             )
+        for column, definition in (
+            ("provider_type", "VARCHAR(40) NOT NULL DEFAULT 'generic_alist'"),
+            ("provider_capability_version", "INTEGER NOT NULL DEFAULT 1"),
+            ("provider_capabilities_json", "TEXT NOT NULL DEFAULT ''"),
+            ("capabilities_checked_at", "DATETIME"),
+        ):
+            if column not in alist_column_names:
+                await connection.exec_driver_sql(f"ALTER TABLE alist_connections ADD COLUMN {column} {definition}")
         collection_columns = await connection.exec_driver_sql("PRAGMA table_info(collections)")
         if "status" not in {row[1] for row in collection_columns.fetchall()}:
             await connection.exec_driver_sql(
