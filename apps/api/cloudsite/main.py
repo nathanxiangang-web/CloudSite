@@ -1643,6 +1643,17 @@ async def admin_rolling_sync_status():
     return await rolling_status()
 
 
+@app.post("/api/admin/sync/auto-toggle")
+async def toggle_auto_sync():
+    async with StateSession() as session:
+        row = await session.get(SystemSetting, "automatic_sync") or SystemSetting(key="automatic_sync")
+        current = row.value == "true"
+        row.value = "false" if current else "true"
+        session.add(row)
+        await session.commit()
+        return {"ok": True, "automatic_sync": not current}
+
+
 @app.post("/api/admin/sync/window/run", status_code=202)
 async def admin_run_rolling_window():
     global manual_sync_task

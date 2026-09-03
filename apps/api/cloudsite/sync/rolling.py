@@ -188,6 +188,11 @@ async def recover_rolling_state() -> None:
             .where(SyncCycleItem.status == "running")
             .values(status="pending", error_message="服务重启后恢复为待处理")
         )
+        await session.execute(
+            update(SyncCycle)
+            .where(SyncCycle.status == "running")
+            .values(status="partial")
+        )
         await session.commit()
 
 
