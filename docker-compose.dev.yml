@@ -1,3 +1,17 @@
+# 本地测试环境（源码构建）
+#
+# 用法：
+#   cp .env.example .env   # 已为本地测试准备好 .env
+#   docker compose -f docker-compose.dev.yml up -d --build
+#
+# 说明：
+# - 从 ./apps/api 与 ./apps/web 本地源码构建镜像，反映当前未提交的改动。
+# - Web 监听宿主机 3000，API 监听宿主机 8000（便于直接调试后端）。
+# - 运行数据保存在宿主机 ./data（与生产 compose 一致）。
+# - 仅用于本地开发测试，不要用于生产部署。
+
+name: cloudsite-dev
+
 services:
   api:
     build:
@@ -28,9 +42,16 @@ services:
     environment:
       API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-CloudSite}
+      HOSTNAME: 0.0.0.0
     depends_on:
       api:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${CLOUDSITE_WEB_PORT:-3000}:3000"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
