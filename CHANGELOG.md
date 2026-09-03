@@ -2,6 +2,26 @@
 
 本项目按里程碑（M0.1 → M10）开发，版本 `0.1.0` 为 CloudSite V0.1 首个完整版本。
 
+## [0.4.1] - 2026-09-03
+
+### Provider Capability 抽象
+
+- 新增 `providers/` 抽象层：`ProviderCapabilities` 三态能力（yes/no/unknown）、`StorageProvider` 接口、`GenericAListProvider`、`ProviderRegistry` 与 `SyncStrategyResolver`。
+- Generic AList 默认声明 delta 相关能力为 NO、Range 为 UNKNOWN，因此同步策略保持 Rolling 全量校验；未知 Provider 一律回退 generic_alist，绝不自动启用 Delta。
+- 新增 Delta 契约：`ProviderChange`、`SyncStrategy`、`DeltaSyncStrategy`（Cursor 事务模型：只有本批安全 Commit 后才推进 cursor，失败重放，cursor 失效回退 Full Bootstrap）、`FakeDeltaProvider`。
+- 新增 `provider_sync_state` 表（index.db）与 AListConnection 的 `provider_type` / `provider_capabilities_json` 等字段（state.db），启动迁移自动补齐。
+- 后台「系统」新增 Provider 能力卡片：Provider / 同步策略 / Delta / Change Cursor / Webhook / Stable Object ID / Range / Direct Preview 及回退原因。
+
+## [0.4.0] - 2026-09-03
+
+### 浏览器原生视频体验
+
+- 新增 `VideoPlayer` 组件（`components/video/`）：倍速、画中画、全屏、静音、键盘快捷键（Space/K、←→±5s、M、F）、时长/分辨率展示、重新加载与下载降级。
+- 视频继续走浏览器原生解码，CloudSite 不转码、不代理文件主体、不预生成 HLS。
+- MediaError 按 network/decode/source_not_supported 分类给出可读提示，失败时保留下载入口与兼容性说明。
+- 倍速/音量/静音偏好持久化到 localStorage；列表页不预加载媒体，仅详情页创建播放器。
+- 后端 Preview DTO 增强：新增 `browser_native`、`mime_type`、`extension` 字段。
+
 ## [0.3.4] - 2026-09-03
 
 ### 分享页 UI 优化

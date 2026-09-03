@@ -1,1 +1,1 @@
-"""Share domain package for CloudSite 0.3.4."""
+"""Share domain package for CloudSite 0.4.1."""
