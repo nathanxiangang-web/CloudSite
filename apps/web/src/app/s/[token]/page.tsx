@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clock3, Download, KeyRound, Link2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { ResourceIcon } from "@/components/ResourceIcon";
@@ -122,14 +122,13 @@ function ShareState({ title, message, siteName, imageUrl }: { title: string; mes
 }
 
 function ShareFrame({ children, siteName, imageUrl }: { children: ReactNode; siteName: string; imageUrl: string }) {
-  return <div className="share-verify-page">
-    <aside className="share-access-pane">
-      <header className="share-verify-top"><Brand name={siteName} /></header>
-      <div className="share-access-body">{children}</div>
-      <footer>© 2026 {siteName} · 安全资源分享</footer>
+  const background = imageUrl ? ({ "--share-bg": `url("${imageUrl}")` } as CSSProperties) : undefined;
+  return <div className="share-page">
+    <div className="share-background" style={background} aria-hidden="true" />
+    <aside className="share-panel">
+      <div className="share-logo"><Brand name={siteName} /></div>
+      <main className="share-content">{children}</main>
+      <footer className="share-footer">© 2026 {siteName} · 安全资源分享</footer>
     </aside>
-    <section className={`share-visual-pane${imageUrl ? " has-image" : ""}`} aria-label="分享页图片">
-      {imageUrl && <img src={imageUrl} alt="分享页展示图" />}
-    </section>
   </div>;
 }

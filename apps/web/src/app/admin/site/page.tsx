@@ -69,9 +69,9 @@ export default function SitePage() {
 
     <section className="panel share-image-settings">
       <h2>分享页图片</h2>
-      <p className="panel-intro">用于 PC 分享页右侧区域；手机端不会显示。支持 PNG、JPEG、WebP，最大 8MB。</p>
+      <p className="panel-intro">用于 PC 分享页整页背景；手机端不会加载。推荐比例 3:2，推荐尺寸 1800×1200 或以上，支持 PNG、JPEG、WebP，最大 8MB。图片将等比铺满整页、允许裁切、不会拉伸。</p>
       <div className={`share-image-preview${site.data?.share_image_url ? " has-image" : ""}`}>
-        {site.data?.share_image_url ? <img src={site.data.share_image_url} alt="当前分享页图片" /> : <span>右侧区域当前留空</span>}
+        {site.data?.share_image_url ? <img src={site.data.share_image_url} alt="当前分享页图片" /> : <span>分享页背景当前留空</span>}
       </div>
       <label className="site-file-input">选择图片<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setImage(event.target.files?.[0] || null)} /></label>
       <div className="form-actions">
