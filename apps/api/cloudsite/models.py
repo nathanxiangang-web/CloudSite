@@ -312,6 +312,7 @@ class SyncRun(IndexBase):
     roots_total: Mapped[int] = mapped_column(Integer, default=0)
     roots_completed: Mapped[int] = mapped_column(Integer, default=0)
     roots_failed: Mapped[int] = mapped_column(Integer, default=0)
+    list_requests: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class SyncRootResult(IndexBase):

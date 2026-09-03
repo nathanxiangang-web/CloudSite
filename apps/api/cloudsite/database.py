@@ -260,6 +260,7 @@ async def init_databases() -> None:
             ("sync_runs", "roots_total", "INTEGER NOT NULL DEFAULT 0"),
             ("sync_runs", "roots_completed", "INTEGER NOT NULL DEFAULT 0"),
             ("sync_runs", "roots_failed", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "list_requests", "INTEGER NOT NULL DEFAULT 0"),
         ):
             columns = await connection.exec_driver_sql(f"PRAGMA table_info({table})")
             if column not in {row[1] for row in columns.fetchall()}:

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import indexer, search
 from cloudsite.alist import AListError
+from cloudsite.config import settings
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import (
     ContentRootMapping,
@@ -463,6 +464,77 @@ async def test_failed_item_does_not_expire_the_remaining_window_queue(monkeypatc
         assert run.finished_at is not None
         assert failed_item.attempts == 2
         assert cycle.alist_list_requests == 3
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+async def test_failed_item_with_exhausted_attempts_is_not_retried(monkeypatch):
+    state_engine, index_engine, state_factory, index_factory = await _factories(monkeypatch)
+    anchor = datetime(2026, 8, 30, tzinfo=timezone.utc)
+    async with state_factory() as session:
+        session.add_all(
+            [
+                SystemSetting(key="sync_engine_version", value="1.1"),
+                SystemSetting(key="instance_initialized_at", value="2026-08-28T00:00:00+00:00"),
+                SystemSetting(key="initial_index_completed_at", value="2026-08-28T01:00:00+00:00"),
+            ]
+        )
+        await session.commit()
+    async with index_factory() as session:
+        folder = Folder(
+            id="f-giveup",
+            name="目录",
+            path="/目录",
+            parent_id=None,
+            content_type="software",
+            root_mapping_id=1,
+            status="active",
+        )
+        cycle = SyncCycle(
+            status="planned",
+            cycle_type="normal",
+            anchor_at=anchor,
+            planned_folder_count=1,
+            windows_total=1,
+        )
+        session.add_all([folder, cycle])
+        await session.flush()
+        session.add(
+            SyncCycleItem(
+                cycle_id=cycle.id,
+                folder_id="f-giveup",
+                folder_path="/目录",
+                status="failed",
+                attempts=settings.sync_max_item_attempts,
+            )
+        )
+        await session.commit()
+
+    async def fake_load():
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return None
+
+        return FakeClient(), []
+
+    async def circuit_closed():
+        return {"open": False, "until": None, "reason": "", "failures": 0}
+
+    monkeypatch.setattr(rolling, "load_client_and_roots", fake_load)
+    monkeypatch.setattr(rolling, "sync_circuit_status", circuit_closed)
+
+    result = await rolling.run_due_rolling_window(manual=True, now=anchor + timedelta(hours=6))
+
+    assert result["status"] == "cycle_complete"
+    async with index_factory() as session:
+        item = await session.scalar(select(SyncCycleItem).where(SyncCycleItem.folder_id == "f-giveup"))
+        cycle_row = await session.scalar(select(SyncCycle))
+        assert item.status == "failed"
+        assert item.attempts == settings.sync_max_item_attempts
+        assert cycle_row.status == "success"
     await state_engine.dispose()
     await index_engine.dispose()
 

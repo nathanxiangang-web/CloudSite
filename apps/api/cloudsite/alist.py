@@ -196,7 +196,9 @@ class AListClient:
         )
         data = payload.get("data") or {}
         raw_content = data.get("content")
-        if strict and not isinstance(raw_content, list):
+        # AList 对空目录返回 data.content = null，按空列表处理；只有非空且
+        # 非列表的异常响应才视为缺失完整的 content 列表。
+        if strict and raw_content is not None and not isinstance(raw_content, list):
             raise AListError("AList 目录响应缺少完整 content 列表", "AL-005", status_code=502)
         content = raw_content or []
         if not isinstance(content, list):

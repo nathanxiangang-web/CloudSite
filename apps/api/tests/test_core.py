@@ -148,6 +148,28 @@ async def test_alist_reauthenticates_once_when_token_expires(monkeypatch):
     assert calls == {"login": 1, "request": 2}
 
 
+async def test_alist_empty_directory_content_null_is_empty_list(monkeypatch):
+    client = AListClient("http://alist.test", "admin", "password", token="token")
+
+    async def fake_request(self, method: str, path: str, **kwargs):
+        return {"code": 200, "data": {"content": None}}
+
+    monkeypatch.setattr(AListClient, "_request", fake_request)
+    assert await client.list_path("/", strict=True) == []
+
+
+async def test_alist_strict_still_rejects_non_list_content(monkeypatch):
+    client = AListClient("http://alist.test", "admin", "password", token="token")
+
+    async def fake_request(self, method: str, path: str, **kwargs):
+        return {"code": 200, "data": {"content": "not-a-list"}}
+
+    monkeypatch.setattr(AListClient, "_request", fake_request)
+    with pytest.raises(AListError) as raised:
+        await client.list_path("/", strict=True)
+    assert raised.value.code == "AL-005"
+
+
 async def test_alist_normalized_file_info_and_download_url(monkeypatch):
     client = AListClient("http://alist.test", "admin", "password")
 

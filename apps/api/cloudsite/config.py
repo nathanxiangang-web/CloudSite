@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     sync_missing_confirm_runs: int = 2
     sync_mass_change_min_items: int = 100
     sync_mass_change_ratio: float = 0.10
+    sync_max_item_attempts: int = 6
 
     model_config = SettingsConfigDict(env_prefix="CLOUDSITE_", env_file=".env", extra="ignore")
 

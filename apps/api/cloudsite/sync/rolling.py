@@ -825,6 +825,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
                     select(func.count()).select_from(SyncCycleItem).where(
                         SyncCycleItem.cycle_id == cycle.id,
                         SyncCycleItem.status.in_(PENDING_ITEM_STATUSES),
+                        SyncCycleItem.attempts < settings.sync_max_item_attempts,
                     )
                 )
                 or 0
@@ -834,6 +835,18 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
                 cycle.finished_at = now
                 await session.commit()
                 return {"status": "cycle_complete", "cycle_id": cycle.id}
+            # 重新校准计划总数：删除内容根/目录后，以真实队列数量为准，
+            # 避免 planned_folder_count 停留在旧值。
+            actual_planned = int(
+                await session.scalar(
+                    select(func.count()).select_from(SyncCycleItem).where(
+                        SyncCycleItem.cycle_id == cycle.id,
+                    )
+                )
+                or 0
+            )
+            if cycle.planned_folder_count != actual_planned:
+                cycle.planned_folder_count = actual_planned
             target = calculate_window_target(remaining, cycle.windows_completed, cycle.windows_total)
             status_order = case(
                 (SyncCycleItem.status == "carry_over", 0),
@@ -847,6 +860,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
                         .where(
                             SyncCycleItem.cycle_id == cycle.id,
                             SyncCycleItem.status.in_(PENDING_ITEM_STATUSES),
+                            SyncCycleItem.attempts < settings.sync_max_item_attempts,
                         )
                         .order_by(status_order, SyncCycleItem.priority.desc(), SyncCycleItem.id)
                         .limit(target)
@@ -955,6 +969,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
                     select(func.count()).select_from(SyncCycleItem).where(
                         SyncCycleItem.cycle_id == cycle.id,
                         SyncCycleItem.status.in_(PENDING_ITEM_STATUSES),
+                        SyncCycleItem.attempts < settings.sync_max_item_attempts,
                     )
                 )
                 or 0
@@ -988,6 +1003,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
             run.removed_count = removed
             run.roots_completed = success
             run.roots_failed = failed
+            run.list_requests = governor.request_count
             run.finished_at = datetime.now(timezone.utc)
             run.duration_ms = int((time.monotonic() - governor.started_at) * 1000)
             run.error_message = "访问限制已打开熔断" if circuit_opened else ""
@@ -1067,9 +1083,13 @@ async def rolling_status() -> dict[str, Any]:
                 select(func.count()).select_from(SyncCycleItem).where(
                     SyncCycleItem.cycle_id == cycle.id,
                     SyncCycleItem.status.in_(PENDING_ITEM_STATUSES),
+                    SyncCycleItem.attempts < settings.sync_max_item_attempts,
                 )
             )
             or 0
+        )
+        latest_window_run = await session.scalar(
+            select(SyncRun).where(SyncRun.sync_type == "rolling_window").order_by(SyncRun.id.desc()).limit(1)
         )
         target = calculate_window_target(remaining, cycle.windows_completed, cycle.windows_total)
         return {
@@ -1091,6 +1111,7 @@ async def rolling_status() -> dict[str, Any]:
                 "remaining_folder_count": remaining,
                 "next_window_target": target,
                 "alist_list_requests": cycle.alist_list_requests,
+                "window_list_requests": latest_window_run.list_requests if latest_window_run else 0,
                 "changed_scope_count": cycle.changed_scope_count,
                 "unchanged_scope_count": cycle.unchanged_scope_count,
             },
