@@ -36,14 +36,14 @@ def env_example_tag():
 
 
 def compose_default_tag(fname):
-    m = re.search(r"CLOUDSITE_IMAGE_TAG:-v([0-9]+\.[0-9]+\.[0-9]+)", read(fname))
+    m = re.search(r"CLOUDSITE_IMAGE_TAG:-v([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)", read(fname))
     if not m:
         raise SystemExit("无法提取 " + fname + " 默认 CLOUDSITE_IMAGE_TAG")
     return m.group(1)
 
 
 def readme_offline_version():
-    m = re.search(r"cloudsite-api-v([0-9]+\.[0-9]+\.[0-9]+)-linux", read("README.md"))
+    m = re.search(r"cloudsite-api-v([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)-linux", read("README.md"))
     return m.group(1) if m else None
 
 

@@ -67,11 +67,11 @@ docker compose ps
 
 没有外网、不能访问 GHCR 的服务器，请从 GitHub Releases 下载当前版本的离线附件，不要执行 `docker compose pull`：
 
-- `cloudsite-api-v0.5.1-linux-amd64.tar.gz`
-- `cloudsite-api-v0.5.1-linux-arm64.tar.gz`
-- `cloudsite-web-v0.5.1-linux-amd64.tar.gz`
-- `cloudsite-web-v0.5.1-linux-arm64.tar.gz`
-- `cloudsite-v0.5.1-offline-deploy.zip`
+- `cloudsite-api-v1.0.0-beta.1-linux-amd64.tar.gz`
+- `cloudsite-api-v1.0.0-beta.1-linux-arm64.tar.gz`
+- `cloudsite-web-v1.0.0-beta.1-linux-amd64.tar.gz`
+- `cloudsite-web-v1.0.0-beta.1-linux-arm64.tar.gz`
+- `cloudsite-v1.0.0-beta.1-offline-deploy.zip`
 - `SHA256SUMS.txt`
 
 在联网电脑下载并校验附件，复制到离线服务器后导入两个镜像，再使用离线 Compose 覆盖文件启动：
@@ -79,9 +79,9 @@ docker compose ps
 ```bash
 sha256sum -c SHA256SUMS.txt
 arch=arm64 # x86_64 服务器改为 amd64
-gzip -dc "cloudsite-api-v0.5.1-linux-${arch}.tar.gz" | docker load
-gzip -dc "cloudsite-web-v0.5.1-linux-${arch}.tar.gz" | docker load
-unzip cloudsite-v0.5.1-offline-deploy.zip -d CloudSite
+gzip -dc "cloudsite-api-v1.0.0-beta.1-linux-${arch}.tar.gz" | docker load
+gzip -dc "cloudsite-web-v1.0.0-beta.1-linux-${arch}.tar.gz" | docker load
+unzip cloudsite-v1.0.0-beta.1-offline-deploy.zip -d CloudSite
 cd CloudSite
 cp .env.example .env
 # 编辑 .env，至少替换 CLOUDSITE_SECRET_KEY
