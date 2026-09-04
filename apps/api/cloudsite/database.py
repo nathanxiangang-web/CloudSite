@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from .config import settings
-from .migrations import CURRENT_SCHEMA_VERSION, set_index_schema_version, set_state_schema_version
+from .migrations import CURRENT_SCHEMA_VERSION, get_state_schema_version, set_index_schema_version, set_state_schema_version
 
 
 class StateBase(DeclarativeBase):
@@ -131,8 +131,63 @@ for engine in (state_engine, index_engine):
         cursor.close()
 
 
+async def _create_pre_migration_backup() -> bool:
+    """如果 state.db 的 schema_version 低于当前版本，创建迁移前快照。
+
+    快照保存到 data_dir / .codex-backups / pre-migration / {timestamp} / state.db。
+    返回 True 表示创建了快照，False 表示无需快照（已是最新或新库）。
+    """
+    from datetime import datetime, timezone
+
+    state_path = settings.data_dir.resolve() / "state.db"
+    if not state_path.exists():
+        return False
+
+    try:
+        conn = sqlite3.connect(f"{state_path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            tables = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                )
+            }
+            if "system_settings" not in tables:
+                return False
+            row = conn.execute(
+                "SELECT value FROM system_settings WHERE key='schema_version'"
+            ).fetchone()
+            current_version = int(row[0]) if row else 0
+        finally:
+            conn.close()
+    except (sqlite3.DatabaseError, ValueError):
+        return False
+
+    if current_version >= CURRENT_SCHEMA_VERSION:
+        return False
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup_dir = settings.data_dir / ".codex-backups" / "pre-migration" / stamp
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    # SQLite online backup
+    src = sqlite3.connect(str(state_path))
+    try:
+        dst = sqlite3.connect(str(backup_dir / "state.db"))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+    return True
+
+
 async def init_databases() -> None:
     from . import models  # noqa: F401
+
+    await _create_pre_migration_backup()
 
     async with state_engine.begin() as connection:
         await connection.run_sync(StateBase.metadata.create_all)

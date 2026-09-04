@@ -3,6 +3,10 @@ import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+
+async def _true_coro():
+    return True
+
 from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -227,6 +231,7 @@ async def test_rate_limit_runs_before_alist(monkeypatch):
     monkeypatch.setattr(main, "check_download_rate", denied)
     monkeypatch.setattr(main, "_download_event", no_event)
     monkeypatch.setattr(main, "resolve_download_entry", must_not_call)
+    monkeypatch.setattr(main, "resource_in_publication_scope", lambda *_a: _true_coro())
     response = await main.download("r_1234567890", request_from("198.51.100.20"))
     assert response.status_code == 429
     assert response.headers["retry-after"] == "43"
@@ -260,6 +265,7 @@ async def test_download_route_first_five_302_sixth_429(tmp_path, monkeypatch):
 
     monkeypatch.setattr(main, "_download_event", no_event)
     monkeypatch.setattr(main, "resolve_download_entry", resolved)
+    monkeypatch.setattr(main, "resource_in_publication_scope", lambda *_a: _true_coro())
     request = request_from("198.51.100.20")
     responses = [await main.download("r_1234567890", request) for _ in range(6)]
     assert [response.status_code for response in responses] == [302, 302, 302, 302, 302, 429]

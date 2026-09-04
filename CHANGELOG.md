@@ -2,6 +2,47 @@
 
 本项目按里程碑（M0.1 → M10）开发，版本 `0.1.0` 为 CloudSite V0.1 首个完整版本。
 
+## [1.0.0-beta.1] - 2026-09-04
+
+### 1.0 稳定发布候选
+
+CloudSite 1.0 不再堆大功能；冻结架构、冻结公开契约、完成升级/恢复/兼容/安全/文档/发布闭环。
+
+### Added
+
+- 新增公开契约文档 `docs/contracts.md`：URL 路由表、Error Code 表、Env 变量表、Docker Volume、DB ownership 单一事实来源。
+- 新增用户指南 `docs/user-guide.md`、管理员指南 `docs/admin-guide.md`、FAQ `docs/faq.md`、限制说明 `docs/limitations.md`。
+- 新增 Pre-Migration Backup：`init_databases` 检测到旧 `schema_version` 时自动创建 state.db 一致性快照到 `.codex-backups/pre-migration/`。
+- 新增错误契约回归测试 `test_error_contract.py`：验证所有错误响应格式一致、不泄漏 traceback/internal path/secret。
+- 新增 Public DTO 审计测试 `test_dto_audit.py`：验证序列化函数不泄漏 password_hash/code_hash/raw_url/sign 等敏感字段。
+- 新增旧版本迁移 fixture 测试 `test_migration_fixtures.py`：验证 init_databases 数据保留、幂等性、view_count 同步。
+- 新增 Pre-Migration Backup 测试 `test_pre_migration_backup.py`：验证新库/旧库/最新库的快照行为。
+- 新增 Publication Scope 泄漏测试 `test_publication_scope.py`：验证 disabled ContentRoot 资源不出现在任何公开接口。
+- 新增 IDOR 测试 `test_idor.py`：验证 favorites/history/playback/shares 用户隔离。
+- 新增 Secret Leak 测试 `test_secret_leak.py`：验证 health/me/admin/错误响应不泄漏密钥。
+- 新增 Scheduler 隔离测试 `test_scheduler_isolation.py`：验证 cleanup 异常不传播、scheduler_loop 存活 sync 失败。
+- 新增 AList Offline 测试 `test_alist_failure.py`：验证 AList 不可用时浏览/搜索仍工作、下载返回清晰错误。
+- 新增 Graceful Shutdown 测试 `test_graceful_shutdown.py`：验证 lifespan 取消 scheduler_task 和 manual_sync_task。
+
+### Changed
+
+- README 新增文档索引表，链接所有用户/管理员/契约/FAQ/限制文档。
+
+### Fixed
+
+- **Publication Scope 泄漏修复**：`/api/home`、`/api/resources`、`/api/resources/{id}`、`/d/{id}`、`/p/{id}` 五个端点现在正确过滤 disabled ContentRoot 的资源，不再泄漏已禁用根的数据。
+
+### Security
+
+- Publication Scope 是公开数据的最终边界（1.0 文档第 32 节）：所有 Browse/Search/Resource Detail/Download/Preview 都不让非 enabled ContentRoot 数据重新公开。
+- Public DTO 审计确保 password_hash、session_token_hash、password_ciphertext、raw_url、sign、code_hash 不出现在公开 API 响应中。
+
+### Migration Notes
+
+- 从 0.5.1 升级到 1.0.0-beta.1 无破坏性 schema 变更（CURRENT_SCHEMA_VERSION 保持为 1）。
+- init_databases 会在检测到旧 schema_version 时自动创建迁移前快照，无需手动干预。
+- 升级前仍建议执行 `bash scripts/backup.sh` 创建完整备份。
+
 ## [0.5.1] - 2026-09-04
 
 ### 整改与收敛

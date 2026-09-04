@@ -98,6 +98,7 @@ from .shares.service import (
     clear_verify_attempts,
     create_share as create_share_row,
     ensure_share_active,
+    enabled_root_ids,
     reserve_share_download,
     resource_in_publication_scope,
     reset_share_code,
@@ -649,11 +650,13 @@ async def home():
     async with StateSession() as state, IndexSession() as index:
         site = await state.get(SiteSettings, 1)
         root_rows = list((await state.scalars(select(ContentRootMapping).where(ContentRootMapping.enabled.is_(True)).order_by(ContentRootMapping.sort_order, ContentRootMapping.id))).all())
+        enabled_ids = {root.id for root in root_rows}
+        scope_filter = Resource.root_mapping_id.in_(enabled_ids) if enabled_ids else False
         counts = {}
         for content_type in ("software", "image", "video", "document", "file"):
-            counts[content_type] = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.content_type == content_type, Resource.status == "active")) or 0)
-        recent = list((await index.scalars(select(Resource).where(Resource.status == "active").order_by(desc(Resource.modified_at)).limit(site.recent_limit if site else 6))).all())
-        popular = list((await index.scalars(select(Resource).where(Resource.status == "active").order_by(desc(Resource.size), desc(Resource.modified_at)).limit(site.popular_limit if site else 6))).all())
+            counts[content_type] = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.content_type == content_type, Resource.status == "active", scope_filter)) or 0)
+        recent = list((await index.scalars(select(Resource).where(Resource.status == "active", scope_filter).order_by(desc(Resource.modified_at)).limit(site.recent_limit if site else 6))).all())
+        popular = list((await index.scalars(select(Resource).where(Resource.status == "active", scope_filter).order_by(desc(Resource.size), desc(Resource.modified_at)).limit(site.popular_limit if site else 6))).all())
         collections = list((await state.scalars(select(Collection).where(Collection.visible_on_home.is_(True), Collection.status == "active").order_by(Collection.sort_order, desc(Collection.updated_at)).limit(site.collection_limit if site else 4))).all())
         content_roots = []
         for root in root_rows:
@@ -665,9 +668,9 @@ async def home():
                 "folder_count": int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.root_mapping_id == root.id, Folder.status == "active")) or 0),
                 "sort_order": root.sort_order,
             })
-        resource_count = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0)
-        folder_count = int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0)
-        total_size = int(await index.scalar(select(func.coalesce(func.sum(Resource.size), 0)).where(Resource.status == "active")) or 0)
+        resource_count = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active", scope_filter)) or 0)
+        folder_count = int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids) if enabled_ids else False)) or 0)
+        total_size = int(await index.scalar(select(func.coalesce(func.sum(Resource.size), 0)).where(Resource.status == "active", scope_filter)) or 0)
         return {
             "site": {"site_name": site.site_name, "home_title": site.home_title, "description": site.description},
             "content_roots": content_roots,
@@ -734,9 +737,11 @@ async def resources(
     sort_columns = {"name": Resource.name, "modified_at": Resource.modified_at, "modified": Resource.modified_at, "size": Resource.size}
     if sort not in sort_columns or order not in {"asc", "desc"}:
         raise HTTPException(400, {"code": "API-001", "message": "排序参数无效"})
-    async with IndexSession() as session:
-        query = select(Resource).where(Resource.status == "active")
-        count_query = select(func.count()).select_from(Resource).where(Resource.status == "active")
+    async with IndexSession() as session, StateSession() as state:
+        enabled_ids = await enabled_root_ids(state)
+        scope_filter = Resource.root_mapping_id.in_(enabled_ids) if enabled_ids else False
+        query = select(Resource).where(Resource.status == "active", scope_filter)
+        count_query = select(func.count()).select_from(Resource).where(Resource.status == "active", scope_filter)
         if selected_type:
             query = query.where(Resource.content_type == selected_type)
             count_query = count_query.where(Resource.content_type == selected_type)
@@ -753,10 +758,12 @@ async def resources(
 
 @app.get("/api/resources/{resource_id}", response_model=ResourceDetailOutput)
 async def resource_detail(resource_id: str):
-    async with IndexSession() as session:
+    async with IndexSession() as session, StateSession() as state:
         row = await session.get(Resource, resource_id)
         if not row or row.status != "active":
             raise HTTPException(404, {"code": "RS-001", "message": "资源不存在或已不可用"})
+        if not await resource_in_publication_scope(state, row):
+            raise HTTPException(404, {"code": "RESOURCE_NOT_AVAILABLE", "message": "资源不存在或已不可用"})
         parent = await session.get(Folder, row.parent_id) if row.parent_id else None
         all_folders = {item.id: item for item in (await session.scalars(select(Folder).where(Folder.status == "active"))).all()}
         related = list((await session.scalars(select(Resource).where(Resource.status == "active", Resource.parent_id == row.parent_id, Resource.id != row.id).order_by(desc(Resource.modified_at)).limit(8))).all())
@@ -1211,6 +1218,9 @@ async def download(resource_id: str, request: Request):
         if resource.status != "active":
             await _download_event(state, resource_id, "failed", "DL-007", started)
             return _download_error_redirect("DL-007", resource_id)
+        if not await resource_in_publication_scope(state, resource):
+            await _download_event(state, resource_id, "failed", "RESOURCE_NOT_AVAILABLE", started)
+            return _download_error_redirect("RESOURCE_NOT_AVAILABLE", resource_id)
         rate = await check_download_rate(get_effective_client_ip(request))
         if not rate.allowed:
             await _download_event(state, resource_id, "failed", "DOWNLOAD_RATE_LIMITED", started)
@@ -1248,6 +1258,8 @@ async def preview(resource_id: str, refresh: bool = False):
     async with IndexSession() as index, StateSession() as state:
         resource = await index.get(Resource, resource_id)
         if not resource or resource.status != "active":
+            return _preview_error_redirect(resource_id, "PV-001")
+        if not await resource_in_publication_scope(state, resource):
             return _preview_error_redirect(resource_id, "PV-001")
         connection = await state.get(AListConnection, 1)
         try:

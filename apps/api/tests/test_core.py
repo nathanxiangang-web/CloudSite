@@ -3,6 +3,10 @@ import asyncio
 import pytest
 from types import SimpleNamespace
 
+
+async def _true_coro():
+    return True
+
 from cloudsite import download, main, preview
 from cloudsite.alist import AListClient, AListError, AListUrlBuilder
 from cloudsite.crypto import decrypt_secret, encrypt_secret
@@ -666,6 +670,7 @@ async def test_image_and_video_preview_gateway_remain_302_redirects(monkeypatch)
     monkeypatch.setattr(main, "IndexSession", lambda: FakeSession())
     monkeypatch.setattr(main, "StateSession", lambda: FakeSession())
     monkeypatch.setattr(main, "resolve_preview_url", resolved)
+    monkeypatch.setattr(main, "resource_in_publication_scope", lambda *_a: _true_coro())
     for extension in ("jpg", "mp4"):
         resource = SimpleNamespace(
             id=f"r-{extension}",
