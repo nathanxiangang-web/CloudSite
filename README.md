@@ -23,11 +23,14 @@ CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分
 
 | 文档 | 说明 |
 |------|------|
+| [架构](docs/architecture.md) | 系统架构、302 语义、数据库所有权、Sync 架构 |
+| [安装指南](docs/installation.md) | 在线/Traefik/离线部署、AMD64/ARM64、升级回滚 |
 | [用户指南](docs/user-guide.md) | 注册/登录、搜索、浏览、收藏、下载、分享、投稿 |
 | [管理员指南](docs/admin-guide.md) | AList 连接、内容根、同步、用户、合集、分享、备份 |
 | [公开契约](docs/contracts.md) | URL 路由、Error Code、环境变量、数据库所有权 |
 | [FAQ](docs/faq.md) | 常见问题解答 |
 | [限制说明](docs/limitations.md) | 技术边界和 1.0 不包含的功能 |
+| [恢复指南](docs/recovery-guide.md) | index.db/state.db 丢失、AList 故障、Sync 熔断 |
 | [离线安装](docs/离线安装.md) | 离线部署步骤 |
 | [部署升级与备份](docs/部署升级与备份.md) | 升级、回滚、备份、恢复 |
 | [长期运行与故障恢复](docs/长期运行与故障恢复.md) | 运行维护和故障处理 |
