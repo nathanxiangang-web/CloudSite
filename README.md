@@ -1,10 +1,16 @@
 # CloudSite
 
+[简体中文](README.md) | [English](README.en.md)
+
 [![CI](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.1)
 [![License](https://img.shields.io/github/license/nathanxiangang-web/CloudSite)](LICENSE)
 
-CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分享的资源网站，并通过 AList 原生下载入口提供浏览器 302 直连下载。
+**CloudSite — 基于 AList 的自托管网盘资源浏览、搜索、预览与分享平台。**
+
+CloudSite 将 AList 中的网盘目录转换为清晰易用的资源网站，并通过 AList 原生下载入口提供浏览器 HTTP 302 直连下载。它适合搭建私有文件门户、软件资源库、图片与视频媒体库，以及带访问控制的文件分享站点。
+
+> CloudSite is a self-hosted AList file browser, search, media preview, and file-sharing portal powered by Next.js and FastAPI.
 
 > 当前开发与发布基线：**1.0.0-beta.1**。在线站点：[cloud.netioi.com](https://cloud.netioi.com/)
 >
