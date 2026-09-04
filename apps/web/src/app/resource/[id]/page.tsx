@@ -42,7 +42,7 @@ export default function ResourceDetailPage() {
   const parentName = item.parent?.name || "资源库";
 
   return <PublicShell><div className="page detail-page">
-    <nav className="breadcrumb desktop-breadcrumb"><Link href="/">资源库</Link>{item.breadcrumbs.map((crumb) => <span key={crumb.id}>› <Link href={`/folder/${crumb.id}`}>{crumb.name}</Link></span>)}</nav>
+    <nav className="breadcrumb"><Link href="/">资源库</Link>{item.breadcrumbs.map((crumb) => <span key={crumb.id}>› <Link href={`/folder/${crumb.id}`}>{crumb.name}</Link></span>)}</nav>
     <header className="resource-heading">
       <Link className="resource-back" href={parentHref}><ChevronLeft />{parentName}</Link>
       <h1>{item.name}</h1>

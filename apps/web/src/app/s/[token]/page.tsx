@@ -128,7 +128,7 @@ function ShareFrame({ children, siteName, imageUrl }: { children: ReactNode; sit
     <aside className="share-panel">
       <div className="share-logo"><Brand name={siteName} /></div>
       <main className="share-content">{children}</main>
-      <footer className="share-footer">© 2026 {siteName} · 安全资源分享</footer>
+      <footer className="share-footer">© {new Date().getFullYear()} {siteName} · 安全资源分享</footer>
     </aside>
   </div>;
 }

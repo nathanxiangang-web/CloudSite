@@ -574,18 +574,18 @@ button:disabled { opacity:.55; cursor:wait; }
   .home-page .section-title,.home-page .category-grid + .section-title { margin:18px 0 8px; }
   .home-page .section-title h2 { font-size:15px; }
   .home-page .section-title a { font-size:10px; }
-  .home-page .collection-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
-  .home-page .collection-card { min-height:118px; padding-bottom:8px; border-radius:9px; }
-  .home-page .cover { height:65px; }
-  .home-page .collection-card > strong { margin-top:7px; padding:0 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
-  .home-page .collection-description { display:none; }
-  .home-page .collection-meta { margin-top:4px!important; padding:0 7px; display:flex; font-size:8px; }
+  .home-page .collection-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .home-page .collection-card { min-height:130px; padding-bottom:10px; border-radius:11px; }
+  .home-page .cover { height:80px; }
+  .home-page .collection-card > strong { margin-top:8px; padding:0 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+  .home-page .collection-description { display:block; margin-top:4px; padding:0 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:var(--muted); }
+  .home-page .collection-meta { margin-top:4px!important; padding:0 8px; display:flex; font-size:10px; }
   .home-page .collection-meta svg { width:9px; height:9px; }
 
   .home-page .recent-table { min-height:0; border-radius:10px; }
-  .home-page .recent-row { height:38px; padding:0 8px; grid-template-columns:20px minmax(0,1fr) 35px 45px 38px; gap:5px; font-size:8px; }
-  .home-page .recent-row:nth-child(n+4) { display:none; }
-  .home-page .recent-row strong { font-size:9px; }
+  .home-page .recent-row { height:42px; padding:0 8px; grid-template-columns:20px minmax(0,1fr) 35px 45px 38px; gap:5px; font-size:11px; }
+  .home-page .recent-row:nth-child(n+6) { display:none; }
+  .home-page .recent-row strong { font-size:12px; }
   .home-page .recent-icon { width:19px; height:19px; }
   .home-page .recent-icon svg { width:12px; height:12px; }
   .home-page .type-pill { min-width:32px; padding:2px 5px; font-size:8px; }
@@ -593,12 +593,12 @@ button:disabled { opacity:.55; cursor:wait; }
   .home-page .recent-row > span:last-child { display:block; }
   .home-page .recent-table + .section-title { margin-top:18px; }
 
-  .home-page .popular-grid { grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; margin-bottom:0; }
-  .home-page .popular-card { min-height:92px; padding:8px 3px 7px; border-radius:9px; }
-  .home-page .popular-icon { width:35px; height:35px; border-radius:9px; }
-  .home-page .popular-icon svg { width:21px; height:21px; }
-  .home-page .popular-card strong { margin-top:7px; font-size:8px; }
-  .home-page .popular-card small { margin-top:5px; font-size:7px; }
+  .home-page .popular-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:0; }
+  .home-page .popular-card { min-height:96px; padding:10px 6px 8px; border-radius:10px; }
+  .home-page .popular-icon { width:38px; height:38px; border-radius:10px; }
+  .home-page .popular-icon svg { width:22px; height:22px; }
+  .home-page .popular-card strong { margin-top:8px; font-size:11px; }
+  .home-page .popular-card small { margin-top:5px; font-size:10px; }
   .home-page .why { margin-top:26px; }
   .home-page .why > div { grid-template-columns:1fr 1fr; gap:14px; }
   .home-page .site-footer { gap:12px; align-items:flex-start; flex-direction:column; }

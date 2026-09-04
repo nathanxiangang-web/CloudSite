@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Archive, ArrowRight, Clapperboard, Download, File, FileImage, FileText, Image, PanelsTopLeft, Search, ShieldCheck } from "lucide-react";
 import ImageAsset from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { PublicShell } from "@/components/PublicShell";
 import { MobilePrimaryNavigation } from "@/components/PublicNavigation";
@@ -22,9 +23,10 @@ const typeMeta = {
 } as const;
 
 export default function HomePage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const { data, isLoading, error } = useQuery({ queryKey: ["home"], queryFn: () => api<HomeData>("/api/home") });
-  const submit = (event: FormEvent) => { event.preventDefault(); const normalized = normalizeSearchQuery(query); if (normalized) location.href = `/search?q=${encodeURIComponent(normalized)}`; };
+  const submit = (event: FormEvent) => { event.preventDefault(); const normalized = normalizeSearchQuery(query); if (normalized) router.push(`/search?q=${encodeURIComponent(normalized)}`); };
   const site = data?.site ?? { site_name: "CloudSite", home_title: "把网盘变成好看的资源网站", description: "软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享", hero_subtitle: "" };
   const collections = data?.collections ?? [];
   const popular = data?.popular.length ? data.popular.slice(0, 6) : null;
@@ -36,7 +38,7 @@ export default function HomePage() {
     <section className="hero">
       <div className="hero-copy"><h1><span>{titleLead}</span>{titleAccent && <em>{titleAccent}</em>}</h1><p>{site.hero_subtitle || site.description}</p>
         <form className="hero-search" onSubmit={submit}><Search size={21} /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资源、文件夹、标签..." /><button type="submit">搜索</button></form>
-        <div className="hot"><span>热门搜索：</span>{["Windows 11", "Photoshop", "Office", "Python", "设计素材", "教程"].map((word) => <Link key={word} href={`/search?q=${encodeURIComponent(word)}`}>{word}</Link>)}</div>
+        <div className="hot"><span>热门搜索：</span>{(data?.recent ?? []).slice(0, 6).map((item) => { const keyword = item.name.replace(/\.[^.]+$/, "").slice(0, 20); return <Link key={item.id} href={`/search?q=${encodeURIComponent(keyword)}`}>{keyword}</Link>; })}</div>
       </div>
       <div className="hero-art"><ImageAsset src="/assets/hero-cloud.png" alt="CloudSite 云端资源插画" fill priority sizes="330px" /></div>
     </section>
