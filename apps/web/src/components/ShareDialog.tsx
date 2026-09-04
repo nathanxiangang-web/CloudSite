@@ -4,9 +4,9 @@ import { useMutation } from "@tanstack/react-query";
 import { Check, Copy, KeyRound, Link2, MousePointerClick, Share2, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { api, Resource, Share } from "@/lib/api";
+import { ShareDuration, useSite } from "@/lib/site";
 
-type Duration = "5m" | "1h" | "6h" | "24h" | "7d" | "permanent";
-const durations: Array<[Duration, string]> = [
+const durations: Array<[ShareDuration, string]> = [
   ["5m", "5 分钟"],
   ["1h", "1 小时"],
   ["6h", "6 小时"],
@@ -16,8 +16,9 @@ const durations: Array<[Duration, string]> = [
 ];
 
 export function ShareDialog({ resource, onClose }: { resource: Resource; onClose: () => void }) {
+  const site = useSite();
   const [accessMode, setAccessMode] = useState<"code" | "direct">("code");
-  const [duration, setDuration] = useState<Duration>("24h");
+  const [duration, setDuration] = useState<ShareDuration>(site.default_share_duration);
   const [title, setTitle] = useState(resource.name);
   const [copied, setCopied] = useState(false);
   const create = useMutation({
@@ -59,7 +60,7 @@ export function ShareDialog({ resource, onClose }: { resource: Resource; onClose
             <button type="button" className={accessMode === "code" ? "active" : ""} onClick={() => setAccessMode("code")}><KeyRound />提取码</button>
             <button type="button" className={accessMode === "direct" ? "active" : ""} onClick={() => setAccessMode("direct")}><MousePointerClick />免提取码</button>
           </div></fieldset>
-          <label>有效期<select value={duration} onChange={(event) => setDuration(event.target.value as Duration)}>{durations.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>有效期<select value={duration} onChange={(event) => setDuration(event.target.value as ShareDuration)}>{durations.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>分享标题<input value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} placeholder="输入分享标题" /></label>
           <p className="share-dialog-note"><Link2 />接收者不需要登录 CloudSite{accessMode === "code" ? "，输入 4 位提取码后下载。" : "，打开链接后直接下载。"}</p>
           {create.error && <p className="form-error">{create.error.message}</p>}

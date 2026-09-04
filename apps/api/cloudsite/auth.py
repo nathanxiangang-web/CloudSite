@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import StateSession
-from .models import OperationLog, User, utcnow
+from .models import OperationLog, SiteSettings, User, utcnow
 from .request_context import request_host, request_scheme
 from .schemas import UserLoginInput, UserPasswordChangeInput, UserRegisterInput
 from .sessions import (
@@ -107,6 +107,9 @@ async def register(payload: UserRegisterInput, request: Request, response: Respo
         raise auth_error(400, "PASSWORD_CONFIRM_MISMATCH", "两次输入的密码不一致")
     now = utcnow()
     async with StateSession() as session:
+        site = await session.get(SiteSettings, 1)
+        if site is not None and not site.registration_enabled:
+            raise auth_error(403, "REGISTRATION_DISABLED", "当前站点未开放自助注册")
         if await session.scalar(select(User.id).where(User.username_normalized == normalized)):
             raise auth_error(409, "USERNAME_EXISTS", "用户名已存在")
         user = User(

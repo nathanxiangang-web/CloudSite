@@ -22,7 +22,7 @@ export function isOptionalHttpUrl(value: string): boolean {
   }
 }
 
-export function buildSubmission(input: SubmissionInput): { subject: string; body: string; mailto: string } {
+export function buildSubmission(input: SubmissionInput, recipient = SUBMISSION_EMAIL): { subject: string; body: string; mailto: string } {
   const subject = `[CloudSite资源投稿] ${input.resourceName.trim()}`;
   const body = [
     "CloudSite 资源投稿",
@@ -50,8 +50,8 @@ export function buildSubmission(input: SubmissionInput): { subject: string; body
     "备注：",
     input.note.trim(),
     "",
-    "submitted_from：CloudSite 0.4.1",
+    "submitted_from：CloudSite 0.5.1",
   ].join("\n");
-  const mailto = `mailto:${SUBMISSION_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const mailto = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   return { subject, body, mailto };
 }

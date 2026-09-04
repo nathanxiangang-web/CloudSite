@@ -32,3 +32,4 @@ coverage/
 .playwright-cli/
 work/
 outputs/
+.codex-backups/

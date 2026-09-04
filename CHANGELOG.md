@@ -2,6 +2,17 @@
 
 本项目按里程碑（M0.1 → M10）开发，版本 `0.1.0` 为 CloudSite V0.1 首个完整版本。
 
+## [0.5.1] - 2026-09-04
+
+### 整改与收敛
+
+- 视频详情回归单层浏览器原生 controls，移除重复的播放、静音、全屏、画中画和倍速工具栏；保留错误重试、下载、媒体信息与继续播放提示。
+- 新增收藏、浏览历史和播放进度数据表/API及账号页面；全部引用 Stable Resource ID，并按启用的发布根过滤不可用资源。
+- 播放进度改为 Last Write Wins，播放中最多每 15 秒写一次；暂停、完播、页面隐藏时补写，5 秒以内不创建记录。
+- 注册开关同时约束前端入口和后端注册接口；基础站点文案、投稿邮箱、GitHub 地址和默认分享时长通过单次公开配置下发。
+- Branding Logo/Favicon 上传与聚合 Dashboard 延期；Generic AList 保持 Rolling，同步 Delta 代码只作为不影响主链路的 dormant 能力。
+- `/p/{resource_id}` 保持 HTTP 302，不代理视频主体，并增加 preview/provider/redirect 调试计时。
+
 ## [0.4.1] - 2026-09-03
 
 ### Provider Capability 抽象

@@ -82,7 +82,7 @@ from .schemas import (
     ShareInput,
     ShareUpdate,
     ShareVerifyInput,
-    SiteInput,
+    SiteSettingsUpdate,
     SyncInput,
     SystemInput,
     TextPreviewOutput,
@@ -120,6 +120,7 @@ from .search import (
     set_search_index_dirty,
 )
 from .site_assets import SHARE_IMAGE_MAX_BYTES, remove_share_image, save_share_image, share_image_path
+from .site import public_site_settings, router as site_router
 from .sync.rolling import (
     migrate_existing_index_to_rolling,
     prepare_index_recovery,
@@ -130,6 +131,7 @@ from .sync.rolling import (
     run_due_rolling_window,
 )
 from .users import router as users_router
+from .userdata import router as userdata_router
 from .sessions import (
     SESSION_CLEANUP_SECONDS,
     USER_SESSION_COOKIE,
@@ -379,6 +381,8 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(userdata_router)
+app.include_router(site_router)
 
 
 @app.middleware("http")
@@ -405,7 +409,7 @@ async def admin_session_middleware(request: Request, call_next):
             )
         return await call_next(request)
 
-    public_api_paths = {"/api/health", "/api/auth/login", "/api/auth/register"}
+    public_api_paths = {"/api/health", "/api/auth/login", "/api/auth/register", "/api/site"}
     preview_ticket_valid = False
     if path.startswith("/p/"):
         resource_id = path.removeprefix("/p/")
@@ -582,9 +586,7 @@ def share_dict(row: Share) -> dict:
 
 def site_settings_dict(row: SiteSettings) -> dict:
     return {
-        "site_name": row.site_name or "CloudSite",
-        "home_title": row.home_title or "把网盘变成好看的资源网站",
-        "description": row.description or "",
+        **public_site_settings(row),
         "share_image_url": "/api/public/share-page/image" if row.share_image_name else "",
     }
 
@@ -1240,6 +1242,7 @@ async def _download_event(session, resource_id, result, code, started, source: s
 
 @app.get("/p/{resource_id}")
 async def preview(resource_id: str, refresh: bool = False):
+    started = time.perf_counter()
     if not validate_resource_id(resource_id):
         return _preview_error_redirect(resource_id[:64], "PV-001")
     async with IndexSession() as index, StateSession() as state:
@@ -1248,7 +1251,17 @@ async def preview(resource_id: str, refresh: bool = False):
             return _preview_error_redirect(resource_id, "PV-001")
         connection = await state.get(AListConnection, 1)
         try:
+            resolve_started = time.perf_counter()
             resolution = await resolve_preview_url(resource, connection, force_refresh=refresh)
+            resolve_ms = (time.perf_counter() - resolve_started) * 1000
+            redirect_ms = (time.perf_counter() - started) * 1000
+            logger.debug(
+                "preview metrics resource_id=%s preview_resolve_ms=%.2f preview_redirect_ms=%.2f cache_hit=%s",
+                resource_id,
+                resolve_ms,
+                redirect_ms,
+                getattr(resolution, "cache_hit", False),
+            )
             return RedirectResponse(resolution.url, status_code=302)
         except PreviewError as exc:
             return _preview_error_redirect(resource.id, exc.code)
@@ -2065,17 +2078,31 @@ async def get_site():
 
 
 @app.put("/api/admin/site")
-async def save_site(payload: SiteInput):
+async def save_site(payload: SiteSettingsUpdate, request: Request):
+    validate_request_origin(request)
     async with StateSession() as session:
         row = await session.get(SiteSettings, 1) or SiteSettings(id=1)
-        row.site_name, row.home_title, row.description = payload.site_name, payload.home_title, payload.description
+        changed: list[str] = []
+        for key, value in payload.model_dump(exclude_unset=True, exclude_none=True).items():
+            if getattr(row, key) != value:
+                setattr(row, key, value)
+                changed.append(key)
         session.add(row)
+        session.add(
+            OperationLog(
+                level="INFO",
+                module="site",
+                action="site_settings_updated",
+                message=f"更新站点设置：{', '.join(changed) or '无变化'}",
+            )
+        )
         await session.commit()
         return {"ok": True, **site_settings_dict(row)}
 
 
 @app.post("/api/admin/site/share-image")
-async def upload_share_page_image(file: UploadFile = File(...)):
+async def upload_share_page_image(request: Request, file: UploadFile = File(...)):
+    validate_request_origin(request)
     data = await file.read(SHARE_IMAGE_MAX_BYTES + 1)
     await file.close()
     if not data:
@@ -2103,7 +2130,8 @@ async def upload_share_page_image(file: UploadFile = File(...)):
 
 
 @app.delete("/api/admin/site/share-image")
-async def delete_share_page_image():
+async def delete_share_page_image(request: Request):
+    validate_request_origin(request)
     async with StateSession() as session:
         row = await session.get(SiteSettings, 1)
         old_name = row.share_image_name if row else ""

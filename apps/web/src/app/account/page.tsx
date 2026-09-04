@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, KeyRound, LogOut, Share2, ShieldCheck, UserRound } from "lucide-react";
+import { CalendarDays, Clock3, Heart, KeyRound, LogOut, PlayCircle, Share2, ShieldCheck, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -29,7 +29,7 @@ export default function AccountPage() {
           <div><dt>注册时间</dt><dd>{formatTime(user.created_at)}</dd></div>
           <div><dt>最近登录</dt><dd>{user.last_login_at ? formatTime(user.last_login_at) : "暂无记录"}</dd></div>
         </dl></article>
-        <article className="panel account-actions"><h2><CalendarDays />账号操作</h2><p>管理当前账号创建的分享，或更新登录密码和退出账号。</p><Link className="button primary" href="/account/shares"><Share2 />我的分享</Link><Link className="button" href="/account/security"><KeyRound />修改密码</Link><button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut />{logout.isPending ? "正在退出…" : "退出登录"}</button></article>
+        <article className="panel account-actions"><h2><CalendarDays />我的内容</h2><p>查看收藏、浏览历史、播放进度和自己创建的分享。</p><Link className="button primary" href="/account/favorites"><Heart />我的收藏</Link><Link className="button" href="/account/history"><Clock3 />浏览历史</Link><Link className="button" href="/account/playback"><PlayCircle />继续播放</Link><Link className="button" href="/account/shares"><Share2 />我的分享</Link><Link className="button" href="/account/security"><KeyRound />修改密码</Link><button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut />{logout.isPending ? "正在退出…" : "退出登录"}</button></article>
       </section>
     </>}
   </div></PublicShell>;

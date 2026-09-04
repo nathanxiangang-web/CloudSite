@@ -165,10 +165,25 @@ async def init_databases() -> None:
                 "ALTER TABLE collections ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
             )
         site_columns = await connection.exec_driver_sql("PRAGMA table_info(site_settings)")
-        if "share_image_name" not in {row[1] for row in site_columns.fetchall()}:
-            await connection.exec_driver_sql(
-                "ALTER TABLE site_settings ADD COLUMN share_image_name VARCHAR(255) NOT NULL DEFAULT ''"
-            )
+        site_column_names = {row[1] for row in site_columns.fetchall()}
+        for column, definition in (
+            ("share_image_name", "VARCHAR(255) NOT NULL DEFAULT ''"),
+            ("hero_subtitle", "VARCHAR(200) NOT NULL DEFAULT ''"),
+            ("footer_text", "VARCHAR(300) NOT NULL DEFAULT ''"),
+            ("submission_email", "VARCHAR(200) NOT NULL DEFAULT 'nathxo@outlook.com'"),
+            ("github_url", "VARCHAR(300) NOT NULL DEFAULT ''"),
+            ("registration_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("default_share_duration", "VARCHAR(20) NOT NULL DEFAULT '24h'"),
+        ):
+            if column not in site_column_names:
+                await connection.exec_driver_sql(f"ALTER TABLE site_settings ADD COLUMN {column} {definition}")
+        for statement in (
+            "CREATE INDEX IF NOT EXISTS ix_user_favorites_user_created_at ON user_favorites (user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_user_resource_history_user_last_viewed_at ON user_resource_history (user_id, last_viewed_at)",
+            "CREATE INDEX IF NOT EXISTS ix_user_playback_progress_user_last_played_at ON user_playback_progress (user_id, last_played_at)",
+            "CREATE INDEX IF NOT EXISTS ix_user_playback_progress_user_completed ON user_playback_progress (user_id, completed)",
+        ):
+            await connection.exec_driver_sql(statement)
         share_columns = await connection.exec_driver_sql("PRAGMA table_info(shares)")
         share_column_names = {row[1] for row in share_columns.fetchall()}
         for column, definition in (

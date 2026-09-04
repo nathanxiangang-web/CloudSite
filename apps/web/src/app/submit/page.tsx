@@ -6,6 +6,7 @@ import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
 import { useAuth } from "@/lib/auth";
 import { buildSubmission, isOptionalHttpUrl, RESOURCE_TYPES, SUBMISSION_EMAIL } from "@/lib/submission";
+import { useSite } from "@/lib/site";
 
 type FormState = {
   resourceName: string;
@@ -29,10 +30,12 @@ const initialForm: FormState = {
 
 export default function SubmitPage() {
   const auth = useAuth();
+  const site = useSite();
   const [form, setForm] = useState(initialForm);
   const [message, setMessage] = useState("");
   const username = auth.data?.user?.username || "";
-  const submission = useMemo(() => buildSubmission({ ...form, username }), [form, username]);
+  const submissionEmail = site.submission_email || SUBMISSION_EMAIL;
+  const submission = useMemo(() => buildSubmission({ ...form, username }, submissionEmail), [form, username, submissionEmail]);
   const invalidUrl = !isOptionalHttpUrl(form.sourceUrl) || !isOptionalHttpUrl(form.downloadUrl);
   const incomplete = !form.resourceName.trim() || !form.resourceType || !form.description.trim();
 
@@ -68,7 +71,7 @@ export default function SubmitPage() {
       </form>
       <aside className="submit-aside">
         <h2>投稿邮箱</h2>
-        <button className="copy-email" type="button" onClick={() => copy(SUBMISSION_EMAIL, "投稿邮箱已复制")}><strong>{SUBMISSION_EMAIL}</strong><Clipboard /></button>
+        <button className="copy-email" type="button" onClick={() => copy(submissionEmail, "投稿邮箱已复制")}><strong>{submissionEmail}</strong><Clipboard /></button>
         <p>“打开邮箱投稿”只会调用你设备上的默认邮件客户端。CloudSite 不连接 Outlook SMTP，也不保存邮箱密码。</p>
         <h3>没有配置邮件客户端？</h3>
         <p>复制邮箱和投稿内容，再自行打开 Outlook、Gmail、QQ 邮箱或其他邮箱粘贴发送。</p>

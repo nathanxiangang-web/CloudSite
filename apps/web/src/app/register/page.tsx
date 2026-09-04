@@ -8,8 +8,10 @@ import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, PublicUser } from "@/lib/auth";
 import { safeNext } from "@/lib/navigation";
+import { useSite } from "@/lib/site";
 
 export default function RegisterPage() {
+  const site = useSite();
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -23,6 +25,16 @@ export default function RegisterPage() {
     },
   });
   const submit = (event: FormEvent) => { event.preventDefault(); register.mutate(); };
+
+  if (!site.registration_enabled) {
+    return <main className="user-auth-page"><section className="user-auth-card">
+      <Brand />
+      <div className="user-auth-icon"><UserRoundPlus /></div>
+      <h1>注册暂未开放</h1>
+      <p>当前站点已关闭自助注册。如已有账号，可直接登录。</p>
+      <Link className="button primary user-auth-submit" href="/login">前往登录</Link>
+    </section></main>;
+  }
 
   return <main className="user-auth-page"><section className="user-auth-card">
     <Brand />

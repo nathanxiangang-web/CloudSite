@@ -25,6 +25,23 @@ class SiteInput(BaseModel):
     description: str = Field(max_length=500)
 
 
+class SiteSettingsUpdate(BaseModel):
+    site_name: str | None = Field(default=None, min_length=1, max_length=100)
+    home_title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=500)
+    hero_subtitle: str | None = Field(default=None, max_length=200)
+    footer_text: str | None = Field(default=None, max_length=300)
+    submission_email: str | None = Field(default=None, max_length=200)
+    github_url: str | None = Field(default=None, max_length=300)
+    registration_enabled: bool | None = None
+    default_share_duration: Literal["5m", "1h", "6h", "24h", "7d", "permanent"] | None = None
+
+
+class PlaybackProgressInput(BaseModel):
+    position_seconds: int = Field(ge=0)
+    duration_seconds: int = Field(ge=0)
+
+
 class SyncInput(BaseModel):
     full: bool = False
     force: bool = False

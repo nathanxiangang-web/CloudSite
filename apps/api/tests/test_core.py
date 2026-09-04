@@ -386,8 +386,12 @@ async def test_manual_sync_endpoint_returns_before_background_work_finishes(monk
         await release.wait()
         return {"status": "success"}
 
+    async def fake_rolling_enabled():
+        return False
+
     monkeypatch.setattr(main, "manual_sync_task", None)
     monkeypatch.setattr(main, "sync_preflight", fake_preflight)
+    monkeypatch.setattr(main, "rolling_enabled", fake_rolling_enabled)
     monkeypatch.setattr(main, "run_sync", fake_run_sync)
     result = await main.sync(main.SyncInput(full=False, force=False))
     assert result == {"status": "accepted", "message": "同步任务已启动"}

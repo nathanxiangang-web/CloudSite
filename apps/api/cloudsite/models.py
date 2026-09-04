@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import IndexBase, StateBase
@@ -36,6 +36,12 @@ class SiteSettings(StateBase):
     site_name: Mapped[str] = mapped_column(String(100), default="CloudSite")
     home_title: Mapped[str] = mapped_column(String(200), default="把网盘变成好看的资源网站")
     description: Mapped[str] = mapped_column(String(500), default="软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享")
+    hero_subtitle: Mapped[str] = mapped_column(String(200), default="")
+    footer_text: Mapped[str] = mapped_column(String(300), default="")
+    submission_email: Mapped[str] = mapped_column(String(200), default="nathxo@outlook.com")
+    github_url: Mapped[str] = mapped_column(String(300), default="")
+    registration_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    default_share_duration: Mapped[str] = mapped_column(String(20), default="24h")
     share_image_name: Mapped[str] = mapped_column(String(255), default="")
     recent_limit: Mapped[int] = mapped_column(Integer, default=6)
     popular_limit: Mapped[int] = mapped_column(Integer, default=6)
@@ -182,6 +188,51 @@ class UserSession(StateBase):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class UserFavorite(StateBase):
+    __tablename__ = "user_favorites"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("user_id", "resource_id"),
+        Index("ix_user_favorites_user_created_at", "user_id", "created_at"),
+    )
+
+
+class UserResourceHistory(StateBase):
+    __tablename__ = "user_resource_history"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    first_viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (
+        UniqueConstraint("user_id", "resource_id"),
+        Index("ix_user_resource_history_user_last_viewed_at", "user_id", "last_viewed_at"),
+    )
+
+
+class UserPlaybackProgress(StateBase):
+    __tablename__ = "user_playback_progress"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    position_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    last_played_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (
+        UniqueConstraint("user_id", "resource_id"),
+        Index("ix_user_playback_progress_user_last_played_at", "user_id", "last_played_at"),
+        Index("ix_user_playback_progress_user_completed", "user_id", "completed"),
+    )
 
 
 class DownloadRateLimit(StateBase):

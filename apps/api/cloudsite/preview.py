@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import hashlib
 import hmac
+import logging
 import time
 from urllib.parse import urlencode
 
@@ -44,6 +45,7 @@ class PreviewResolution:
 
 
 preview_url_cache = DownloadUrlCache(settings.preview_cache_ttl_seconds, settings.preview_cache_max_entries)
+logger = logging.getLogger(__name__)
 
 
 def create_preview_ticket(resource_id: str, now: int | None = None) -> str:
@@ -128,7 +130,13 @@ async def resolve_preview_url(resource, connection, force_refresh: bool = False)
     try:
         password = decrypt_secret(connection.password_ciphertext)
         async with AListClient(connection.base_url, connection.username, password) as client:
+            provider_started = time.perf_counter()
             entry = await client.get_preview_entry(resource.path)
+            logger.debug(
+                "preview metrics resource_id=%s provider_lookup_ms=%.2f",
+                resource.id,
+                (time.perf_counter() - provider_started) * 1000,
+            )
     except Exception as exc:
         raise _map_alist_preview_error(exc) from exc
     try:

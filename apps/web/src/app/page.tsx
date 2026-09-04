@@ -11,7 +11,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { api, Collection, formatBytes, Resource } from "@/lib/api";
 import { normalizeSearchQuery, SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
 
-type HomeData = { site: { site_name: string; home_title: string; description: string }; counts: Record<string, number>; recent: Resource[]; popular: Resource[]; collections: Collection[] };
+type HomeData = { site: { site_name: string; home_title: string; description: string; hero_subtitle: string }; counts: Record<string, number>; recent: Resource[]; popular: Resource[]; collections: Collection[] };
 
 const typeMeta = {
   software: { label: "软件", unit: "个资源", icon: PanelsTopLeft },
@@ -25,7 +25,7 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const { data, isLoading, error } = useQuery({ queryKey: ["home"], queryFn: () => api<HomeData>("/api/home") });
   const submit = (event: FormEvent) => { event.preventDefault(); const normalized = normalizeSearchQuery(query); if (normalized) location.href = `/search?q=${encodeURIComponent(normalized)}`; };
-  const site = data?.site ?? { site_name: "CloudSite", home_title: "把网盘变成好看的资源网站", description: "软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享" };
+  const site = data?.site ?? { site_name: "CloudSite", home_title: "把网盘变成好看的资源网站", description: "软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享", hero_subtitle: "" };
   const collections = data?.collections ?? [];
   const popular = data?.popular.length ? data.popular.slice(0, 6) : null;
   const accent = "资源网站";
@@ -34,7 +34,7 @@ export default function HomePage() {
 
   return <PublicShell><div className="page home-page">
     <section className="hero">
-      <div className="hero-copy"><h1><span>{titleLead}</span>{titleAccent && <em>{titleAccent}</em>}</h1><p>{site.description}</p>
+      <div className="hero-copy"><h1><span>{titleLead}</span>{titleAccent && <em>{titleAccent}</em>}</h1><p>{site.hero_subtitle || site.description}</p>
         <form className="hero-search" onSubmit={submit}><Search size={21} /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资源、文件夹、标签..." /><button type="submit">搜索</button></form>
         <div className="hot"><span>热门搜索：</span>{["Windows 11", "Photoshop", "Office", "Python", "设计素材", "教程"].map((word) => <Link key={word} href={`/search?q=${encodeURIComponent(word)}`}>{word}</Link>)}</div>
       </div>
