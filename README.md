@@ -1,8 +1,23 @@
 # CloudSite
 
+[![CI](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.1)
+[![License](https://img.shields.io/github/license/nathanxiangang-web/CloudSite)](LICENSE)
+
 CloudSite 将 AList 中的网盘目录转换为可浏览、搜索、预览和分享的资源网站，并通过 AList 原生下载入口提供浏览器 302 直连下载。
 
+> 当前开发与发布基线：**1.0.0-beta.1**。在线站点：[cloud.netioi.com](https://cloud.netioi.com/)
+>
 > 发布源码不包含 AList 账号、访问令牌、`.env`、数据库、索引、日志、依赖目录或构建产物。
+
+## 快速入口
+
+- [下载 1.0 Beta](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.1)
+- [部署与升级](docs/部署升级与备份.md)
+- [用户指南](docs/user-guide.md)
+- [管理员指南](docs/admin-guide.md)
+- [公开契约](docs/contracts.md)
+- [问题排查](docs/faq.md)
 
 ## 文档
 
