@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from .config import settings
+from .migrations import CURRENT_SCHEMA_VERSION, set_index_schema_version, set_state_schema_version
 
 
 class StateBase(DeclarativeBase):
@@ -266,6 +267,7 @@ async def init_databases() -> None:
         await connection.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_users_disabled_at ON users (disabled_at)"
         )
+        await set_state_schema_version(connection, CURRENT_SCHEMA_VERSION)
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
         for table, column, definition in (
@@ -311,3 +313,4 @@ async def init_databases() -> None:
                 "INSERT INTO search_fts(object_id, object_type, name, extension, content_type, description, tags, breadcrumb_text) "
                 "SELECT id, 'resource', name, extension, content_type, '', '', path FROM resources WHERE status = 'active'"
             )
+        await set_index_schema_version(connection, CURRENT_SCHEMA_VERSION)
