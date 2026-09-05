@@ -11,6 +11,23 @@ import { normalizeSearchQuery, SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-quer
 
 type ContentRoots = { items: Array<{ content_type: string; display_name: string }> };
 
+const HISTORY_KEY = "cloudsite-search-history";
+const HISTORY_MAX = 8;
+
+function loadHistory(): string[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; }
+}
+
+function saveHistory(query: string) {
+  try {
+    const prev = loadHistory();
+    const next = [query, ...prev.filter((h) => h !== query)].slice(0, HISTORY_MAX);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+    return next;
+  } catch { return loadHistory(); }
+}
+
 function SearchContent() {
   const router = useRouter();
   const params = useSearchParams();
@@ -20,9 +37,11 @@ function SearchContent() {
   const requestedPage = Number.parseInt(params.get("page") || "1", 10);
   const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const [input, setInput] = useState(query);
+  const [history, setHistory] = useState<string[]>([]);
   useEffect(() => setInput(query), [query]);
+  useEffect(() => { setHistory(loadHistory()); }, []);
 
-  const roots = useQuery({ queryKey: ["content-roots"], queryFn: () => api<ContentRoots>("/api/content-roots") });
+  const roots = useQuery({ queryKey: ["content-roots"], queryFn: () => api<ContentRoots>("/api/content-roots"), staleTime: 5 * 60 * 1000 });
   const types = useMemo(() => {
     const unique = new Map<string, string>();
     roots.data?.items.forEach((item) => unique.set(item.content_type, item.display_name));
@@ -36,6 +55,11 @@ function SearchContent() {
     placeholderData: (previous) => previous,
   });
 
+  // 搜索成功后记录历史
+  useEffect(() => {
+    if (query && results.data?.items.length) setHistory(saveHistory(query));
+  }, [query, results.data?.items.length]);
+
   const navigate = (next: { q?: string; type?: string; page?: number; sort?: string }) => {
     const values = new URLSearchParams();
     const nextQuery = normalizeSearchQuery(next.q ?? query);
@@ -48,6 +72,16 @@ function SearchContent() {
     if (nextSort !== "relevance") values.set("sort", nextSort);
     router.push(`/search${values.size ? `?${values.toString()}` : ""}`);
   };
+
+  // debounce 300ms 自动搜索
+  useEffect(() => {
+    const normalized = normalizeSearchQuery(input);
+    if (!normalized || normalized === query) return;
+    const timer = setTimeout(() => navigate({ q: normalized, page: 1 }), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const nextQuery = normalizeSearchQuery(input);
@@ -57,7 +91,7 @@ function SearchContent() {
   return <PublicShell><div className="page search-page">
     <h1>搜索资源</h1>
     <p className="search-lead">从 CloudSite 索引中查找文件与文件夹，不会实时访问网盘。</p>
-    <form onSubmit={submit}><Search /><input autoFocus maxLength={SEARCH_QUERY_MAX_LENGTH} value={input} onChange={(event) => setInput(event.target.value)} placeholder="搜索软件、图片、视频、文档和文件" /><button>搜索</button></form>
+    <form onSubmit={submit}><Search /><input autoFocus maxLength={SEARCH_QUERY_MAX_LENGTH} value={input} onChange={(event) => setInput(event.target.value)} placeholder="搜索软件、图库、视频、教程和文件" /><button>搜索</button></form>
 
     {query ? <>
       <div className="search-toolbar">
@@ -70,7 +104,12 @@ function SearchContent() {
         : results.data?.items.length ? <section className="search-results">{results.data.items.map((item) => <SearchResultCard item={item} query={query} key={`${item.object_type}-${item.id}`} />)}</section>
         : <div className="empty search-state"><strong>没有找到“{query}”</strong><span>请尝试更换关键词或清除类型筛选。</span>{selectedType && <button onClick={() => navigate({ type: "", page: 1 })}>清除筛选</button>}</div>}
       {(results.data?.total_pages ?? 0) > 1 && <nav className="pagination"><button disabled={page <= 1} onClick={() => navigate({ page: page - 1 })}>上一页</button><span>第 {page} / {results.data?.total_pages} 页</span><button disabled={page >= (results.data?.total_pages ?? 0)} onClick={() => navigate({ page: page + 1 })}>下一页</button></nav>}
-    </> : <div className="empty search-state"><Search /><strong>开始搜索 CloudSite</strong><span>输入关键词，查找已同步的软件、图片、视频、文档、文件和目录。</span></div>}
+    </> : <div className="empty search-state"><Search /><strong>开始搜索 CloudSite</strong><span>输入关键词，查找已公开的软件、图库、视频、教程、文件和目录。</span>
+      {history.length > 0 && <div className="search-history" style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+        <small style={{ width: "100%", color: "var(--muted)", fontSize: 11 }}>最近搜索</small>
+        {history.map((h) => <button key={h} onClick={() => navigate({ q: h, page: 1 })} style={{ minHeight: 32, padding: "0 12px", borderRadius: 999, fontSize: 12, border: "1px solid var(--line)", background: "#fff", color: "#46546c" }}>{h}</button>)}
+      </div>}
+    </div>}
   </div></PublicShell>;
 }
 
@@ -86,9 +125,12 @@ function SearchResultCard({ item, query }: { item: SearchResult; query: string }
 }
 
 function Highlight({ text, query }: { text: string; query: string }): ReactNode {
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  if (!escaped) return text;
-  return text.split(new RegExp(`(${escaped})`, "ig")).map((part, index) => part.localeCompare(query, undefined, { sensitivity: "accent" }) === 0 ? <mark key={index}>{part}</mark> : part);
+  const regex = useMemo(() => {
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return escaped ? new RegExp(`(${escaped})`, "ig") : null;
+  }, [query]);
+  if (!regex) return text;
+  return text.split(regex).map((part, index) => part.localeCompare(query, undefined, { sensitivity: "accent" }) === 0 ? <mark key={index}>{part}</mark> : part);
 }
 
 export default function SearchPage() { return <Suspense><SearchContent /></Suspense>; }

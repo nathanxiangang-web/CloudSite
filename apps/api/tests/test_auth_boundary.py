@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import auth, main, site_assets
 from cloudsite.database import StateBase
-from cloudsite.models import AListConnection, User, utcnow
+from cloudsite.models import AListConnection, SiteSettings, SystemSetting, User, utcnow
 from cloudsite.preview import PREVIEW_TICKET_TTL_SECONDS, create_preview_ticket
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
@@ -15,6 +15,10 @@ async def boundary_client(monkeypatch):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(StateBase.metadata.create_all)
+    async with factory() as session:
+        session.add(SiteSettings(id=1))
+        session.add(SystemSetting(key="setup_completed", value="true", value_type="string"))
+        await session.commit()
     monkeypatch.setattr(main, "StateSession", factory)
     monkeypatch.setattr(auth, "StateSession", factory)
     transport = httpx.ASGITransport(app=main.app)
@@ -61,11 +65,22 @@ async def test_share_page_image_upload_public_read_and_remove(monkeypatch, tmp_p
     client, _, engine = await boundary_client(monkeypatch)
     monkeypatch.setattr(site_assets.settings, "data_dir", tmp_path)
     image = b"\x89PNG\r\n\x1a\ncloudsite-share-page"
+    admin_cookies = {main.SESSION_COOKIE: main.create_session_token("admin")}
 
     async with client:
+        # 匿名访问后台写接口被拒绝（SEC-001 M4）
+        anonymous_upload = await client.post(
+            "/api/admin/site/share-image",
+            files={"file": ("share.png", image, "image/png")},
+        )
+        assert anonymous_upload.status_code == 403
+        assert anonymous_upload.json()["detail"]["code"] == "ADMIN_REQUIRED"
+
+        # 有效管理员会话下完成上传与删除业务
         uploaded = await client.post(
             "/api/admin/site/share-image",
             files={"file": ("share.png", image, "image/png")},
+            cookies=admin_cookies,
         )
         assert uploaded.status_code == 200
         assert uploaded.json()["share_image_url"] == "/api/public/share-page/image"
@@ -78,7 +93,7 @@ async def test_share_page_image_upload_public_read_and_remove(monkeypatch, tmp_p
         assert public_image.headers["content-type"] == "image/png"
         assert public_image.content == image
 
-        removed = await client.delete("/api/admin/site/share-image")
+        removed = await client.delete("/api/admin/site/share-image", cookies=admin_cookies)
         assert removed.status_code == 200
         assert (await client.get("/api/public/share-page/image")).status_code == 404
 

@@ -249,3 +249,37 @@ class SearchOutput(BaseModel):
     page_size: int
     total: int
     total_pages: int
+
+
+class SubmissionInput(BaseModel):
+    resource_name: str = Field(min_length=1, max_length=120)
+    resource_type: str = Field(min_length=1, max_length=20)
+    description: str = Field(default="", max_length=2000)
+    source_url: str = Field(default="", max_length=1000)
+    download_url: str = Field(default="", max_length=2000)
+    copyright_note: str = Field(default="", max_length=2000)
+    note: str = Field(default="", max_length=2000)
+
+
+class SubmissionReviewInput(BaseModel):
+    action: Literal["approve", "reject", "publish"]
+    admin_note: str = Field(default="", max_length=2000)
+    resource_id: str | None = Field(default=None, max_length=64)
+
+
+class NotificationInput(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(default="", max_length=4000)
+    level: Literal["info", "success", "warning", "important"] = "info"
+    pinned: bool = False
+    enabled: bool = True
+    expires_at: datetime | None = None
+
+
+class NotificationUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    body: str | None = Field(default=None, max_length=4000)
+    level: Literal["info", "success", "warning", "important"] | None = None
+    pinned: bool | None = None
+    enabled: bool | None = None
+    expires_at: datetime | None = None

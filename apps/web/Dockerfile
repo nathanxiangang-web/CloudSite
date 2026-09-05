@@ -5,16 +5,18 @@ FROM base AS deps
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=256
 ENV npm_config_jobs=1
-COPY package.json ./
-RUN npm install --registry=https://registry.npmmirror.com --no-audit --no-fund
+RUN npm install -g pnpm@10.15.1
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --no-frozen-lockfile
 
 FROM base AS build
 WORKDIR /app
 ENV API_INTERNAL_URL=http://api:8000
 ENV NODE_OPTIONS=--max-old-space-size=384
+RUN npm install -g pnpm@10.15.1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 FROM base AS runner
 WORKDIR /app

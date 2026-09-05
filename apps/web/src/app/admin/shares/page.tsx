@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, KeyRound, Plus, RefreshCw, Search, Share2, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, MoreHorizontal, Plus, RefreshCw, Search, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
@@ -30,6 +30,7 @@ export default function SharesPage() {
   const [editingToken, setEditingToken] = useState<string | null>(null);
   const [editingDuration, setEditingDuration] = useState<Duration>("24h");
   const [lastCode, setLastCode] = useState<{ token: string; code: string | null; mode: "code" | "direct" } | null>(null);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
 
   const query = useQuery({ queryKey: ["admin-shares"], queryFn: () => api<{ items: Share[] }>("/api/admin/shares") });
   const create = useMutation({
@@ -94,7 +95,7 @@ export default function SharesPage() {
       {action.error && <p className="form-error">{action.error.message}</p>}
     </section>
 
-    <section className="panel share-table">
+    <section className="panel share-table" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest(".share-more-wrap")) setOpenMenu(null); }}>
       <div className="panel-toolbar"><div><h2 style={{ marginBottom: 6 }}>分享列表</h2><p>共 {items.length} 条{statusFilter !== "all" ? `（${statusLabel[statusFilter]}）` : ""}</p></div><div className="share-toolbar"><div className="small-search"><Search /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索标题 / 分享 ID / 对象名" /></div><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | ShareStatus)}><option value="all">全部</option>{Object.entries(statusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
       <div className="table-head share-table-head"><span>分享</span><span>对象</span><span>统计</span><span>有效期</span><span>操作</span></div>
       {items.length ? items.map((share) => {
@@ -105,12 +106,17 @@ export default function SharesPage() {
           <span><b>{share.download_count} / {share.download_limit}</b><small>访问 {share.view_count ?? share.access_count} · 剩余 {share.remaining_downloads}</small></span>
           <span className="share-expiry">{editingToken === share.token ? <><select value={editingDuration} onChange={(event) => setEditingDuration(event.target.value as Duration)}>{Object.entries(durationLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="primary" onClick={() => action.mutate({ share, body: { duration: editingDuration } })}>保存</button><button onClick={() => setEditingToken(null)}>取消</button></> : <><b className={status === "expired" ? "warn" : ""}>{share.expires_at ? formatTime(share.expires_at) : "永久"}</b><small>{statusLabel[status]}{share.cancel_reason === "download_limit" ? " · 达到下载上限" : ""}</small><button onClick={() => { setEditingToken(share.token); setEditingDuration("24h"); }}>改期</button></>}</span>
           <span className="share-actions">
-            <button title="复制分享信息" onClick={() => copyShare(share)}><Copy /></button>
-            <Link title="打开分享" href={`/s/${share.token}`}><ExternalLink /></Link>
-            {share.access_mode === "code" && status === "migration_pending" && <button title="升级分享" onClick={() => action.mutate({ share, body: { action: "upgrade" } })}><KeyRound /></button>}
-            {share.access_mode === "code" && status !== "migration_pending" && <button title="重置分享码" onClick={() => action.mutate({ share, body: { action: "reset_code" } })}><RefreshCw /></button>}
-            <button onClick={() => action.mutate({ share, body: { action: share.enabled ? "cancel" : "restore", duration: editingDuration } })}>{share.enabled ? "取消" : "恢复"}</button>
-            <button className="danger" onClick={() => window.confirm("删除这个分享？") && remove.mutate(share.token)}><Trash2 /></button>
+            <button title="复制分享信息" aria-label={`复制 ${share.title || share.token}`} onClick={() => copyShare(share)}><Copy />复制</button>
+            <span className="share-more-wrap">
+              <button type="button" title="更多操作" aria-label={`更多操作 ${share.title || share.token}`} aria-haspopup="menu" aria-expanded={openMenu === share.token} onClick={() => setOpenMenu((current) => current === share.token ? null : share.token)}><MoreHorizontal /></button>
+              {openMenu === share.token && <div className="share-more-menu" role="menu">
+                <Link role="menuitem" href={`/s/${share.token}`} onClick={() => setOpenMenu(null)}><ExternalLink />打开分享</Link>
+                {share.access_mode === "code" && status === "migration_pending" && <button role="menuitem" onClick={() => { action.mutate({ share, body: { action: "upgrade" } }); setOpenMenu(null); }}><KeyRound />升级分享</button>}
+                {share.access_mode === "code" && status !== "migration_pending" && <button role="menuitem" onClick={() => { action.mutate({ share, body: { action: "reset_code" } }); setOpenMenu(null); }}><RefreshCw />重置分享码</button>}
+                <button role="menuitem" onClick={() => { action.mutate({ share, body: { action: share.enabled ? "cancel" : "restore", duration: editingDuration } }); setOpenMenu(null); }}>{share.enabled ? "取消分享" : "恢复分享"}</button>
+                <button role="menuitem" className="danger" onClick={() => { if (window.confirm("删除这个分享？")) { remove.mutate(share.token); setOpenMenu(null); } }}><Trash2 />删除分享</button>
+              </div>}
+            </span>
           </span>
         </div>;
       }) : <div className="empty">没有匹配的分享记录。</div>}

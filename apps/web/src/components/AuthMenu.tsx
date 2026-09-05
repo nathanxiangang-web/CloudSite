@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Heart, KeyRound, LogIn, LogOut, PlayCircle, Share2, UserRound, UserRoundPlus } from "lucide-react";
+import { ChevronDown, ClipboardList, Heart, KeyRound, LogIn, LogOut, PlayCircle, Share2, UserRound, UserRoundPlus } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, useAuth } from "@/lib/auth";
@@ -32,6 +32,7 @@ export function AuthMenu() {
     <summary><span className="user-avatar">{user.username.slice(0, 1).toUpperCase()}</span><strong>{user.username}</strong><ChevronDown /></summary>
     <div className="auth-dropdown">
       <Link href="/account"><UserRound />我的账号</Link>
+      <Link href="/submissions"><ClipboardList />我的投稿</Link>
       <Link href="/account/favorites"><Heart />我的收藏</Link>
       <Link href="/account/playback"><PlayCircle />继续播放</Link>
       <Link href="/account/shares"><Share2 />我的分享</Link>

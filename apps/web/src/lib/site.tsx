@@ -16,6 +16,8 @@ export type PublicSiteSettings = {
   github_url: string;
   registration_enabled: boolean;
   default_share_duration: ShareDuration;
+  version: string;
+  content_counts?: Record<string, number>;
 };
 
 export const SITE_QUERY_KEY = ["public-site"] as const;
@@ -30,15 +32,18 @@ const fallback: PublicSiteSettings = {
   github_url: "",
   registration_enabled: true,
   default_share_duration: "24h",
+  version: "",
+  content_counts: {},
 };
 
 const SiteContext = createContext<PublicSiteSettings>(fallback);
 
-export function SiteProvider({ children }: { children: React.ReactNode }) {
+export function SiteProvider({ children, initialSite }: { children: React.ReactNode; initialSite?: PublicSiteSettings }) {
   const query = useQuery({
     queryKey: SITE_QUERY_KEY,
     queryFn: () => api<PublicSiteSettings>("/api/site"),
     staleTime: 60_000,
+    initialData: initialSite,
   });
   return <SiteContext.Provider value={query.data ?? fallback}>{children}</SiteContext.Provider>;
 }

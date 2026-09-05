@@ -11,7 +11,7 @@ import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
 type AdminCollectionItem = { resource_id: string; name: string | null; content_type: string; extension: string; size: number; active: boolean };
 type AdminCollectionDetail = { id: number; name: string; description: string; cover: string; status: "active" | "hidden"; visible_on_home: boolean; sort_order: number; items: AdminCollectionItem[] };
 
-const typeLabel: Record<string, string> = { software: "软件", image: "图片", video: "视频", document: "文档", file: "文件" };
+const typeLabel: Record<string, string> = { software: "软件", image: "图库", video: "视频", document: "教程", file: "文件" };
 
 export default function CollectionsPage() {
   const client = useQueryClient();

@@ -22,6 +22,7 @@ from cloudsite.models import (
     SyncCycle,
     SyncCycleItem,
     SyncRun,
+    SystemSetting,
 )
 
 
@@ -252,6 +253,10 @@ async def test_identity_diagnostics_require_real_admin_session(monkeypatch):
         await connection.run_sync(IndexBase.metadata.create_all)
     monkeypatch.setattr(main, "StateSession", state_sessions)
     monkeypatch.setattr(main, "IndexSession", index_sessions)
+
+    async with state_sessions() as session:
+        session.add(SystemSetting(key="setup_completed", value="true", value_type="string"))
+        await session.commit()
 
     await seed_identity(state_sessions, "r_legacy", "/software/A.zip")
     async with index_sessions() as session:

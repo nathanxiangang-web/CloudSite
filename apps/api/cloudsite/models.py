@@ -35,7 +35,7 @@ class SiteSettings(StateBase):
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     site_name: Mapped[str] = mapped_column(String(100), default="CloudSite")
     home_title: Mapped[str] = mapped_column(String(200), default="把网盘变成好看的资源网站")
-    description: Mapped[str] = mapped_column(String(500), default="软件、图片、视频、文档、文件，集中管理，轻松搜索，便捷分享")
+    description: Mapped[str] = mapped_column(String(500), default="软件、图库、视频、教程和文件，集中整理，轻松搜索，便捷分享")
     hero_subtitle: Mapped[str] = mapped_column(String(200), default="")
     footer_text: Mapped[str] = mapped_column(String(300), default="")
     submission_email: Mapped[str] = mapped_column(String(200), default="nathxo@outlook.com")
@@ -175,6 +175,41 @@ class User(StateBase):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_by_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Submission(StateBase):
+    __tablename__ = "submissions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource_name: Mapped[str] = mapped_column(String(120))
+    resource_type: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text, default="")
+    source_url: Mapped[str] = mapped_column(String(1000), default="")
+    download_url: Mapped[str] = mapped_column(String(2000), default="")
+    copyright_note: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    admin_note: Mapped[str] = mapped_column(Text, default="")
+    reviewed_by: Mapped[str] = mapped_column(String(100), default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class Notification(StateBase):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    level: Mapped[str] = mapped_column(String(20), default="info", index=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    source: Mapped[str] = mapped_column(String(30), default="manual")
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class UserSession(StateBase):

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from .config import settings
-from .migrations import CURRENT_SCHEMA_VERSION, get_state_schema_version, set_index_schema_version, set_state_schema_version
+from .migrations import CURRENT_SCHEMA_VERSION, STATE_MIGRATIONS, get_state_schema_version, run_migrations, set_index_schema_version, set_state_schema_version
 
 
 class StateBase(DeclarativeBase):
@@ -127,6 +127,7 @@ for engine in (state_engine, index_engine):
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
         cursor.execute("PRAGMA wal_autocheckpoint=1000")
         cursor.close()
 
@@ -219,6 +220,14 @@ async def init_databases() -> None:
         if "status" not in {row[1] for row in collection_columns.fetchall()}:
             await connection.exec_driver_sql(
                 "ALTER TABLE collections ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
+            )
+        submission_columns = await connection.exec_driver_sql("PRAGMA table_info(submissions)")
+        if "published_resource_id" not in {row[1] for row in submission_columns.fetchall()}:
+            await connection.exec_driver_sql(
+                "ALTER TABLE submissions ADD COLUMN published_resource_id VARCHAR(64)"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_submissions_published_resource_id ON submissions (published_resource_id)"
             )
         site_columns = await connection.exec_driver_sql("PRAGMA table_info(site_settings)")
         site_column_names = {row[1] for row in site_columns.fetchall()}
@@ -322,7 +331,10 @@ async def init_databases() -> None:
         await connection.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_users_disabled_at ON users (disabled_at)"
         )
-        await set_state_schema_version(connection, CURRENT_SCHEMA_VERSION)
+        current_state_version = await get_state_schema_version(connection)
+        if current_state_version == 0:
+            await set_state_schema_version(connection, 1)
+        await run_migrations(connection, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version)
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
         for table, column, definition in (

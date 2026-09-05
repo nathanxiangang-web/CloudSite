@@ -1,9 +1,9 @@
 services:
   api:
-    image: ${CLOUDSITE_API_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-api}:${CLOUDSITE_IMAGE_TAG:-v1.0.0-beta.1}
+    image: ${CLOUDSITE_API_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-api}:${CLOUDSITE_IMAGE_TAG:-v1.0.0-beta.2}
     pull_policy: always
     environment:
-      CLOUDSITE_SECRET_KEY: ${CLOUDSITE_SECRET_KEY:-cloudsite-development-key-change-me}
+      CLOUDSITE_SECRET_KEY: "${CLOUDSITE_SECRET_KEY:?CLOUDSITE_SECRET_KEY is required}"
       CLOUDSITE_MASTER_KEY: ${CLOUDSITE_MASTER_KEY:-}
       CLOUDSITE_DATA_DIR: /data
       CLOUDSITE_CORS_ORIGINS: ${CLOUDSITE_CORS_ORIGINS:-http://localhost:3000}
@@ -23,7 +23,7 @@ services:
       - cloudsite-internal
 
   web:
-    image: ${CLOUDSITE_WEB_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-web}:${CLOUDSITE_IMAGE_TAG:-v1.0.0-beta.1}
+    image: ${CLOUDSITE_WEB_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-web}:${CLOUDSITE_IMAGE_TAG:-v1.0.0-beta.2}
     pull_policy: always
     environment:
       API_INTERNAL_URL: http://api:8000

@@ -14,15 +14,15 @@ type DirectoryItem = { name: string; path: string; modified: string | null };
 type DirectoryResponse = { path: string; parent_path: string; items: DirectoryItem[] };
 
 const contentTypes = [
-  ["software", "软件"], ["image", "图片"], ["video", "视频"], ["document", "文档"], ["file", "普通文件"],
+  ["software", "软件"], ["image", "图库"], ["video", "视频"], ["document", "教程"], ["file", "普通文件"],
 ] as const;
 
 function inferContentType(name: string) {
   const value = name.toLowerCase();
   if (/软件|应用|程序|apps?|software/.test(value)) return "software";
-  if (/图片|照片|相册|images?|photos?/.test(value)) return "image";
+  if (/图库|图片|照片|相册|壁纸|摄影|插画|图像|gallery|galleries|images?|photos?|wallpapers?/.test(value)) return "image";
   if (/视频|影视|电影|videos?|movies?/.test(value)) return "video";
-  if (/文档|资料|书籍|documents?|docs?|books?/.test(value)) return "document";
+  if (/教程|指南|手册|帮助|文档|资料|书籍|guides?|tutorials?|manuals?|docs?|documents?|books?/.test(value)) return "document";
   return "file";
 }
 
@@ -53,6 +53,7 @@ export default function SystemPage() {
   const [mappingForm, setMappingForm] = useState({ content_type: "software", display_name: "", alist_path: "" });
   const [editingMappingId, setEditingMappingId] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [tab, setTab] = useState<"connection" | "mapping" | "sync" | "status">("connection");
   const [browserPath, setBrowserPath] = useState("/");
   const [selectedDirectory, setSelectedDirectory] = useState<DirectoryItem | null>(null);
 
@@ -105,11 +106,20 @@ export default function SystemPage() {
   const submitAlist = (event: FormEvent) => { event.preventDefault(); saveAlist.mutate(); };
   const breadcrumbs = browserPath.split("/").filter(Boolean);
 
-  return <AdminShell title="系统"><div className="admin-page system-grid">
+  return <AdminShell title="系统"><div className="admin-page">
+    <nav className="admin-tabs" role="tablist" aria-label="系统设置分区">
+      <button type="button" role="tab" aria-selected={tab === "connection"} className={tab === "connection" ? "admin-tab active" : "admin-tab"} onClick={() => setTab("connection")}><Link2 />连接与凭据</button>
+      <button type="button" role="tab" aria-selected={tab === "mapping"} className={tab === "mapping" ? "admin-tab active" : "admin-tab"} onClick={() => setTab("mapping")}><Database />内容映射</button>
+      <button type="button" role="tab" aria-selected={tab === "sync"} className={tab === "sync" ? "admin-tab active" : "admin-tab"} onClick={() => setTab("sync")}><RefreshCw />自动同步</button>
+      <button type="button" role="tab" aria-selected={tab === "status"} className={tab === "status" ? "admin-tab active" : "admin-tab"} onClick={() => setTab("status")}><Server />运行状态</button>
+    </nav>
+    {tab === "connection" && <div className="admin-tab-panel admin-tab-panel-narrow">
     <section className="panel"><h2><Link2 />AList 连接</h2><p className="panel-intro">填写 AList 服务地址和管理员账号。保存后会加密凭据，并自动读取真实网盘目录。</p>
       <div className={`connection-summary ${alist.data?.connection_status ?? "unconfigured"}`}><span className="connection-dot" /><div><strong>{alist.data?.connection_status === "connected" ? "已连接" : alist.data?.connection_status === "disconnected" ? "连接异常" : "尚未配置"}</strong><small>{alist.data?.base_url || "请先填写下方连接信息"}{alist.data?.username ? ` · ${alist.data.username}` : ""}</small><small>{alist.data?.last_test_at ? `最近测试：${new Date(alist.data.last_test_at).toLocaleString("zh-CN")}` : "尚未测试连接"}</small></div></div>
       <form className="form-stack" onSubmit={submitAlist}><label>AList 服务地址<input value={alistForm.base_url} onChange={(e) => setAlistForm({ ...alistForm, base_url: e.target.value })} placeholder="例如 http://192.168.1.20:5244" required /></label><label>管理员账号<input value={alistForm.username} onChange={(e) => setAlistForm({ ...alistForm, username: e.target.value })} placeholder="AList 管理员用户名" required /></label><label>管理员密码<span className="password-field"><input type={showPassword ? "text" : "password"} value={alistForm.password} onChange={(e) => setAlistForm({ ...alistForm, password: e.target.value })} placeholder={alist.data?.has_password ? "已保存；留空即可继续使用" : "输入 AList 管理员密码"} /><button type="button" aria-label={showPassword ? "隐藏密码" : "显示密码"} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff /> : <Eye />}</button></span>{alist.data?.has_password && <small className="saved-secret"><CheckCircle2 />服务端已有加密凭据</small>}</label><label className="check"><input type="checkbox" checked={alistForm.remember_credentials} onChange={(e) => setAlistForm({ ...alistForm, remember_credentials: e.target.checked })} />加密保存登录信息（目录读取和同步需要）</label><div className="form-actions"><button type="button" disabled={testAlist.isPending || saveAlist.isPending} onClick={() => testAlist.mutate()}><RefreshCw className={testAlist.isPending ? "spin" : ""} />{testAlist.isPending ? "正在验证…" : "测试连接"}</button><button className="primary" disabled={saveAlist.isPending || testAlist.isPending}><Save />{saveAlist.isPending ? "正在保存…" : "验证并保存"}</button></div>{(testAlist.isSuccess || saveAlist.isSuccess) && <p className="form-success"><CheckCircle2 />已验证 AList 登录并成功读取根目录</p>}{!testAlist.isSuccess && !saveAlist.isSuccess && alist.data?.last_test_message && <p className={alist.data.last_test_status === "success" ? "form-success" : "form-error"}>{alist.data.last_test_message}</p>}{(testAlist.error || saveAlist.error) && <p className="form-error">{(testAlist.error || saveAlist.error)?.message}</p>}</form></section>
+    </div>}
 
+    {tab === "mapping" && <div className="admin-tab-panel">
     <section className="panel index-and-mapping"><h2><Database />索引状态</h2><dl><div><dt>资源总数</dt><dd>{system.data?.resources ?? 0}</dd></div><div><dt>文件夹数量</dt><dd>{system.data?.folders ?? 0}</dd></div><div><dt>操作日志</dt><dd>{system.data?.operation_logs ?? 0}</dd></div><div><dt>数据库</dt><dd>{system.data?.database ?? "SQLite 3"}</dd></div><div><dt>FTS 索引</dt><dd className="ok-text">已就绪</dd></div></dl>
       <div className="mapping-heading"><div><h3>内容根目录映射</h3><p>从真实 AList 目录中选择，无需手写路径。</p></div>{alist.data?.enabled && <button type="button" className="icon-button" title="重新读取根目录" onClick={() => rootDirectories.refetch()}><RefreshCw /></button>}</div>
       {!alist.data?.enabled ? <div className="mapping-connect-empty"><FolderSearch /><strong>请先连接 AList</strong><span>连接成功后，这里会直接显示真实网盘目录。</span></div> : rootDirectories.isLoading ? <div className="mapping-connect-empty"><RefreshCw className="spin" /><strong>正在读取网盘目录</strong></div> : rootDirectories.error ? <div className="mapping-connect-empty error-state"><FolderSearch /><strong>目录读取失败</strong><span>{rootDirectories.error.message}</span><button type="button" onClick={() => rootDirectories.refetch()}>重新读取</button></div> : <>
@@ -127,10 +137,18 @@ export default function SystemPage() {
         {addMapping.error && <p className="form-error">{addMapping.error.message}</p>}
       </form>
     </section>
+    </div>}
 
+    {tab === "sync" && <div className="admin-tab-panel admin-tab-panel-narrow">
     <section className="panel"><h2><RefreshCw />自动同步</h2><div className="setting-row"><span><strong>自动同步</strong><small>按间隔低速同步 AList 变化</small></span><input className="toggle" type="checkbox" checked={systemForm.automatic_sync} onChange={(e) => setSystemForm({ ...systemForm, automatic_sync: e.target.checked })} /></div><label className="select-label">同步间隔<select value={systemForm.sync_interval_minutes} onChange={(e) => setSystemForm({ ...systemForm, sync_interval_minutes: Number(e.target.value) })}><option value={180}>3 小时</option><option value={360}>6 小时</option><option value={720}>12 小时</option><option value={1440}>24 小时</option></select></label><div className="setting-row"><span><strong>启动到期检查</strong><small>仅当距离上次成功同步已超过设定周期，才在启动后延迟同步</small></span><input className="toggle" type="checkbox" checked={systemForm.sync_on_startup} onChange={(e) => setSystemForm({ ...systemForm, sync_on_startup: e.target.checked })} /></div><button className="primary" onClick={() => saveSystem.mutate()}><Save />保存同步设置</button></section>
-    <section className="panel"><h2><Boxes />Provider 能力</h2><dl><div><dt>Provider</dt><dd>{system.data?.provider?.provider_type === "generic_alist" ? "Generic AList" : system.data?.provider?.provider_type ?? "Generic AList"}</dd></div><div><dt>同步策略</dt><dd>{strategyLabel(system.data?.provider?.strategy)}</dd></div><div><dt>Delta</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_delta)}</dd></div><div><dt>Change Cursor</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_change_cursor)}</dd></div><div><dt>Webhook</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_webhook)}</dd></div><div><dt>Stable Object ID</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_stable_object_id)}</dd></div><div><dt>Range</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_range)}</dd></div><div><dt>Direct Preview</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_direct_preview)}</dd></div>{system.data?.provider?.fallback_reason && <div><dt>回退原因</dt><dd>{system.data.provider.fallback_reason}</dd></div>}</dl></section>
-    <section className="panel"><h2><Server />服务信息</h2><dl><div><dt>API 版本</dt><dd>v{system.data?.version ?? "0.5.1"}</dd></div><div><dt>部署模式</dt><dd>Docker Compose</dd></div><div><dt>健康状态</dt><dd className="ok-text">健康</dd></div><div><dt>时区</dt><dd>{system.data?.timezone ?? "Asia/Shanghai"}</dd></div></dl></section>
+    </div>}
+
+    {tab === "status" && <div className="admin-tab-panel">
+      <div className="system-status-grid">
+    <section className="panel"><h2><Boxes />Provider 能力</h2><dl><div><dt>Provider</dt><dd>{system.data?.provider?.provider_type === "generic_alist" ? "Generic AList" : system.data?.provider?.provider_type ?? "Generic AList"}</dd></div><div><dt>同步策略</dt><dd>{strategyLabel(system.data?.provider?.strategy)}</dd></div><div><dt>增量同步</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_delta)}</dd></div><div><dt>变更游标</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_change_cursor)}</dd></div><div><dt>Webhook</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_webhook)}</dd></div><div><dt>稳定对象 ID</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_stable_object_id)}</dd></div><div><dt>分段读取</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_range)}</dd></div><div><dt>直接预览</dt><dd>{capLabel(system.data?.provider?.capabilities?.supports_direct_preview)}</dd></div>{system.data?.provider?.fallback_reason && <div><dt>回退原因</dt><dd>{system.data.provider.fallback_reason}</dd></div>}</dl></section>
+    <section className="panel"><h2><Server />服务信息</h2><dl><div><dt>API 版本</dt><dd>v{system.data?.version ?? "—"}</dd></div><div><dt>部署模式</dt><dd>Docker Compose</dd></div><div><dt>健康状态</dt><dd className="ok-text">健康</dd></div><div><dt>时区</dt><dd>{system.data?.timezone ?? "Asia/Shanghai"}</dd></div></dl></section>
+      </div>
+    </div>}
   </div>
 
   {pickerOpen && <div className="directory-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPickerOpen(false); }}><section className="directory-modal" role="dialog" aria-modal="true" aria-labelledby="directory-modal-title"><header><div><h2 id="directory-modal-title">选择 AList 文件夹</h2><p>进入目录查看子文件夹，选中后再确认。</p></div><button type="button" className="icon-button" aria-label="关闭目录选择器" onClick={() => setPickerOpen(false)}><X /></button></header>

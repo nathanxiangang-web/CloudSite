@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import auth, main
 from cloudsite.database import StateBase
-from cloudsite.models import AListConnection
+from cloudsite.models import AListConnection, SystemSetting
 
 
 async def _setup_client(monkeypatch):
@@ -69,6 +69,7 @@ async def test_admin_protected_route_returns_admin_required(monkeypatch):
             id=1, base_url="https://alist.example", username="admin",
             password_ciphertext="x", enabled=True,
         ))
+        session.add(SystemSetting(key="setup_completed", value="true", value_type="string"))
         await session.commit()
     async with client:
         response = await client.get("/api/admin/system")

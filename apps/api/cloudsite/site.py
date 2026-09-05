@@ -5,9 +5,11 @@
 """
 
 from fastapi import APIRouter
+from sqlalchemy import select, func
 
-from .database import StateSession
-from .models import SiteSettings
+from . import __version__
+from .database import StateSession, IndexSession
+from .models import ContentRootMapping, Resource, SiteSettings
 
 
 router = APIRouter(tags=["site"])
@@ -26,6 +28,7 @@ def public_site_settings(row: SiteSettings | None) -> dict:
             "github_url": "",
             "registration_enabled": True,
             "default_share_duration": "24h",
+            "version": __version__,
         }
     return {
         "site_name": row.site_name or "CloudSite",
@@ -39,11 +42,21 @@ def public_site_settings(row: SiteSettings | None) -> dict:
         "github_url": row.github_url or "",
         "registration_enabled": bool(row.registration_enabled),
         "default_share_duration": row.default_share_duration or "24h",
+        "version": __version__,
     }
 
 
 @router.get("/api/site")
 async def public_site():
-    async with StateSession() as session:
-        row = await session.get(SiteSettings, 1)
-        return public_site_settings(row)
+    async with StateSession() as state, IndexSession() as index:
+        row = await state.get(SiteSettings, 1)
+        result = public_site_settings(row)
+        # 内容数量：供前端导航在 0 篇教程时隐藏教程入口
+        enabled_ids = set((await state.scalars(select(ContentRootMapping.id).where(ContentRootMapping.enabled.is_(True)))).all())
+        scope = Resource.root_mapping_id.in_(enabled_ids) if enabled_ids else False
+        counts = {ct: 0 for ct in ("software", "image", "video", "document", "file")}
+        for r in (await index.execute(select(Resource.content_type, func.count()).select_from(Resource).where(Resource.status == "active", scope).group_by(Resource.content_type))).all():
+            if r[0] in counts:
+                counts[r[0]] = int(r[1] or 0)
+        result["content_counts"] = counts
+        return result

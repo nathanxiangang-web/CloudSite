@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { authRedirectTarget } from "./lib/navigation";
 
 const apiOrigin = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
+const SESSION_COOKIE = "cloudsite_user_session";
 
 type SessionStatus = { authenticated: boolean; code: string };
 
+const UNAUTHENTICATED: SessionStatus = { authenticated: false, code: "" };
+
 async function getSessionStatus(request: NextRequest): Promise<SessionStatus> {
+  // 快速路径：无 session cookie 直接判定未登录，省一次后端往返
+  if (!request.cookies.has(SESSION_COOKIE)) return UNAUTHENTICATED;
   try {
     const response = await fetch(`${apiOrigin}/api/auth/me`, {
       headers: { cookie: request.headers.get("cookie") || "" },
@@ -18,7 +23,7 @@ async function getSessionStatus(request: NextRequest): Promise<SessionStatus> {
       code: typeof body?.detail?.code === "string" ? body.detail.code : "",
     };
   } catch {
-    return { authenticated: false, code: "" };
+    return UNAUTHENTICATED;
   }
 }
 

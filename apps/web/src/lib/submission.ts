@@ -1,5 +1,5 @@
 export const SUBMISSION_EMAIL = "nathxo@outlook.com";
-export const RESOURCE_TYPES = ["软件", "图片", "视频", "文档", "其他文件"] as const;
+export const RESOURCE_TYPES = ["软件", "图库", "视频", "教程", "其他文件"] as const;
 
 export type SubmissionInput = {
   resourceName: string;
@@ -22,7 +22,7 @@ export function isOptionalHttpUrl(value: string): boolean {
   }
 }
 
-export function buildSubmission(input: SubmissionInput, recipient = SUBMISSION_EMAIL): { subject: string; body: string; mailto: string } {
+export function buildSubmission(input: SubmissionInput, recipient = SUBMISSION_EMAIL, version = ""): { subject: string; body: string; mailto: string } {
   const subject = `[CloudSite资源投稿] ${input.resourceName.trim()}`;
   const body = [
     "CloudSite 资源投稿",
@@ -50,7 +50,7 @@ export function buildSubmission(input: SubmissionInput, recipient = SUBMISSION_E
     "备注：",
     input.note.trim(),
     "",
-    "submitted_from：CloudSite 0.5.1",
+    `submitted_from：CloudSite${version ? ` ${version}` : ""}`,
   ].join("\n");
   const mailto = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   return { subject, body, mailto };

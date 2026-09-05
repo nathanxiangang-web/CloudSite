@@ -12,9 +12,9 @@ export type Resource = {
 };
 
 export type PreviewCapability = {
-  preview_type: "image" | "video" | "pdf" | "office" | "text" | "markdown" | "none";
+  preview_type: "image" | "video" | "pdf" | "text" | "markdown" | "none";
   can_preview: boolean;
-  preview_mode: "direct" | "office" | "text" | "none";
+  preview_mode: "direct" | "text" | "none";
   browser_native: boolean;
   mime_type: string;
   extension: string;

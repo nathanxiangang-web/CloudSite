@@ -35,3 +35,8 @@ outputs/
 .codex-backups/
 skills/
 开发进度/
+
+# Local backup/scratch (release fix)
+*.bak.fix
+apps.bak.gallery./
+fix_paths.py

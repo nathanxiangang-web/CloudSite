@@ -125,7 +125,7 @@ export function VideoPlayer({
           onWaiting={() => setBuffering(true)}
           onPlaying={() => { setBuffering(false); setLoading(false); }}
           onCanPlay={() => { setBuffering(false); setLoading(false); }}
-          onTimeUpdate={() => saveProgress(false)}
+          onTimeUpdate={() => { if (Date.now() - lastSavedAt.current >= 5000) saveProgress(false); }}
           onPause={() => saveProgress(true)}
           onEnded={() => saveProgress(true)}
         />

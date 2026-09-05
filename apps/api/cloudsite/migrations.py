@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,3 +87,55 @@ async def run_migrations(
             await set_version(conn, cur)
             applied.append(m.id)
     return cur, applied
+
+
+async def state_v1_to_v2_upgrade(conn: AsyncConnection) -> None:
+    """Schema v1 → v2：投稿与通知表 + 索引，幂等。"""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS submissions("
+        "id INTEGER PRIMARY KEY,"
+        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "resource_name VARCHAR(120) NOT NULL,"
+        "resource_type VARCHAR(20) NOT NULL,"
+        "description TEXT DEFAULT '',"
+        "source_url VARCHAR(1000) DEFAULT '',"
+        "download_url VARCHAR(2000) DEFAULT '',"
+        "copyright_note TEXT DEFAULT '',"
+        "note TEXT DEFAULT '',"
+        "status VARCHAR(20) DEFAULT 'pending' NOT NULL,"
+        "admin_note TEXT DEFAULT '',"
+        "reviewed_by VARCHAR(100) DEFAULT '',"
+        "reviewed_at DATETIME,"
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_submissions_user_id ON submissions (user_id)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_submissions_status ON submissions (status)")
+    submission_cols = await conn.exec_driver_sql("PRAGMA table_info(submissions)")
+    if "published_resource_id" not in {row[1] for row in submission_cols.fetchall()}:
+        await conn.exec_driver_sql("ALTER TABLE submissions ADD COLUMN published_resource_id VARCHAR(64)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_submissions_published_resource_id ON submissions (published_resource_id)")
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS notifications("
+        "id INTEGER PRIMARY KEY,"
+        "user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,"
+        "title VARCHAR(200) NOT NULL,"
+        "body TEXT DEFAULT '',"
+        "level VARCHAR(20) DEFAULT 'info' NOT NULL,"
+        "pinned BOOLEAN DEFAULT 0 NOT NULL,"
+        "enabled BOOLEAN DEFAULT 1 NOT NULL,"
+        "source VARCHAR(30) DEFAULT 'manual' NOT NULL,"
+        "published_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "expires_at DATETIME,"
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications (user_id)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_notifications_level ON notifications (level)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_notifications_enabled ON notifications (enabled)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_notifications_published_at ON notifications (published_at)")
+
+
+STATE_MIGRATIONS: list[Migration] = [
+    Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
+]

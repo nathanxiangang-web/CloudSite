@@ -2,7 +2,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 
 from .database import IndexSession, StateSession
 from .models import Folder, Resource, SystemSetting
@@ -111,7 +111,10 @@ async def search_index(
     page: int,
     page_size: int,
     sort: str,
+    enabled_root_ids: set[int] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
+    if enabled_root_ids is not None and not enabled_root_ids:
+        return [], 0
     escaped = escape_like(query)
     parameters: dict[str, Any] = {
         "query": query,
@@ -127,6 +130,13 @@ async def search_index(
     fts_clause = " OR rowid IN (SELECT rowid FROM search_fts WHERE search_fts MATCH :fts_query)" if fts_query else ""
     if fts_query:
         parameters["fts_query"] = fts_query
+
+    if enabled_root_ids is not None:
+        parameters["enabled_root_ids"] = list(enabled_root_ids)
+        scope_r = " AND resources.root_mapping_id IN :enabled_root_ids"
+        scope_f = " AND folders.root_mapping_id IN :enabled_root_ids"
+    else:
+        scope_r = scope_f = ""
 
     common = f"""
         WITH matched AS (
@@ -150,13 +160,13 @@ async def search_index(
                    matched.content_type, matched.relevance, resources.size,
                    resources.modified_at, resources.parent_id
             FROM matched JOIN resources ON matched.object_type = 'resource'
-              AND resources.id = matched.object_id AND resources.status = 'active'
+              AND resources.id = matched.object_id AND resources.status = 'active'{scope_r}
             UNION ALL
             SELECT matched.object_id, matched.object_type, matched.name, matched.extension,
                    matched.content_type, matched.relevance, NULL AS size,
                    folders.modified_at, folders.parent_id
             FROM matched JOIN folders ON matched.object_type = 'folder'
-              AND folders.id = matched.object_id AND folders.status = 'active'
+              AND folders.id = matched.object_id AND folders.status = 'active'{scope_f}
         )
     """
     order_by = {
@@ -165,9 +175,12 @@ async def search_index(
         "name": "name COLLATE NOCASE ASC, object_id ASC",
         "size": "CASE WHEN size IS NULL THEN 1 ELSE 0 END, size DESC, name COLLATE NOCASE ASC",
     }[sort]
-    total = int((await session.execute(text(common + " SELECT COUNT(*) FROM candidates"), parameters)).scalar_one())
+    def _bind(stmt):
+        return stmt.bindparams(bindparam("enabled_root_ids", expanding=True)) if enabled_root_ids is not None else stmt
+
+    total = int((await session.execute(_bind(text(common + " SELECT COUNT(*) FROM candidates")), parameters)).scalar_one())
     result = await session.execute(
-        text(common + f" SELECT * FROM candidates ORDER BY {order_by} LIMIT :limit OFFSET :offset"),
+        _bind(text(common + f" SELECT * FROM candidates ORDER BY {order_by} LIMIT :limit OFFSET :offset")),
         parameters,
     )
     return [dict(row) for row in result.mappings().all()], total

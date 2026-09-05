@@ -7,6 +7,30 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
 }
 
+const ALLOWED_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "strong", "em", "b", "i", "u", "br", "hr", "span", "div", "a", "img", "blockquote", "pre", "code", "dl", "dt", "dd", "colgroup", "col"]);
+const ALLOWED_ATTRS = new Set(["href", "src", "alt", "title", "colspan", "rowspan", "class", "width", "height"]);
+
+function sanitizeHtml(html: string): string {
+  if (typeof window === "undefined") return "";
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  function walk(node: Element): void {
+    for (const child of Array.from(node.children)) {
+      const tag = child.tagName.toLowerCase();
+      if (!ALLOWED_TAGS.has(tag)) { child.remove(); continue; }
+      for (const attr of Array.from(child.attributes)) {
+        const name = attr.name.toLowerCase();
+        if (!ALLOWED_ATTRS.has(name)) { child.removeAttribute(attr.name); continue; }
+        if ((name === "href" || name === "src") && /^(javascript|data|file|vbscript):/i.test(attr.value.trim())) {
+          child.removeAttribute(attr.name);
+        }
+      }
+      walk(child);
+    }
+  }
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+
 function slideNumber(name: string): number {
   const match = /slide(\d+)\.xml$/.exec(name);
   return match ? Number(match[1]) : 0;
@@ -17,12 +41,10 @@ async function renderOffice(arrayBuffer: ArrayBuffer, extension: string): Promis
   if (ext === "docx" || ext === "doc") {
     const mammoth = await import("mammoth");
     const result = await mammoth.convertToHtml({ arrayBuffer });
-    return result.value;
+    return sanitizeHtml(result.value);
   }
   if (ext === "xlsx" || ext === "xls") {
-    const XLSX = await import("xlsx");
-    const workbook = XLSX.read(arrayBuffer, { type: "array" });
-    return workbook.SheetNames.map((name) => `<h3 class="office-sheet-name">${escapeHtml(name)}</h3>${XLSX.utils.sheet_to_html(workbook.Sheets[name])}`).join("");
+    throw new Error("电子表格浏览器内预览已禁用，请下载文件后使用 Excel 或 LibreOffice 查看。");
   }
   if (ext === "pptx" || ext === "ppt") {
     const JSZip = (await import("jszip")).default;
@@ -34,7 +56,7 @@ async function renderOffice(arrayBuffer: ArrayBuffer, extension: string): Promis
       const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]).filter((t) => t.trim()).join(" ");
       slides.push(`<div class="pptx-slide"><h4>第 ${slides.length + 1} 页</h4><p>${escapeHtml(texts || "（本页无可提取文本）")}</p></div>`);
     }
-    return slides.length ? slides.join("") : "<p>未能在该演示文稿中提取到文本。</p>";
+    return sanitizeHtml(slides.length ? slides.join("") : "<p>未能在该演示文稿中提取到文本。</p>");
   }
   throw new Error("不支持的 Office 格式");
 }

@@ -9,14 +9,14 @@ import random
 import time
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from sqlalchemy import delete, desc, func, select, text
+from sqlalchemy import and_, delete, desc, func, or_, select, text
 
 from . import __version__
 from .alist import AListClient, AListError
@@ -50,6 +50,7 @@ from .models import (
     DownloadEvent,
     DownloadDiagnostic,
     Folder,
+    Notification,
     OperationLog,
     Resource,
     ResourceIdentity,
@@ -57,15 +58,25 @@ from .models import (
     ResourceIdentityHistory,
     Share,
     SiteSettings,
+    Submission,
     SyncRun,
     SystemSetting,
     User,
     utcnow,
 )
-from .office import OfficePreviewError, ensure_preview_cached, office_cache_filename, office_content_type
+from .office import OFFICE_CONTENT_TYPES, OfficePreviewError, ensure_preview_cached, office_cache_filename, office_content_type
 from .preview import PreviewError, load_text_preview, preview_capability, resolve_preview_url, validate_preview_ticket
 from .providers.service import provider_info
 from .request_context import request_is_https
+from .admin_auth import (
+    AdminAuthMode,
+    get_setup_completed,
+    ensure_setup_compatible,
+    is_public_admin_endpoint,
+    should_block_admin_request,
+    verify_setup_token,
+)
+from .auth import validate_request_origin
 from .schemas import (
     AListInput,
     AdminLoginInput,
@@ -82,6 +93,10 @@ from .schemas import (
     ShareInput,
     ShareUpdate,
     ShareVerifyInput,
+    SubmissionInput,
+    SubmissionReviewInput,
+    NotificationInput,
+    NotificationUpdate,
     SiteSettingsUpdate,
     SyncInput,
     SystemInput,
@@ -146,11 +161,15 @@ scheduler_task: asyncio.Task | None = None
 manual_sync_task: asyncio.Task | None = None
 SESSION_COOKIE = "cloudsite_session"
 _storage_info_cache: dict = {"data": None, "fetched_at": 0.0}
+_home_cache: dict = {"data": None, "fetched_at": 0.0}
+_HOME_CACHE_TTL_SECONDS = 180
 _last_rate_limit_cleanup_at = 0.0
 _last_session_cleanup_at = 0.0
 _last_share_cleanup_at = 0.0
 SHARE_CLEANUP_SECONDS = 3600
 STORAGE_INFO_TTL_SECONDS = 600
+_alist_connection_cache: dict = {"data": None, "fetched_at": 0.0}
+_ALIST_CONNECTION_CACHE_TTL_SECONDS = 30
 SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
 logger = logging.getLogger(__name__)
 
@@ -280,9 +299,32 @@ async def _run_manual_sync_in_background(full: bool, force: bool) -> None:
         manual_sync_task = None
 
 
+_INSECURE_SECRET_VALUES = {
+    "cloudsite-development-key-change-me",
+    "replace-with-a-long-random-secret",
+    "change-me",
+}
+
+
+def validate_production_secrets() -> None:
+    if settings.allow_insecure_dev_key:
+        return
+    key = settings.secret_key
+    if not key or key in _INSECURE_SECRET_VALUES:
+        raise RuntimeError(
+            "CLOUDSITE_SECRET_KEY 未设置或使用了公开占位值，拒绝启动。"
+            "请生成随机密钥：python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
+    if len(key) < 32:
+        raise RuntimeError("CLOUDSITE_SECRET_KEY 长度不足 32 字符，拒绝启动。")
+    if not settings.master_key:
+        logger.warning("CLOUDSITE_MASTER_KEY 未设置，凭据加密将回退到 SECRET_KEY。生产环境建议显式设置独立 MASTER_KEY。")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global scheduler_task, manual_sync_task
+    validate_production_secrets()
     validate_database_files()
     backup_stable_id_databases()
     await init_databases()
@@ -297,6 +339,7 @@ async def lifespan(_: FastAPI):
     async with StateSession() as session:
         if not await session.get(SiteSettings, 1):
             session.add(SiteSettings(id=1))
+        await ensure_setup_compatible(session)
         await session.commit()
         values = await get_system_values(session)
     scheduler_task = asyncio.create_task(scheduler_loop())
@@ -393,21 +436,46 @@ async def admin_session_middleware(request: Request, call_next):
         return await call_next(request)
 
     if path.startswith("/api/admin"):
-        if path.startswith("/api/admin/auth/"):
+        # M4: 精确公开端点放行（写操作仍做同源校验）
+        if is_public_admin_endpoint(request.method, path):
+            if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                try:
+                    validate_request_origin(request)
+                except Exception:
+                    return JSONResponse(
+                        {"detail": {"code": "ORIGIN_FORBIDDEN", "message": "请求来源校验失败"}},
+                        status_code=403,
+                    )
             return await call_next(request)
+        # M4: 统一失败关闭判定
         async with StateSession() as session:
-            connection = await session.get(AListConnection, 1)
+            setup_completed = await get_setup_completed(session)
         admin_authenticated = verify_session_token(request.cookies.get(SESSION_COOKIE))
-        if path.startswith("/api/admin/users") and not admin_authenticated:
+        block, error_code = should_block_admin_request(
+            method=request.method,
+            path=path,
+            setup_completed=setup_completed,
+            admin_cookie_valid=admin_authenticated,
+        )
+        if block:
+            if error_code == "SETUP_REQUIRED":
+                return JSONResponse(
+                    {"detail": {"code": "SETUP_REQUIRED", "message": "站点尚未完成初始化"}},
+                    status_code=409,
+                )
             return JSONResponse(
                 {"detail": {"code": "ADMIN_REQUIRED", "message": "请先登录管理后台"}},
                 status_code=403,
             )
-        if connection and connection.enabled and not admin_authenticated:
-            return JSONResponse(
-                {"detail": {"code": "ADMIN_REQUIRED", "message": "请先登录管理后台"}},
-                status_code=403,
-            )
+        # M6: 后台写操作同源校验
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            try:
+                validate_request_origin(request)
+            except Exception:
+                return JSONResponse(
+                    {"detail": {"code": "ORIGIN_FORBIDDEN", "message": "请求来源校验失败"}},
+                    status_code=403,
+                )
         return await call_next(request)
 
     public_api_paths = {"/api/health", "/api/auth/login", "/api/auth/register", "/api/site"}
@@ -449,17 +517,30 @@ async def health():
 @app.get("/api/admin/auth/status")
 async def admin_auth_status(request: Request):
     async with StateSession() as session:
-        connection = await session.get(AListConnection, 1)
-    auth_required = bool(connection and connection.enabled)
-    return {"auth_required": auth_required, "authenticated": not auth_required or verify_session_token(request.cookies.get(SESSION_COOKIE))}
+        setup_completed = await get_setup_completed(session)
+    admin_cookie_valid = verify_session_token(request.cookies.get(SESSION_COOKIE))
+    if not setup_completed:
+        mode = AdminAuthMode.SETUP_REQUIRED
+    elif not admin_cookie_valid:
+        mode = AdminAuthMode.LOGIN_REQUIRED
+    else:
+        mode = AdminAuthMode.AUTHENTICATED
+    return {
+        "mode": mode,
+        "authenticated": mode == AdminAuthMode.AUTHENTICATED,
+        "auth_required": True,
+    }
 
 
 @app.post("/api/admin/auth/login")
 async def admin_login(payload: AdminLoginInput, request: Request, response: Response):
     async with StateSession() as session:
+        setup_completed = await get_setup_completed(session)
         connection = await session.get(AListConnection, 1)
-    if not connection or not connection.enabled:
-        raise HTTPException(409, "请先在系统页配置 AList")
+    if not setup_completed:
+        raise HTTPException(409, {"code": "SETUP_REQUIRED", "message": "站点尚未完成初始化"})
+    if not connection:
+        raise HTTPException(409, {"code": "SETUP_REQUIRED", "message": "尚未配置 AList，请先完成初始化"})
     try:
         await AListClient(connection.base_url, payload.username, payload.password).test()
     except Exception as exc:
@@ -480,6 +561,62 @@ async def admin_login(payload: AdminLoginInput, request: Request, response: Resp
 async def admin_logout(response: Response):
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
+
+
+@app.get("/api/admin/setup/status")
+async def admin_setup_status():
+    async with StateSession() as session:
+        setup_completed = await get_setup_completed(session)
+    return {
+        "setup_required": not setup_completed,
+        "setup_available": bool(settings.setup_token),
+    }
+
+
+@app.post("/api/admin/setup/alist")
+async def admin_setup_alist(payload: AListInput, request: Request):
+    # M3: 一次性初始化，固定处理顺序
+    # 1. 同源校验（中间件已对公开写端点执行，这里二次确认）
+    try:
+        validate_request_origin(request)
+    except Exception:
+        raise HTTPException(403, {"code": "ORIGIN_FORBIDDEN", "message": "请求来源校验失败"})
+    # 2. 检查是否仍为 setup_required
+    async with StateSession() as session:
+        setup_completed = await get_setup_completed(session)
+        if setup_completed:
+            raise HTTPException(409, {"code": "SETUP_ALREADY_COMPLETED", "message": "站点已完成初始化"})
+        # 3. 检查初始化令牌
+        if not settings.setup_token:
+            raise HTTPException(503, {"code": "SETUP_UNAVAILABLE", "message": "服务器未配置初始化令牌"})
+        provided_token = request.headers.get("X-CloudSite-Setup-Token", "")
+        if not verify_setup_token(provided_token, settings.setup_token):
+            raise HTTPException(403, {"code": "SETUP_FORBIDDEN", "message": "初始化令牌错误"})
+        # 4. 校验请求字段（AListInput 已由 Pydantic 完成）
+        # 5. 使用提交的配置测试 AList 登录
+        try:
+            result = await AListClient(payload.base_url, payload.username, payload.password).test()
+        except Exception as exc:
+            raise HTTPException(400, {"code": "ALIST_TEST_FAILED", "message": f"AList 验证失败：{str(exc)[:200]}"}) from exc
+        # 6. 测试成功后保存 AList 配置 + 写入 setup_completed（同一事务）
+        row = await session.get(AListConnection, 1) or AListConnection(id=1)
+        row.base_url = payload.base_url.rstrip("/")
+        row.base_path = result.get("base_path") or "/"
+        row.username = payload.username
+        row.password_ciphertext = encrypt_secret(payload.password) if payload.remember_credentials else ""
+        row.remember_credentials = payload.remember_credentials
+        row.enabled = True
+        row.last_test_status = "success"
+        row.last_test_message = "初始化时 AList 连接验证成功"
+        row.last_test_at = utcnow()
+        session.add(row)
+        session.add(SystemSetting(key="setup_completed", value="true", value_type="string"))
+        session.add(OperationLog(module="setup", action="alist_init", message="一次性初始化完成，AList 配置已保存"))
+        await session.commit()
+    # 7. 清理 AList 配置缓存
+    _alist_connection_cache["data"] = None
+    _alist_connection_cache["fetched_at"] = 0.0
+    return {"setup_completed": True, "next": "/admin/login"}
 
 
 def resource_dict(row: Resource, parent: Folder | None = None) -> dict:
@@ -527,6 +664,44 @@ def breadcrumbs_for(folder: Folder | None, folders_by_id: dict[str, Folder]) -> 
         items.append({"id": current.id, "name": current.name})
         current = folders_by_id.get(current.parent_id or "")
     return list(reversed(items))
+
+
+async def breadcrumbs_for_folder(session, folder: Folder | None) -> list[dict]:
+    """沿 parent_id 链向上查询祖先，仅加载祖先节点而非全表 folders。"""
+    items: list[dict] = []
+    current = folder
+    visited: set[str] = set()
+    while current and current.id not in visited:
+        visited.add(current.id)
+        items.append({"id": current.id, "name": current.name})
+        if not current.parent_id:
+            break
+        current = await session.get(Folder, current.parent_id)
+    return list(reversed(items))
+
+
+async def breadcrumbs_batch(session, folder_ids: list[str]) -> dict[str, list[dict]]:
+    """批量解析多个文件夹的祖先链，共享缓存避免重复查询与全表加载。"""
+    cache: dict[str, Folder] = {}
+    result: dict[str, list[dict]] = {}
+    for start_id in folder_ids:
+        if not start_id or start_id in result:
+            continue
+        chain: list[dict] = []
+        current_id: str | None = start_id
+        visited: set[str] = set()
+        while current_id and current_id not in visited:
+            visited.add(current_id)
+            folder = cache.get(current_id)
+            if folder is None:
+                folder = await session.get(Folder, current_id)
+                if folder is None:
+                    break
+                cache[current_id] = folder
+            chain.append({"id": folder.id, "name": folder.name})
+            current_id = folder.parent_id
+        result[start_id] = list(reversed(chain))
+    return result
 
 
 async def collection_dict(state, index, row: Collection, include_items: bool = False) -> dict:
@@ -647,31 +822,54 @@ async def resolve_share_download_resource(state, index, row: Share, resource_id:
 
 @app.get("/api/home")
 async def home():
+    now = time.time()
+    if _home_cache["data"] is not None and (now - _home_cache["fetched_at"]) < _HOME_CACHE_TTL_SECONDS:
+        return _home_cache["data"]
     async with StateSession() as state, IndexSession() as index:
         site = await state.get(SiteSettings, 1)
         root_rows = list((await state.scalars(select(ContentRootMapping).where(ContentRootMapping.enabled.is_(True)).order_by(ContentRootMapping.sort_order, ContentRootMapping.id))).all())
         enabled_ids = {root.id for root in root_rows}
         scope_filter = Resource.root_mapping_id.in_(enabled_ids) if enabled_ids else False
-        counts = {}
-        for content_type in ("software", "image", "video", "document", "file"):
-            counts[content_type] = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.content_type == content_type, Resource.status == "active", scope_filter)) or 0)
+        # 合并 5 个 count 为一条 GROUP BY 查询
+        counts_rows = (await index.execute(select(Resource.content_type, func.count()).select_from(Resource).where(Resource.status == "active", scope_filter).group_by(Resource.content_type))).all()
+        counts = {ct: 0 for ct in ("software", "image", "video", "document", "file")}
+        for row in counts_rows:
+            if row[0] in counts:
+                counts[row[0]] = int(row[1] or 0)
         recent = list((await index.scalars(select(Resource).where(Resource.status == "active", scope_filter).order_by(desc(Resource.modified_at)).limit(site.recent_limit if site else 6))).all())
         popular = list((await index.scalars(select(Resource).where(Resource.status == "active", scope_filter).order_by(desc(Resource.size), desc(Resource.modified_at)).limit(site.popular_limit if site else 6))).all())
         collections = list((await state.scalars(select(Collection).where(Collection.visible_on_home.is_(True), Collection.status == "active").order_by(Collection.sort_order, desc(Collection.updated_at)).limit(site.collection_limit if site else 4))).all())
+        # 批量预计算每个 root 的 resource/folder count，避免 N+1 查询
+        root_resource_counts = {
+            row[0]: int(row[1] or 0)
+            for row in (await index.execute(
+                select(Resource.root_mapping_id, func.count()).select_from(Resource)
+                .where(Resource.status == "active", Resource.root_mapping_id.in_(enabled_ids))
+                .group_by(Resource.root_mapping_id)
+            )).all()
+        } if enabled_ids else {}
+        root_folder_counts = {
+            row[0]: int(row[1] or 0)
+            for row in (await index.execute(
+                select(Folder.root_mapping_id, func.count()).select_from(Folder)
+                .where(Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids))
+                .group_by(Folder.root_mapping_id)
+            )).all()
+        } if enabled_ids else {}
         content_roots = []
         for root in root_rows:
             content_roots.append({
                 "id": root.id,
                 "content_type": root.content_type,
                 "display_name": root.display_name,
-                "resource_count": int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.root_mapping_id == root.id, Resource.status == "active")) or 0),
-                "folder_count": int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.root_mapping_id == root.id, Folder.status == "active")) or 0),
+                "resource_count": root_resource_counts.get(root.id, 0),
+                "folder_count": root_folder_counts.get(root.id, 0),
                 "sort_order": root.sort_order,
             })
         resource_count = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active", scope_filter)) or 0)
         folder_count = int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids) if enabled_ids else False)) or 0)
         total_size = int(await index.scalar(select(func.coalesce(func.sum(Resource.size), 0)).where(Resource.status == "active", scope_filter)) or 0)
-        return {
+        result = {
             "site": {"site_name": site.site_name, "home_title": site.home_title, "description": site.description},
             "content_roots": content_roots,
             "stats": {"resource_count": resource_count, "folder_count": folder_count, "total_size": total_size},
@@ -681,7 +879,9 @@ async def home():
             "popular": [resource_dict(row) for row in popular],
             "collections": [await collection_dict(state, index, row) for row in collections],
         }
-
+        _home_cache["data"] = result
+        _home_cache["fetched_at"] = now
+        return result
 
 @app.get("/api/storage/info")
 async def storage_info():
@@ -765,15 +965,20 @@ async def resource_detail(resource_id: str):
         if not await resource_in_publication_scope(state, row):
             raise HTTPException(404, {"code": "RESOURCE_NOT_AVAILABLE", "message": "资源不存在或已不可用"})
         parent = await session.get(Folder, row.parent_id) if row.parent_id else None
-        all_folders = {item.id: item for item in (await session.scalars(select(Folder).where(Folder.status == "active"))).all()}
+        breadcrumbs = await breadcrumbs_for_folder(session, parent)
         related = list((await session.scalars(select(Resource).where(Resource.status == "active", Resource.parent_id == row.parent_id, Resource.id != row.id).order_by(desc(Resource.modified_at)).limit(8))).all())
-        siblings = list((await session.scalars(select(Resource).where(Resource.status == "active", Resource.parent_id == row.parent_id, Resource.content_type == row.content_type).order_by(Resource.name, Resource.id))).all())
-        sibling_index = next((index for index, item in enumerate(siblings) if item.id == row.id), -1)
-        previous = siblings[sibling_index - 1] if sibling_index > 0 else None
-        next_item = siblings[sibling_index + 1] if sibling_index >= 0 and sibling_index + 1 < len(siblings) else None
+        # 只查相邻的 prev/next（各 limit 1），不加载全部 siblings
+        previous = (await session.scalars(select(Resource).where(
+            Resource.status == "active", Resource.parent_id == row.parent_id, Resource.content_type == row.content_type,
+            or_(Resource.name < row.name, and_(Resource.name == row.name, Resource.id < row.id)),
+        ).order_by(desc(Resource.name), desc(Resource.id)).limit(1))).first()
+        next_item = (await session.scalars(select(Resource).where(
+            Resource.status == "active", Resource.parent_id == row.parent_id, Resource.content_type == row.content_type,
+            or_(Resource.name > row.name, and_(Resource.name == row.name, Resource.id > row.id)),
+        ).order_by(Resource.name, Resource.id).limit(1))).first()
         return {
             **resource_dict(row, parent),
-            "breadcrumbs": breadcrumbs_for(parent, all_folders),
+            "breadcrumbs": breadcrumbs,
             "related": [resource_dict(item, parent) for item in related],
             "capabilities": preview_capability(row),
             "previous": resource_dict(previous, parent) if previous else None,
@@ -783,9 +988,9 @@ async def resource_detail(resource_id: str):
 
 @app.get("/api/resources/{resource_id}/preview")
 async def resource_preview_capability(resource_id: str):
-    async with IndexSession() as session:
+    async with IndexSession() as session, StateSession() as state:
         resource = await session.get(Resource, resource_id)
-        if not resource or resource.status != "active":
+        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
             raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
         return preview_capability(resource)
 
@@ -794,7 +999,7 @@ async def resource_preview_capability(resource_id: str):
 async def resource_text_preview(resource_id: str):
     async with IndexSession() as index, StateSession() as state:
         resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active":
+        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
             raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
         connection = await state.get(AListConnection, 1)
         try:
@@ -803,14 +1008,14 @@ async def resource_text_preview(resource_id: str):
             raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
 
 
-@app.get("/api/resources/{resource_id}/office-preview")
-async def resource_office_preview(resource_id: str):
+@app.get("/api/resources/{resource_id}/pdf-preview")
+async def resource_pdf_preview(resource_id: str):
     async with IndexSession() as index, StateSession() as state:
         resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active":
+        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
             raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
-        if preview_capability(resource)["preview_type"] != "office":
-            raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 Office 在线预览"})
+        if preview_capability(resource)["preview_type"] != "pdf":
+            raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 PDF 在线预览"})
         connection = await state.get(AListConnection, 1)
         try:
             await ensure_preview_cached(resource, connection)
@@ -819,14 +1024,14 @@ async def resource_office_preview(resource_id: str):
         return {"url": f"/office-files/{office_cache_filename(resource)}"}
 
 
-@app.get("/api/resources/{resource_id}/pdf-preview")
-async def resource_pdf_preview(resource_id: str):
+@app.get("/api/resources/{resource_id}/office-preview")
+async def resource_office_preview(resource_id: str):
     async with IndexSession() as index, StateSession() as state:
         resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active":
+        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
             raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
-        if preview_capability(resource)["preview_type"] != "pdf":
-            raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 PDF 在线预览"})
+        if preview_capability(resource)["preview_type"] != "office":
+            raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 Office 在线预览"})
         connection = await state.get(AListConnection, 1)
         try:
             await ensure_preview_cached(resource, connection)
@@ -840,6 +1045,13 @@ async def serve_office_file(filename: str):
     if not filename or "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(400, "无效的预览文件名")
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    if extension not in OFFICE_CONTENT_TYPES:
+        raise HTTPException(403, {"code": "PV-002", "message": "该格式不支持在线预览"})
+    resource_id = filename.rsplit(".", 1)[0] if "." in filename else filename
+    async with IndexSession() as index, StateSession() as state:
+        resource = await index.get(Resource, resource_id)
+        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
+            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
     path = settings.office_cache_dir / filename
     if not path.is_file():
         raise HTTPException(404, "预览文件不存在或已过期")
@@ -848,8 +1060,11 @@ async def serve_office_file(filename: str):
 
 @app.get("/api/folders", response_model=FolderListOutput)
 async def folders(content_type: str | None = None, parent_id: str | None = None):
-    async with IndexSession() as session:
-        query = select(Folder).where(Folder.status == "active")
+    async with IndexSession() as session, StateSession() as state:
+        enabled_ids = await enabled_root_ids(state)
+        if not enabled_ids:
+            return {"items": []}
+        query = select(Folder).where(Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids))
         if content_type:
             query = query.where(Folder.content_type == content_type)
         if parent_id is not None:
@@ -869,19 +1084,20 @@ async def folder_detail(
     sort_columns = {"name": Resource.name, "modified_at": Resource.modified_at, "size": Resource.size}
     if sort not in sort_columns or order not in {"asc", "desc"}:
         raise HTTPException(400, {"code": "API-001", "message": "排序参数无效"})
-    async with IndexSession() as session:
+    async with IndexSession() as session, StateSession() as state:
+        enabled_ids = await enabled_root_ids(state)
         row = await session.get(Folder, folder_id)
-        if not row or row.status != "active":
+        if not row or row.status != "active" or row.root_mapping_id not in enabled_ids:
             raise HTTPException(404, {"code": "FD-001", "message": "文件夹不存在或已不可用"})
-        all_folders = {item.id: item for item in (await session.scalars(select(Folder).where(Folder.status == "active"))).all()}
-        child_folders = list((await session.scalars(select(Folder).where(Folder.parent_id == folder_id, Folder.status == "active").order_by(Folder.name))).all())
-        resource_query = select(Resource).where(Resource.parent_id == folder_id, Resource.status == "active")
-        total = int(await session.scalar(select(func.count()).select_from(Resource).where(Resource.parent_id == folder_id, Resource.status == "active")) or 0)
+        breadcrumbs = await breadcrumbs_for_folder(session, row)
+        child_folders = list((await session.scalars(select(Folder).where(Folder.parent_id == folder_id, Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids)).order_by(Folder.name))).all())
+        resource_query = select(Resource).where(Resource.parent_id == folder_id, Resource.status == "active", Resource.root_mapping_id.in_(enabled_ids))
+        total = int(await session.scalar(select(func.count()).select_from(Resource).where(Resource.parent_id == folder_id, Resource.status == "active", Resource.root_mapping_id.in_(enabled_ids))) or 0)
         order_by = sort_columns[sort].asc() if order == "asc" else sort_columns[sort].desc()
         child_resources = list((await session.scalars(resource_query.order_by(order_by, Resource.id).offset((page - 1) * page_size).limit(page_size))).all())
         return {
             "folder": folder_dict(row),
-            "breadcrumbs": breadcrumbs_for(row, all_folders),
+            "breadcrumbs": breadcrumbs,
             "child_folders": [folder_dict(item) for item in child_folders],
             "resources": {"items": [resource_dict(item, row) for item in child_resources], "page": page, "page_size": page_size, "total": total, "total_pages": math.ceil(total / page_size) if total else 0},
         }
@@ -906,8 +1122,9 @@ async def search(
     if object_type not in SEARCH_OBJECT_TYPES or sort not in SEARCH_SORTS:
         raise HTTPException(400, {"code": "SRCH-004", "message": "搜索参数无效"})
     try:
-        async with IndexSession() as session:
-            candidates, total = await search_index(session, normalized, resource_type, object_type, page, page_size, sort)
+        async with IndexSession() as session, StateSession() as state:
+            enabled_ids = await enabled_root_ids(state)
+            candidates, total = await search_index(session, normalized, resource_type, object_type, page, page_size, sort, enabled_root_ids=enabled_ids)
             resource_ids = [row["object_id"] for row in candidates if row["object_type"] == "resource"]
             folder_ids = [row["object_id"] for row in candidates if row["object_type"] == "folder"]
             resources_by_id = {
@@ -916,20 +1133,23 @@ async def search(
             folders_by_id = {
                 row.id: row for row in (await session.scalars(select(Folder).where(Folder.id.in_(folder_ids), Folder.status == "active"))).all()
             } if folder_ids else {}
-            all_folders = {
-                row.id: row for row in (await session.scalars(select(Folder).where(Folder.status == "active"))).all()
-            }
+            # 批量加载 resource 的 parent folder（用于 resource_dict）+ 收集 breadcrumbs 起始 id
+            parent_ids = {row.parent_id for row in resources_by_id.values() if row.parent_id}
+            parents_by_id = {
+                row.id: row for row in (await session.scalars(select(Folder).where(Folder.id.in_(parent_ids), Folder.status == "active"))).all()
+            } if parent_ids else {}
+            breadcrumb_map = await breadcrumbs_batch(session, list(parent_ids) + folder_ids)
             items = []
             for candidate in candidates:
                 if candidate["object_type"] == "resource":
                     row = resources_by_id.get(candidate["object_id"])
                     if not row:
                         continue
-                    parent = all_folders.get(row.parent_id) if row.parent_id else None
+                    parent = parents_by_id.get(row.parent_id or "")
                     payload = resource_dict(row, parent)
                     payload.update({
                         "object_type": "resource",
-                        "breadcrumbs": breadcrumbs_for(parent, all_folders) if parent else [],
+                        "breadcrumbs": breadcrumb_map.get(row.parent_id, []) if row.parent_id else [],
                         "child_folder_count": 0,
                         "resource_count": 0,
                         "match_type": classify_match(row.name, normalized),
@@ -944,7 +1164,7 @@ async def search(
                         "extension": "",
                         "size": None,
                         "parent": None,
-                        "breadcrumbs": breadcrumbs_for(row, all_folders),
+                        "breadcrumbs": breadcrumb_map.get(row.id, []),
                         "thumbnail": "",
                         "match_type": classify_match(row.name, normalized),
                     })
@@ -2153,3 +2373,248 @@ async def delete_share_page_image(request: Request):
     if old_name:
         remove_share_image(old_name)
     return {"ok": True}
+
+
+
+def submission_dict(row, username: str) -> dict:
+    return {
+        "id": row.id,
+        "user_id": row.user_id,
+        "username": username,
+        "resource_name": row.resource_name,
+        "resource_type": row.resource_type,
+        "description": row.description,
+        "source_url": row.source_url,
+        "download_url": row.download_url,
+        "copyright_note": row.copyright_note,
+        "note": row.note,
+        "status": row.status,
+        "admin_note": row.admin_note,
+        "reviewed_by": row.reviewed_by,
+        "reviewed_at": row.reviewed_at,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def validate_optional_http_url(value: str, field_name: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(400, f"{field_name} 必须是 http 或 https 链接")
+    return value
+
+
+@app.post("/api/submissions")
+async def create_submission(payload: SubmissionInput, request: Request):
+    validate_request_origin(request)
+    source_url = validate_optional_http_url(payload.source_url, "来源网址")
+    download_url = validate_optional_http_url(payload.download_url, "下载链接")
+    async with StateSession() as state:
+        _, user = await require_user(state, request)
+        row = Submission(
+            user_id=user.id,
+            resource_name=payload.resource_name.strip(),
+            resource_type=payload.resource_type,
+            description=payload.description.strip(),
+            source_url=source_url,
+            download_url=download_url,
+            copyright_note=payload.copyright_note.strip(),
+            note=payload.note.strip(),
+            status="pending",
+        )
+        state.add(row)
+        state.add(OperationLog(level="INFO", module="submission", action="submission_created", message=f"用户 {user.username} 提交投稿 {payload.resource_name}"))
+        await state.commit()
+        await state.refresh(row)
+        return submission_dict(row, user.username)
+
+
+@app.get("/api/submissions/mine")
+async def my_submissions(request: Request):
+    async with StateSession() as state:
+        _, user = await require_user(state, request)
+        rows = list((await state.scalars(select(Submission).where(Submission.user_id == user.id).order_by(desc(Submission.created_at)))).all())
+        await state.commit()
+        return {"items": [submission_dict(row, user.username) for row in rows]}
+
+
+@app.get("/api/admin/submissions")
+async def admin_submissions(status: str | None = None):
+    async with StateSession() as state:
+        query = select(Submission).order_by(desc(Submission.created_at))
+        if status:
+            query = query.where(Submission.status == status)
+        rows = list((await state.scalars(query)).all())
+        user_ids = {row.user_id for row in rows}
+        usernames = {u.id: u.username for u in (await state.scalars(select(User).where(User.id.in_(user_ids)))).all()} if user_ids else {}
+        return {"items": [submission_dict(row, usernames.get(row.user_id, "")) for row in rows]}
+
+
+@app.get("/api/admin/submissions/{submission_id}")
+async def admin_submission_detail(submission_id: int):
+    async with StateSession() as state:
+        row = await state.get(Submission, submission_id)
+        if not row:
+            raise HTTPException(404, "投稿不存在")
+        user = await state.get(User, row.user_id)
+        return submission_dict(row, user.username if user else "")
+
+
+@app.patch("/api/admin/submissions/{submission_id}")
+async def review_submission(submission_id: int, payload: SubmissionReviewInput):
+    async with StateSession() as state:
+        row = await state.get(Submission, submission_id)
+        if not row:
+            raise HTTPException(404, "投稿不存在")
+        action_map = {"approve": "approved", "reject": "rejected", "publish": "published"}
+        row.status = action_map[payload.action]
+        row.admin_note = payload.admin_note
+        row.reviewed_at = utcnow()
+        connection = await state.get(AListConnection, 1)
+        row.reviewed_by = connection.username if connection else "admin"
+        state.add(OperationLog(level="INFO", module="submission", action=f"submission_{payload.action}", message=f"投稿 #{row.id} {row.resource_name} -> {row.status}"))
+        notify_title_map = {"approve": "投稿审核通过", "reject": "投稿已被拒绝", "publish": "投稿已发布"}
+        notify_level_map = {"approve": "success", "reject": "warning", "publish": "success"}
+        notify_body = f"你提交的《{row.resource_name}》已{('通过审核' if payload.action == 'approve' else '被拒绝' if payload.action == 'reject' else '发布')}."
+        if payload.admin_note:
+            notify_body += f"\n审核备注：{payload.admin_note}"
+        state.add(Notification(
+            user_id=row.user_id,
+            title=notify_title_map[payload.action],
+            body=notify_body,
+            level=notify_level_map[payload.action],
+            source="submission",
+        ))
+        await state.commit()
+        await state.refresh(row)
+        user = await state.get(User, row.user_id)
+        return submission_dict(row, user.username if user else "")
+
+
+@app.delete("/api/admin/submissions/{submission_id}")
+async def delete_submission(submission_id: int):
+    async with StateSession() as state:
+        row = await state.get(Submission, submission_id)
+        if not row:
+            raise HTTPException(404, "投稿不存在")
+        if row.status != "rejected":
+            raise HTTPException(409, "仅已拒绝的投稿可以删除")
+        state.add(OperationLog(level="INFO", module="submission", action="submission_deleted", message=f"删除投稿 #{row.id} {row.resource_name}（提交者 user_id={row.user_id}）"))
+        await state.delete(row)
+        await state.commit()
+        return {"ok": True}
+
+
+def notification_dict(row: Notification) -> dict:
+    return {
+        "id": row.id,
+        "user_id": row.user_id,
+        "title": row.title,
+        "body": row.body,
+        "level": row.level,
+        "pinned": row.pinned,
+        "enabled": row.enabled,
+        "source": row.source,
+        "published_at": row.published_at,
+        "expires_at": row.expires_at,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+@app.get("/api/notifications")
+async def list_notifications(request: Request):
+    async with StateSession() as state:
+        _, user = await require_user(state, request)
+        now = utcnow()
+        query = (
+            select(Notification)
+            .where(
+                Notification.enabled == True,
+                or_(Notification.user_id == None, Notification.user_id == user.id),
+                or_(Notification.expires_at == None, Notification.expires_at > now),
+            )
+            .order_by(desc(Notification.pinned), desc(Notification.published_at))
+            .limit(30)
+        )
+        rows = list((await state.scalars(query)).all())
+        await state.commit()
+        return {"items": [notification_dict(row) for row in rows]}
+
+
+@app.get("/api/admin/notifications")
+async def admin_notifications():
+    async with StateSession() as state:
+        rows = list((await state.scalars(select(Notification).order_by(desc(Notification.created_at)))).all())
+        await state.commit()
+        return {"items": [notification_dict(row) for row in rows]}
+
+
+@app.post("/api/admin/notifications")
+async def create_notification(payload: NotificationInput):
+    async with StateSession() as state:
+        row = Notification(
+            title=payload.title,
+            body=payload.body,
+            level=payload.level,
+            pinned=payload.pinned,
+            enabled=payload.enabled,
+            source="manual",
+            expires_at=payload.expires_at,
+        )
+        state.add(row)
+        state.add(OperationLog(level="INFO", module="notification", action="notification_created", message=f"新建通知 {payload.title}"))
+        await state.commit()
+        await state.refresh(row)
+        return notification_dict(row)
+
+
+@app.patch("/api/admin/notifications/{notification_id}")
+async def update_notification(notification_id: int, payload: NotificationUpdate):
+    async with StateSession() as state:
+        row = await state.get(Notification, notification_id)
+        if not row:
+            raise HTTPException(404, "通知不存在")
+        provided = payload.model_fields_set
+        for field in ("title", "body", "level", "pinned", "expires_at"):
+            if field in provided:
+                setattr(row, field, getattr(payload, field))
+        if "enabled" in provided:
+            was_enabled = row.enabled
+            row.enabled = payload.enabled
+            if not was_enabled and payload.enabled:
+                row.published_at = utcnow()
+        state.add(OperationLog(level="INFO", module="notification", action="notification_updated", message=f"更新通知 #{row.id} {row.title}"))
+        await state.commit()
+        await state.refresh(row)
+        return notification_dict(row)
+
+
+@app.delete("/api/admin/notifications/{notification_id}")
+async def delete_notification(notification_id: int):
+    async with StateSession() as state:
+        row = await state.get(Notification, notification_id)
+        if not row:
+            raise HTTPException(404, "通知不存在")
+        state.add(OperationLog(level="INFO", module="notification", action="notification_deleted", message=f"删除通知 #{row.id} {row.title}"))
+        await state.delete(row)
+        await state.commit()
+        return {"ok": True}
+
+
+@app.delete("/api/notifications/{notification_id}")
+async def delete_my_notification(notification_id: int, request: Request):
+    validate_request_origin(request)
+    async with StateSession() as state:
+        _, user = await require_user(state, request)
+        row = await state.get(Notification, notification_id)
+        if not row:
+            raise HTTPException(404, "通知不存在")
+        if row.user_id != user.id:
+            raise HTTPException(403, "只能删除发给自己的通知")
+        await state.delete(row)
+        await state.commit()
+        return {"ok": True}
