@@ -2,6 +2,43 @@
 
 本项目按里程碑（M0.1 → M10）开发，版本 `0.1.0` 为 CloudSite V0.1 首个完整版本。
 
+## [1.0.0-beta.3] - 2026-09-05
+
+### Added
+
+- 首页 Hero 插画组件 `HeroIllustration.tsx` 与响应式动画，桌面/移动端自适应。
+- 前端 ESLint 配置 `eslint.config.mjs`，建立 lint、typecheck、test、build 四道门禁。
+- CI 工作流接入四道前端门禁与版本一致性脚本。
+
+### Changed
+
+- React 19 / Next.js 兼容整改：admin、login、search、submit、resource 等页面与 AdminShell、AuthMenu、GalleryCard、DownloadButton、HomeContent 等组件适配 React 19 类型与渲染契约。
+- UI 设计令牌与控件尺寸统一；主题切换按钮、通知铃铛在桌面与移动端尺寸一致。
+- 默认与 Traefik Compose、`.env.example`、README、`docs/contracts.md` 发布标签更新为 `v1.0.0-beta.3`。
+
+### Fixed
+
+- `globals.css` 行尾空白与 CRLF 规范化为 LF，保留 Hero 动画数值。
+- 后端 `main.py` 重复导入清理。
+- 文档与版本一致性修复（API `pyproject.toml`、`__init__.py`、Web `package.json`、Compose 默认 tag、README 离线资产名）。
+
+## [1.0.0-beta.2] - 2026-09-05
+
+### Added
+
+- Admin auth module `admin_auth.py` with setup/notifications/submissions admin pages; added admin route policy, route inventory and route matrix tests.
+- Publication scope hardening test `test_publication_scope.py` and submissions notifications test `test_submissions_notifications.py`.
+
+### Changed
+
+- Public endpoints filter disabled ContentRoot; Office preview isolates disabled roots.
+- Web static assets migrated from PNG to WebP.
+
+### Fixed
+
+- CI: pnpm lockfile consistency, Compose env, pip-audit local package skip, cryptography>=50 and pytest>=9 upgrade.
+- Docker build switched to webpack; arm64 images built on native arm64 runner to avoid QEMU SIGILL.
+
 ## [1.0.0-beta.1] - 2026-09-04
 
 ### 1.0 稳定发布候选

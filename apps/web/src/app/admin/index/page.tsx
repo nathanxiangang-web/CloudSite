@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Clock3, Database, File, Folder, Power, RefreshCw, RotateCcw, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Folder as FolderType } from "@/lib/api";
 
@@ -103,8 +103,19 @@ export default function IndexPage() {
   const rollingCycle = rolling.data?.cycle;
   const isRolling = rolling.data?.engine_version === "1.1";
   const busy = sync.isPending || summary.data?.syncing;
-  const nextWindowAt = rollingCycle ? new Date(rollingCycle.next_window_at) : null;
-  const overdue = Boolean(nextWindowAt && nextWindowAt.getTime() < Date.now());
+  const [overdue, setOverdue] = useState(false);
+  const nextWindowAtIso = rollingCycle?.next_window_at ?? null;
+  useEffect(() => {
+    if (!nextWindowAtIso) return;
+    const target = new Date(nextWindowAtIso).getTime();
+    const check = () => setOverdue(Date.now() >= target);
+    const raf = window.requestAnimationFrame(check);
+    const timer = window.setInterval(check, 30_000);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearInterval(timer);
+    };
+  }, [nextWindowAtIso]);
   const toggle = (id: string) => setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   return <AdminShell title="内容索引"><div className="admin-page index-admin-page">

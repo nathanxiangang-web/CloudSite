@@ -1,6 +1,7 @@
 "use client";
 
 import { LockKeyhole, LogIn } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { Brand } from "@/components/Brand";
 
@@ -61,7 +62,7 @@ export default function AdminLoginPage() {
         {error && <p className="form-error">{error}</p>}
         <button className="primary login-submit" disabled={loading || !ready}><LogIn />{loading ? "正在验证…" : "登录"}</button>
       </form>
-      <a href="/">返回 CloudSite 前台</a>
+      <Link href="/">返回 CloudSite 前台</Link>
     </section>
   </main>;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type RateLimitResponse = {
   code: "DOWNLOAD_RATE_LIMITED";
@@ -22,6 +23,7 @@ export function DownloadButton({
   ariaLabel?: string;
   compact?: boolean;
 }) {
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [blockedUntil, setBlockedUntil] = useState<number | null>(null);
   const [remaining, setRemaining] = useState(0);
@@ -52,7 +54,7 @@ export function DownloadButton({
         const payload = await response.json().catch(() => ({})) as { detail?: { code?: string } };
         if (["AUTH_REQUIRED", "SESSION_INVALID", "SESSION_REVOKED", "SESSION_EXPIRED", "USER_DELETED", "USER_DISABLED"].includes(payload.detail?.code || "")) {
           const next = `${window.location.pathname}${window.location.search}`;
-          window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+          router.push(`/login?next=${encodeURIComponent(next)}`);
           return;
         }
       }

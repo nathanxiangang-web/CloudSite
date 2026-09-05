@@ -1,23 +1,27 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("light");
-  const [mounted, setMounted] = useState(false);
+function subscribeTheme(callback: () => void) {
+  const observer = new MutationObserver(callback);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+}
+function getThemeSnapshot(): Theme {
+  return (document.documentElement.getAttribute("data-theme") as Theme) || "light";
+}
+function getThemeServerSnapshot(): Theme {
+  return "light";
+}
 
-  useEffect(() => {
-    const current = (document.documentElement.getAttribute("data-theme") as Theme) || "light";
-    setTheme(current);
-    setMounted(true);
-  }, []);
+export function ThemeToggle() {
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeServerSnapshot);
 
   const toggle = () => {
     const next: Theme = theme === "dark" ? "light" : "dark";
-    setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem("cloudsite-theme", next); } catch {}
   };
@@ -30,7 +34,7 @@ export function ThemeToggle() {
       title={theme === "dark" ? "切换到浅色" : "切换到暗色"}
       suppressHydrationWarning
     >
-      {mounted && theme === "dark" ? <Sun /> : <Moon />}
+      {theme === "dark" ? <Sun /> : <Moon />}
     </button>
   );
 }

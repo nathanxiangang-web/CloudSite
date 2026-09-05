@@ -19,15 +19,6 @@ function loadHistory(): string[] {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; }
 }
 
-function saveHistory(query: string) {
-  try {
-    const prev = loadHistory();
-    const next = [query, ...prev.filter((h) => h !== query)].slice(0, HISTORY_MAX);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
-    return next;
-  } catch { return loadHistory(); }
-}
-
 function SearchContent() {
   const router = useRouter();
   const params = useSearchParams();
@@ -37,9 +28,13 @@ function SearchContent() {
   const requestedPage = Number.parseInt(params.get("page") || "1", 10);
   const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const [input, setInput] = useState(query);
-  const [history, setHistory] = useState<string[]>([]);
-  useEffect(() => setInput(query), [query]);
-  useEffect(() => { setHistory(loadHistory()); }, []);
+  const [syncedQuery, setSyncedQuery] = useState(query);
+  if (query !== syncedQuery) {
+    setSyncedQuery(query);
+    setInput(query);
+  }
+  const [history, setHistory] = useState<string[]>(() => loadHistory());
+  const [recordedQuery, setRecordedQuery] = useState<string | null>(null);
 
   const roots = useQuery({ queryKey: ["content-roots"], queryFn: () => api<ContentRoots>("/api/content-roots"), staleTime: 5 * 60 * 1000 });
   const types = useMemo(() => {
@@ -56,9 +51,15 @@ function SearchContent() {
   });
 
   // 搜索成功后记录历史
+  const pendingRecord = query && results.data?.items.length ? query : null;
+  if (pendingRecord && pendingRecord !== recordedQuery) {
+    setRecordedQuery(pendingRecord);
+    setHistory([pendingRecord, ...history.filter((h) => h !== pendingRecord)].slice(0, HISTORY_MAX));
+  }
   useEffect(() => {
-    if (query && results.data?.items.length) setHistory(saveHistory(query));
-  }, [query, results.data?.items.length]);
+    if (!recordedQuery) return;
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+  }, [recordedQuery, history]);
 
   const navigate = (next: { q?: string; type?: string; page?: number; sort?: string }) => {
     const values = new URLSearchParams();
@@ -77,10 +78,15 @@ function SearchContent() {
   useEffect(() => {
     const normalized = normalizeSearchQuery(input);
     if (!normalized || normalized === query) return;
-    const timer = setTimeout(() => navigate({ q: normalized, page: 1 }), 300);
+    const timer = setTimeout(() => {
+      const values = new URLSearchParams();
+      values.set("q", normalized);
+      if (selectedType) values.set("type", selectedType);
+      if (sort !== "relevance") values.set("sort", sort);
+      router.push(`/search?${values.toString()}`);
+    }, 300);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input]);
+  }, [input, query, selectedType, sort, router]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();

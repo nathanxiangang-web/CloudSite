@@ -237,7 +237,7 @@
 | `CLOUDSITE_WEB_PORT` | `3000` | Web 监听端口 |
 | `CLOUDSITE_API_IMAGE` | `ghcr.io/.../cloudsite-api` | API 镜像 |
 | `CLOUDSITE_WEB_IMAGE` | `ghcr.io/.../cloudsite-web` | Web 镜像 |
-| `CLOUDSITE_IMAGE_TAG` | `v0.5.1` | 镜像版本标签 |
+| `CLOUDSITE_IMAGE_TAG` | `v1.0.0-beta.3` | 镜像版本标签 |
 | `CLOUDSITE_DOMAIN` | `cloud.example.com` | Traefik 域名 |
 | `TRAEFIK_NETWORK` | `my-servers_app-net` | Traefik 网络 |
 | `TRAEFIK_ENTRYPOINT` | `websecure` | Traefik 入口点 |

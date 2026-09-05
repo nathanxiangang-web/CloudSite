@@ -3,25 +3,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { LogIn, UserRound } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, PublicUser } from "@/lib/auth";
 import { safeNext } from "@/lib/navigation";
 
-export default function LoginPage() {
+function LoginContent() {
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [reason, setReason] = useState("");
-  useEffect(() => {
-    setReason(new URLSearchParams(window.location.search).get("reason") || "");
-  }, []);
+  const params = useSearchParams();
+  const reason = params.get("reason") || "";
   const login = useMutation({
     mutationFn: () => api<PublicUser>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
-      const next = safeNext(new URLSearchParams(window.location.search).get("next"));
+      const next = safeNext(params.get("next"));
       window.location.assign(next);
     },
   });
@@ -41,4 +40,8 @@ export default function LoginPage() {
     </form>
     <p className="user-auth-switch">还没有账号？<Link href="/register">注册</Link></p>
   </section></main>;
+}
+
+export default function LoginPage() {
+  return <Suspense fallback={null}><LoginContent /></Suspense>;
 }

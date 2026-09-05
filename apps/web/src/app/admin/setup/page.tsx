@@ -1,6 +1,7 @@
 "use client";
 
 import { KeyRound, LogIn } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { Brand } from "@/components/Brand";
 
@@ -73,7 +74,7 @@ export default function AdminSetupPage() {
         {error && <p className="form-error">{error}</p>}
         <button className="primary login-submit" disabled={loading || !ready || !setupAvailable}><LogIn />{loading ? "正在初始化…" : "完成初始化"}</button>
       </form>
-      <a href="/">返回 CloudSite 前台</a>
+      <Link href="/">返回 CloudSite 前台</Link>
     </section>
   </main>;
 }

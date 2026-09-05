@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ClipboardList, Heart, KeyRound, LogIn, LogOut, PlayCircle, Share2, UserRound, UserRoundPlus } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, useAuth } from "@/lib/auth";
 import { useSite } from "@/lib/site";
@@ -11,11 +12,12 @@ export function AuthMenu() {
   const auth = useAuth();
   const site = useSite();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const logout = useMutation({
     mutationFn: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
-      window.location.assign("/login");
+      router.push("/login");
     },
   });
 

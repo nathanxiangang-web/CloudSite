@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { Archive, ArrowRight, Clapperboard, Download, File, FileImage, FileText, Image, PanelsTopLeft, ShieldCheck } from "lucide-react";
 import { MobilePrimaryNavigation } from "./PublicNavigation";
 import { HomeSearch } from "./HomeSearch";
+import { HeroIllustration } from "./hero/HeroIllustration";
 import { Collection, formatBytes, Resource } from "@/lib/api";
 
 type HomeData = {
@@ -80,8 +81,7 @@ export async function HomeContent() {
           <HomeSearch recent={recent} />
         </div>
         <div className="hero-art">
-          <ImageAsset className="hero-img-light" src="/assets/hero-cloud.webp" alt="CloudSite 云端资源插画" fill priority sizes="330px" />
-          <ImageAsset className="hero-img-dark" src="/assets/hero-cloud-dark.webp" alt="CloudSite 云端资源插画" fill sizes="330px" />
+          <HeroIllustration />
         </div>
       </section>
 

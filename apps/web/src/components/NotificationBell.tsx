@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Pin, Info, CheckCircle2, AlertTriangle, AlertCircle, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 
 type Notification = {
@@ -21,6 +21,22 @@ type Notification = {
 };
 
 const LAST_READ_KEY = "cloudsite:notifications-last-read-at";
+
+const lastReadListeners = new Set<() => void>();
+function subscribeLastRead(callback: () => void) {
+  lastReadListeners.add(callback);
+  return () => { lastReadListeners.delete(callback); };
+}
+function getLastReadSnapshot(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(LAST_READ_KEY) ?? "";
+}
+function setLastRead(value: string) {
+  if (typeof window !== "undefined") {
+    try { localStorage.setItem(LAST_READ_KEY, value); } catch {}
+  }
+  lastReadListeners.forEach((l) => l());
+}
 
 const levelIcon: Record<Notification["level"], typeof Info> = {
   info: Info,
@@ -44,18 +60,12 @@ function formatTime(value: string) {
 export function NotificationBell() {
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [lastReadAt, setLastReadAt] = useState<string>("");
+  const lastReadAt = useSyncExternalStore(subscribeLastRead, getLastReadSnapshot, () => "");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setLastReadAt(localStorage.getItem(LAST_READ_KEY) ?? "");
-  }, []);
-
-  useEffect(() => {
     if (!open) return;
-    const now = new Date().toISOString();
-    localStorage.setItem(LAST_READ_KEY, now);
-    setLastReadAt(now);
+    setLastRead(new Date().toISOString());
   }, [open]);
 
   useEffect(() => {

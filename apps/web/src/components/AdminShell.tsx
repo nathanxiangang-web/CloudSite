@@ -71,7 +71,7 @@ export function AdminShell({ title, children }: { title: string; children: React
     return <div className="admin-auth-loading">
       <p>无法连接后台服务，无法确认访问权限。</p>
       <button className="primary" onClick={() => setAuth({ status: "loading" })}>重试</button>
-      <a href="/" className="back-link">返回前台</a>
+      <Link href="/" className="back-link">返回前台</Link>
     </div>;
   }
 

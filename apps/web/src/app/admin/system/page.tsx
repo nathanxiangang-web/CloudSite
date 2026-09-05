@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Check, CheckCircle2, ChevronRight, Database, Eye, EyeOff, Folder, FolderPlus, FolderSearch, Link2, Pencil, Power, RefreshCw, Save, Server, Trash2, X } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api } from "@/lib/api";
 
@@ -57,8 +57,16 @@ export default function SystemPage() {
   const [browserPath, setBrowserPath] = useState("/");
   const [selectedDirectory, setSelectedDirectory] = useState<DirectoryItem | null>(null);
 
-  useEffect(() => { if (alist.data) setAlistForm((value) => ({ ...value, base_url: alist.data.base_url, username: alist.data.username, remember_credentials: alist.data.remember_credentials })); }, [alist.data]);
-  useEffect(() => { if (system.data) setSystemForm({ automatic_sync: system.data.automatic_sync, sync_interval_minutes: system.data.sync_interval_minutes, sync_on_startup: system.data.sync_on_startup }); }, [system.data]);
+  const [syncedAlist, setSyncedAlist] = useState(alist.data);
+  if (alist.data !== syncedAlist) {
+    setSyncedAlist(alist.data);
+    if (alist.data) setAlistForm((value) => ({ ...value, base_url: alist.data.base_url, username: alist.data.username, remember_credentials: alist.data.remember_credentials }));
+  }
+  const [syncedSystem, setSyncedSystem] = useState(system.data);
+  if (system.data !== syncedSystem) {
+    setSyncedSystem(system.data);
+    if (system.data) setSystemForm({ automatic_sync: system.data.automatic_sync, sync_interval_minutes: system.data.sync_interval_minutes, sync_on_startup: system.data.sync_on_startup });
+  }
 
   const rootDirectories = useQuery({
     queryKey: ["alist-directories", "/"],

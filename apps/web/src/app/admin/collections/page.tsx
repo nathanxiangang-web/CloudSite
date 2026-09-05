@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Check, Eye, EyeOff, FolderKanban, Plus, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Collection, formatBytes, SearchResponse } from "@/lib/api";
 import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
@@ -57,17 +57,20 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
   const [itemIds, setItemIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
+  const [syncedData, setSyncedData] = useState(query.data);
+  if (query.data !== syncedData) {
+    setSyncedData(query.data);
     const data = query.data;
-    if (!data) return;
-    setName(data.name);
-    setDescription(data.description);
-    setCover(data.cover);
-    setStatus(data.status);
-    setVisibleOnHome(data.visible_on_home);
-    setSortOrder(data.sort_order);
-    setItemIds(data.items.map((i) => i.resource_id));
-  }, [query.data]);
+    if (data) {
+      setName(data.name);
+      setDescription(data.description);
+      setCover(data.cover);
+      setStatus(data.status);
+      setVisibleOnHome(data.visible_on_home);
+      setSortOrder(data.sort_order);
+      setItemIds(data.items.map((i) => i.resource_id));
+    }
+  }
 
   const search = useQuery({ queryKey: ["collection-picker", searchQuery], queryFn: () => api<SearchResponse>(`/api/search?q=${encodeURIComponent(searchQuery)}&object_type=resource&page_size=20`), enabled: searchQuery.trim().length > 0 });
   const save = useMutation({ mutationFn: () => api(`/api/admin/collections/${id}`, { method: "PUT", body: JSON.stringify({ name, description, cover, status, visible_on_home: visibleOnHome, sort_order: sortOrder }) }), onSuccess: () => client.invalidateQueries({ queryKey: ["admin-collections"] }) });

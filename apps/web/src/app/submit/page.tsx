@@ -78,14 +78,14 @@ export default function SubmitPage() {
         {invalidUrl && <p className="form-error wide">网址只能使用 http:// 或 https://</p>}
         {notLoggedIn && <p className="form-error wide">请先登录后再投稿。</p>}
         <div className="submit-actions wide"><button className="primary" disabled={incomplete || invalidUrl || submit.isPending || notLoggedIn} type="submit"><Send />{submit.isPending ? "正在提交…" : "提交投稿"}</button></div>
-        {submit.isSuccess && <p className="submit-message wide"><Check />投稿已提交，等待审核。可在"我的投稿"查看状态。</p>}
+        {submit.isSuccess && <p className="submit-message wide"><Check />投稿已提交，等待审核。可在&ldquo;我的投稿&rdquo;查看状态。</p>}
         {submit.error && <p className="form-error wide">{submit.error.message}</p>}
       </form>
       <aside className="submit-aside">
         <h2>站内投稿</h2>
         <p>直接提交到 CloudSite 审核队列，无需打开邮件客户端，也不必复制邮箱。</p>
         <h3>审核流程</h3>
-        <p>提交 → 管理员审核 → 通过 / 拒绝 → 发布。审核结果会显示在"我的投稿"。</p>
+        <p>提交 → 管理员审核 → 通过 / 拒绝 → 发布。审核结果会显示在&ldquo;我的投稿&rdquo;。</p>
         <h3>需要提交文件？</h3>
         <p>请填写可访问的网盘 / 下载链接。CloudSite 本身不接收文件上传，开发成本和风险都可控。</p>
       </aside>

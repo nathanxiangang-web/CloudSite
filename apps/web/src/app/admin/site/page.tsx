@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImageUp, Save, Trash2 } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
+import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api } from "@/lib/api";
 import { ShareDuration, SITE_QUERY_KEY } from "@/lib/site";
@@ -38,7 +39,9 @@ export default function SitePage() {
   const [form, setForm] = useState(initialForm);
   const [image, setImage] = useState<File | null>(null);
 
-  useEffect(() => {
+  const [syncedSite, setSyncedSite] = useState(site.data);
+  if (site.data !== syncedSite) {
+    setSyncedSite(site.data);
     if (site.data) setForm({
       site_name: site.data.site_name,
       home_title: site.data.home_title,
@@ -50,7 +53,7 @@ export default function SitePage() {
       registration_enabled: site.data.registration_enabled,
       default_share_duration: site.data.default_share_duration,
     });
-  }, [site.data]);
+  }
 
   const save = useMutation({
     mutationFn: () => api("/api/admin/site", { method: "PUT", body: JSON.stringify(form) }),
@@ -107,7 +110,7 @@ export default function SitePage() {
       <h2>分享页图片</h2>
       <p className="panel-intro">用于 PC 分享页整页背景；手机端不会加载。推荐比例 3:2，推荐尺寸 1800×1200 或以上，支持 PNG、JPEG、WebP，最大 8MB。图片将等比铺满整页、允许裁切、不会拉伸。</p>
       <div className={`share-image-preview${site.data?.share_image_url ? " has-image" : ""}`}>
-        {site.data?.share_image_url ? <img src={site.data.share_image_url} alt="当前分享页图片" /> : <span>分享页背景当前留空</span>}
+        {site.data?.share_image_url ? <Image src={site.data.share_image_url} alt="当前分享页图片" width={1800} height={1200} unoptimized /> : <span>分享页背景当前留空</span>}
       </div>
       <label className="site-file-input">选择图片<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setImage(event.target.files?.[0] || null)} /></label>
       <div className="form-actions">

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ChevronLeft, ChevronRight, Download, File, FileText, Heart, Image as ImageIcon, Package2, RefreshCw, Share2, Video } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -139,7 +140,7 @@ function PreviewRenderer({ item }: { item: ResourceDetail }) {
     return <article className="preview-panel text-preview-panel">{text.isLoading ? <div className="loading">正在读取文本预览…</div> : text.error ? <Fallback item={item} message={text.error.message} retry={retryPreview} /> : <><header><strong>{isMarkdown ? "Markdown 预览" : "文本预览"}</strong>{text.data?.truncated && <span>内容已截断</span>}</header>{isMarkdown ? <div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text.data?.content ?? ""}</ReactMarkdown></div> : <pre>{text.data?.content}</pre>}</>}</article>;
   }
   if (failed) return <article className="preview-panel"><Fallback item={item} message="当前文件暂时无法在线预览，可重新尝试或直接下载。" retry={retryPreview} /></article>;
-  if (item.capabilities.preview_type === "image") return <article className="preview-panel"><img src={previewUrl} alt={item.name} onError={() => setFailed(true)} /></article>;
+  if (item.capabilities.preview_type === "image") return <article className="preview-panel"><Image src={previewUrl} alt={item.name} width={1280} height={720} unoptimized onError={() => setFailed(true)} /></article>;
   if (item.capabilities.preview_type === "video") return <article className="preview-panel video-preview-panel"><VideoPlayer resourceId={item.id} name={item.name} gatewayUrl={item.capabilities.gateway_url || `/p/${item.id}`} /></article>;
   if (item.capabilities.preview_type === "pdf") return <article className="preview-panel pdf-preview-panel"><PdfPreview key={retry ? "r" : "i"} id={item.id} /><div className="pdf-hint">PDF 已缓存到服务器（约 1 小时自动清理），由浏览器原生阅读器显示。</div></article>;
   if (item.capabilities.preview_type === "office") return <article className="preview-panel office-preview-panel"><OfficePreview key={retry ? "r" : "i"} id={item.id} extension={item.extension} /><div className="pdf-hint">文档已缓存到服务器（约 1 小时自动清理），在浏览器端直接渲染。</div></article>;

@@ -1,6 +1,7 @@
 "use client";
 
-import { Image } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { Resource } from "@/lib/api";
@@ -14,9 +15,9 @@ export function GalleryCard({ item }: { item: Resource }) {
       <span className="gallery-thumb">
         {!loaded && !error && <span className="gallery-thumb-skeleton" aria-hidden="true" />}
         {error ? (
-          <span className="gallery-thumb-error"><Image size={26} /><small>图片加载失败</small></span>
+          <span className="gallery-thumb-error"><ImageIcon size={26} /><small>图片加载失败</small></span>
         ) : (
-          <img src={src} alt={item.name} loading="lazy" onLoad={() => setLoaded(true)} onError={() => setError(true)} />
+          <Image src={src} alt={item.name} width={400} height={400} loading="lazy" unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} onLoad={() => setLoaded(true)} onError={() => setError(true)} />
         )}
       </span>
       <span className="gallery-copy">
