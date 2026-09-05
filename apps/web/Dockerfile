@@ -16,7 +16,7 @@ ENV NODE_OPTIONS=--max-old-space-size=384
 RUN npm install -g pnpm@10.15.1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN pnpm run build
+RUN pnpm exec next build --webpack
 
 FROM base AS runner
 WORKDIR /app
