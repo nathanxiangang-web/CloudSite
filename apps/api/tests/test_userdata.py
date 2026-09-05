@@ -18,7 +18,7 @@ async def _store(monkeypatch):
         await connection.run_sync(IndexBase.metadata.create_all)
     for mod in (main, auth, userdata, site):
         monkeypatch.setattr(mod, "StateSession", state_factory)
-    for mod in (main, userdata):
+    for mod in (main, userdata, site):
         monkeypatch.setattr(mod, "IndexSession", index_factory)
 
     async with state_factory() as state:

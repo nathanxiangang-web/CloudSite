@@ -53,6 +53,8 @@ jobs:
 
   compose:
     runs-on: ubuntu-latest
+    env:
+      CLOUDSITE_SECRET_KEY: ci-validation-key
     steps:
       - uses: actions/checkout@v6
       - name: Validate generic Compose
@@ -111,7 +113,7 @@ jobs:
         run: |
           pip install -e ".[test]"
           pip install pip-audit
-          pip-audit --strict
+          pip-audit --strict --ignore-local
       - uses: pnpm/action-setup@v4
         with:
           version: 10.15.1

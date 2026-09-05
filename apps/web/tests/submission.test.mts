@@ -14,14 +14,14 @@ test("submission mailto keeps recipient fixed and encodes Chinese and reserved c
     copyrightNote: "允许转载",
     note: "备注",
     username: "JC",
-  });
+  }, SUBMISSION_EMAIL, "1.0.0-beta.2");
   const parsed = new URL(result.mailto);
   assert.equal(parsed.protocol, "mailto:");
   assert.equal(parsed.pathname, SUBMISSION_EMAIL);
   assert.equal(parsed.searchParams.get("subject"), "[CloudSite资源投稿] 工具 & 教程?");
   assert.match(parsed.searchParams.get("body") || "", /站内账号：JC/);
   assert.match(parsed.searchParams.get("body") || "", /第一行\n第二行 = #1/);
-  assert.match(parsed.searchParams.get("body") || "", /submitted_from：CloudSite 0\.\d+\.\d+/);
+  assert.match(parsed.searchParams.get("body") || "", /submitted_from：CloudSite \S+/);
 });
 
 

@@ -3,7 +3,7 @@
 [简体中文](README.md) | [English](README.en.md)
 
 [![CI](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.1)
+[![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.2)
 [![License](https://img.shields.io/github/license/nathanxiangang-web/CloudSite)](LICENSE)
 
 **CloudSite — 基于 AList 的自托管网盘资源浏览、搜索、预览与分享平台。**
@@ -12,13 +12,13 @@ CloudSite 将 AList 中的网盘目录转换为清晰易用的资源网站，并
 
 > CloudSite is a self-hosted AList file browser, search, media preview, and file-sharing portal powered by Next.js and FastAPI.
 
-> 当前开发与发布基线：**1.0.0-beta.1**。在线站点：[cloud.netioi.com](https://cloud.netioi.com/)
+> 当前开发与发布基线：**1.0.0-beta.2**。在线站点：[cloud.netioi.com](https://cloud.netioi.com/)
 >
 > 发布源码不包含 AList 账号、访问令牌、`.env`、数据库、索引、日志、依赖目录或构建产物。
 
 ## 快速入口
 
-- [下载 1.0 Beta](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.1)
+- [下载 1.0 Beta](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.2)
 - [部署与升级](docs/部署升级与备份.md)
 - [用户指南](docs/user-guide.md)
 - [管理员指南](docs/admin-guide.md)
@@ -91,11 +91,11 @@ docker compose ps
 
 没有外网、不能访问 GHCR 的服务器，请从 GitHub Releases 下载当前版本的离线附件，不要执行 `docker compose pull`：
 
-- `cloudsite-api-v1.0.0-beta.1-linux-amd64.tar.gz`
-- `cloudsite-api-v1.0.0-beta.1-linux-arm64.tar.gz`
-- `cloudsite-web-v1.0.0-beta.1-linux-amd64.tar.gz`
-- `cloudsite-web-v1.0.0-beta.1-linux-arm64.tar.gz`
-- `cloudsite-v1.0.0-beta.1-offline-deploy.zip`
+- `cloudsite-api-v1.0.0-beta.2-linux-amd64.tar.gz`
+- `cloudsite-api-v1.0.0-beta.2-linux-arm64.tar.gz`
+- `cloudsite-web-v1.0.0-beta.2-linux-amd64.tar.gz`
+- `cloudsite-web-v1.0.0-beta.2-linux-arm64.tar.gz`
+- `cloudsite-v1.0.0-beta.2-offline-deploy.zip`
 - `SHA256SUMS.txt`
 
 在联网电脑下载并校验附件，复制到离线服务器后导入两个镜像，再使用离线 Compose 覆盖文件启动：
@@ -103,9 +103,9 @@ docker compose ps
 ```bash
 sha256sum -c SHA256SUMS.txt
 arch=arm64 # x86_64 服务器改为 amd64
-gzip -dc "cloudsite-api-v1.0.0-beta.1-linux-${arch}.tar.gz" | docker load
-gzip -dc "cloudsite-web-v1.0.0-beta.1-linux-${arch}.tar.gz" | docker load
-unzip cloudsite-v1.0.0-beta.1-offline-deploy.zip -d CloudSite
+gzip -dc "cloudsite-api-v1.0.0-beta.2-linux-${arch}.tar.gz" | docker load
+gzip -dc "cloudsite-web-v1.0.0-beta.2-linux-${arch}.tar.gz" | docker load
+unzip cloudsite-v1.0.0-beta.2-offline-deploy.zip -d CloudSite
 cd CloudSite
 cp .env.example .env
 # 编辑 .env，至少替换 CLOUDSITE_SECRET_KEY

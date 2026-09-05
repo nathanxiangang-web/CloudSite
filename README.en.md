@@ -3,14 +3,14 @@
 [简体中文](README.md) | English
 
 [![CI](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.1)
+[![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.2)
 [![License](https://img.shields.io/github/license/nathanxiangang-web/CloudSite)](LICENSE)
 
 **CloudSite is a self-hosted AList file browser, search, media preview, and file-sharing portal.**
 
 CloudSite turns AList directories into a clean resource website for browsing, full-text search, image and video preview, document preview, controlled sharing, and HTTP 302 direct downloads. It is suitable for private file portals, software catalogs, media libraries, and self-hosted download sites.
 
-> Current development and release baseline: **1.0.0-beta.1**. Live demo: [cloud.netioi.com](https://cloud.netioi.com/)
+> Current development and release baseline: **1.0.0-beta.2**. Live demo: [cloud.netioi.com](https://cloud.netioi.com/)
 
 ## Highlights
 
@@ -61,7 +61,7 @@ Open `http://SERVER_IP:3000`. The default Compose setup exposes only the Web ser
 
 ## Release
 
-Download CloudSite 1.0.0 Beta 1 and its offline deployment assets from the [GitHub Release](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.1).
+Download CloudSite 1.0.0 Beta 1 and its offline deployment assets from the [GitHub Release](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0-beta.2).
 
 The repository does not include AList credentials, access tokens, `.env`, databases, indexes, logs, dependency directories, or build artifacts.
 
