@@ -32,10 +32,20 @@ async def _matrix_client(monkeypatch):
     return client, engine
 
 
+def _iter_route_paths(source):
+    """递归遍历路由源，处理 FastAPI 0.110+ 的 _IncludedRouter 包装。"""
+    for route in getattr(source, "routes", []):
+        original = getattr(route, "original_router", None)
+        if original is not None and not hasattr(route, "path"):
+            yield from _iter_route_paths(original)
+            continue
+        yield route
+
+
 def _collect_admin_endpoints() -> list[tuple[str, str]]:
     """盘点所有 (method, path) 后台端点，动态参数用 999999 实例化。"""
     endpoints: list[tuple[str, str]] = []
-    for route in main.app.routes:
+    for route in _iter_route_paths(main.app):
         if not hasattr(route, "path") or not route.path.startswith("/api/admin"):
             continue
         methods = getattr(route, "methods", None) or set()

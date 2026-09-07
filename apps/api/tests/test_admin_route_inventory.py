@@ -5,6 +5,17 @@
 from cloudsite.main import app, users_router
 
 
+def _iter_route_paths(source):
+    """递归遍历路由源，处理 FastAPI 0.110+ 的 _IncludedRouter 包装。"""
+    for route in getattr(source, "routes", []):
+        # FastAPI 0.110+ 用 _IncludedRouter 包装 include 的 router
+        original = getattr(route, "original_router", None)
+        if original is not None and not hasattr(route, "path"):
+            yield from _iter_route_paths(original)
+            continue
+        yield route
+
+
 def _collect_admin_routes() -> list[tuple[str, str]]:
     """从 app.routes 和已 include 的子 router 合并盘点后台路由。
 
@@ -14,7 +25,7 @@ def _collect_admin_routes() -> list[tuple[str, str]]:
     sources = [app, users_router]
     routes: list[tuple[str, str]] = []
     for source in sources:
-        for route in getattr(source, "routes", []):
+        for route in _iter_route_paths(source):
             if not hasattr(route, "path"):
                 continue
             if not route.path.startswith("/api/admin"):
