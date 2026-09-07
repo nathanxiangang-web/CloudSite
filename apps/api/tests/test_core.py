@@ -669,8 +669,9 @@ async def test_image_and_video_preview_gateway_remain_302_redirects(monkeypatch)
 
     monkeypatch.setattr(main, "IndexSession", lambda: FakeSession())
     monkeypatch.setattr(main, "StateSession", lambda: FakeSession())
-    monkeypatch.setattr(main, "resolve_preview_url", resolved)
-    monkeypatch.setattr(main, "resource_in_publication_scope", lambda *_a: _true_coro())
+    from cloudsite.routers import previews as previews_router_mod
+    monkeypatch.setattr(previews_router_mod, "resolve_preview_url", resolved)
+    monkeypatch.setattr(previews_router_mod, "resource_in_publication_scope", lambda *_a: _true_coro())
     for extension in ("jpg", "mp4"):
         resource = SimpleNamespace(
             id=f"r-{extension}",
@@ -679,6 +680,6 @@ async def test_image_and_video_preview_gateway_remain_302_redirects(monkeypatch)
             status="active",
         )
         monkeypatch.setattr(main, "IndexSession", lambda resource=resource: FakeSession(resource))
-        response = await main.preview(resource.id)
+        response = await previews_router_mod.preview(resource.id)
         assert response.status_code == 302
         assert response.headers["location"] == f"https://alist.example/d/{resource.name}"

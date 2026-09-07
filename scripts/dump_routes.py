@@ -19,10 +19,20 @@ def dump_routes(output_path: str | None = None) -> str:
     from fastapi.routing import APIRoute
     from cloudsite.main import app
 
+    def _iter_api_routes():
+        for route in app.routes:
+            if isinstance(route, APIRoute):
+                yield route
+                continue
+            # FastAPI >=0.115 wraps included routers in _IncludedRouter
+            original = getattr(route, "original_router", None)
+            if original is not None:
+                for sub in getattr(original, "routes", []):
+                    if isinstance(sub, APIRoute):
+                        yield sub
+
     rows: list[tuple[str, str, str]] = []
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
+    for route in _iter_api_routes():
         methods = sorted(route.methods) if route.methods else ["UNKNOWN"]
         for method in methods:
             rows.append((method, route.path, route.name or ""))

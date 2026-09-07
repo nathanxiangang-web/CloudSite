@@ -229,10 +229,12 @@ async def test_rate_limit_runs_before_alist(monkeypatch):
         raise AssertionError("rate-limited request reached AList")
 
     monkeypatch.setattr(main, "check_download_rate", denied)
-    monkeypatch.setattr(main, "_download_event", no_event)
-    monkeypatch.setattr(main, "resolve_download_entry", must_not_call)
-    monkeypatch.setattr(main, "resource_in_publication_scope", lambda *_a: _true_coro())
-    response = await main.download("r_1234567890", request_from("198.51.100.20"))
+    from cloudsite.routers import downloads as downloads_router_mod
+    monkeypatch.setattr(downloads_router_mod, "check_download_rate", denied)
+    monkeypatch.setattr(downloads_router_mod, "_download_event", no_event)
+    monkeypatch.setattr(downloads_router_mod, "resolve_download_entry", must_not_call)
+    monkeypatch.setattr(downloads_router_mod, "resource_in_publication_scope", lambda *_a: _true_coro())
+    response = await downloads_router_mod.download("r_1234567890", request_from("198.51.100.20"))
     assert response.status_code == 429
     assert response.headers["retry-after"] == "43"
     assert json.loads(response.body)["code"] == "DOWNLOAD_RATE_LIMITED"
@@ -264,10 +266,12 @@ async def test_download_route_first_five_302_sixth_429(tmp_path, monkeypatch):
         return SimpleNamespace(url="https://alist.example/d/file.zip")
 
     monkeypatch.setattr(main, "_download_event", no_event)
-    monkeypatch.setattr(main, "resolve_download_entry", resolved)
-    monkeypatch.setattr(main, "resource_in_publication_scope", lambda *_a: _true_coro())
+    from cloudsite.routers import downloads as downloads_router_mod
+    monkeypatch.setattr(downloads_router_mod, "_download_event", no_event)
+    monkeypatch.setattr(downloads_router_mod, "resolve_download_entry", resolved)
+    monkeypatch.setattr(downloads_router_mod, "resource_in_publication_scope", lambda *_a: _true_coro())
     request = request_from("198.51.100.20")
-    responses = [await main.download("r_1234567890", request) for _ in range(6)]
+    responses = [await downloads_router_mod.download("r_1234567890", request) for _ in range(6)]
     assert [response.status_code for response in responses] == [302, 302, 302, 302, 302, 429]
     assert responses[-1].headers["retry-after"] == "60"
     await engine.dispose()
