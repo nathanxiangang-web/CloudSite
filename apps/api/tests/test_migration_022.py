@@ -24,9 +24,9 @@ async def test_021_fixture_upgrade_preserves_user_and_rolling_cycle(tmp_path, mo
                 "INSERT INTO sync_cycles "
                 "(id, cycle_type, status, anchor_at, planned_folder_count, completed_folder_count, "
                 "failed_folder_count, carry_over_count, windows_total, windows_completed, "
-                "alist_list_requests, changed_scope_count, unchanged_scope_count, fts_rebuilt_count, "
+                "alist_list_requests, changed_scope_count, unchanged_scope_count, fts_rebuilt_count, renamed_count, skipped_verified_count, "
                 "created_at, updated_at) "
-                "VALUES (11, 'normal', 'running', CURRENT_TIMESTAMP, 20, 8, 1, 2, 4, 1, 33, 4, 4, 1, "
+                "VALUES (11, 'normal', 'running', CURRENT_TIMESTAMP, 20, 8, 1, 2, 4, 1, 33, 4, 4, 1, 0, 0, "
                 "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             )
         )

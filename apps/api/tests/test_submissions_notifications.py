@@ -51,21 +51,21 @@ async def test_run_migrations_advances_v1_to_v2(tmp_path):
         final, applied = await run_migrations(
             conn, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
         )
-        assert final == 2
-        assert applied == ["state_v1_to_v2"]
+        assert final == 3
+        assert applied == ["state_v1_to_v2", "state_v2_to_v3"]
     await engine.dispose()
 
 
 async def test_run_migrations_skips_when_already_v2(tmp_path):
-    """已是 v2 的库不重复执行迁移。"""
+    """已是 v3 的库不重复执行迁移。"""
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
     async with engine.begin() as conn:
         await conn.run_sync(StateBase.metadata.create_all)
-        await set_state_schema_version(conn, 2)
+        await set_state_schema_version(conn, 3)
         final, applied = await run_migrations(
             conn, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
         )
-        assert final == 2
+        assert final == 3
         assert applied == []
     await engine.dispose()
 

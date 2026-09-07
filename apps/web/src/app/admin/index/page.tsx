@@ -27,6 +27,8 @@ type RollingStatus = {
   engine_version: string;
   mode: string;
   migrated_at?: string | null;
+  manual_sync_running?: boolean;
+  recent_changes_summary?: { trigger_source?: string; renamed?: number; skipped_verified?: number; refresh_true_count?: number };
   cycle: null | {
     id: number;
     type: string;
@@ -47,8 +49,16 @@ type RollingStatus = {
   };
 };
 
+type ManualSyncResponse = { status: "accepted" | "already_running" | "invalid_path"; accepted_paths?: string[]; rejected_paths?: string[]; message?: string };
+
+function manualSyncFeedback(response: ManualSyncResponse): { tone: "success" | "warning" | "error"; text: string } {
+  if (response.status === "accepted") return { tone: "success", text: "已受理，正在排队执行" };
+  if (response.status === "already_running") return { tone: "warning", text: "另一手动同步正在运行" };
+  return { tone: "error", text: "路径不在已配置内容根下" };
+}
+
 const typeNames: Record<string, string> = { software: "软件", image: "图库", video: "视频", document: "教程", file: "普通文件" };
-const syncTypeLabel: Record<string, string> = { full: "全量同步", windowed: "窗口同步", window: "窗口同步", delta: "增量同步", auto: "自动同步" };
+const syncTypeLabel: Record<string, string> = { full: "全量同步", windowed: "Rolling 窗口", window: "Rolling 窗口", rolling_window: "Rolling 窗口", manual_path: "手动同步", delta: "增量同步", auto: "自动同步" };
 const runStatusLabel: Record<string, string> = { success: "已完成", failed: "失败", running: "进行中", pending: "等待中", partial: "部分完成", cancelled: "已取消", skipped: "已跳过" };
 const changeTypeLabel: Record<string, string> = { added: "新增", updated: "修改", removed: "移除", renamed: "重命名", moved: "移动" };
 function labelOf(map: Record<string, string>, value: string) { return map[value] ?? value; }
@@ -75,6 +85,8 @@ export default function IndexPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [manualPath, setManualPath] = useState("");
+  const [forceRefresh, setForceRefresh] = useState(false);
   const summary = useQuery({ queryKey: ["index-summary"], queryFn: () => api<IndexSummary>("/api/admin/index/summary"), refetchInterval: (query) => query.state.data?.syncing ? 2000 : false });
   const folders = useQuery({ queryKey: ["admin-folders"], queryFn: () => api<{ items: FolderType[] }>("/api/admin/index/folders") });
   const mappings = useQuery({ queryKey: ["mappings"], queryFn: () => api<{ items: Mapping[] }>("/api/admin/root-mappings") });
@@ -86,6 +98,7 @@ export default function IndexPage() {
   const changes = useQuery({ queryKey: ["sync-changes", selectedRunId], queryFn: () => api<{ items: Change[] }>(`/api/admin/sync-runs/${selectedRunId}/changes?limit=50`), enabled: Boolean(selectedRunId) });
   const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["sync-runs"] }); client.invalidateQueries({ queryKey: ["rolling-status"] }); };
   const sync = useMutation({ mutationFn: (full: boolean) => rolling.data?.engine_version === "1.1" ? api("/api/admin/sync/window/run", { method: "POST" }) : api("/api/admin/sync", { method: "POST", body: JSON.stringify({ full }) }), onSuccess: refresh });
+  const manualSync = useMutation({ mutationFn: () => api<ManualSyncResponse>("/api/admin/sync/path", { method: "POST", body: JSON.stringify({ paths: [manualPath.trim()], force_refresh: forceRefresh }) }), onSuccess: () => { client.invalidateQueries({ queryKey: ["rolling-status"] }); client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["sync-runs"] }); } });
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, FolderType[]>();
@@ -102,6 +115,7 @@ export default function IndexPage() {
   const latest = summary.data?.latest_sync;
   const rollingCycle = rolling.data?.cycle;
   const isRolling = rolling.data?.engine_version === "1.1";
+  const manualSyncRunning = rolling.data?.manual_sync_running ?? false;
   const busy = sync.isPending || summary.data?.syncing;
   const [overdue, setOverdue] = useState(false);
   const nextWindowAtIso = rollingCycle?.next_window_at ?? null;
@@ -120,8 +134,8 @@ export default function IndexPage() {
 
   return <AdminShell title="内容索引"><div className="admin-page index-admin-page">
     <section className="index-summary-grid"><article><Database /><span><small>索引资源</small><strong>{summary.data?.resources ?? 0}</strong></span></article><article><Folder /><span><small>目录数量</small><strong>{summary.data?.folders ?? 0}</strong></span></article><article><Clock3 /><span><small>最近同步</small><strong>{latest?.status === "success" ? "已完成" : latest?.status === "failed" ? "失败" : latest?.status === "running" ? "进行中" : "未运行"}</strong></span></article></section>
-    <section className="panel index-control-panel"><div><h2>{isRolling ? "滚动全量校验" : "动态索引"}</h2><p>{isRolling ? "首次索引已保留；系统在 24 小时内分 4 个窗口完成一次目录覆盖。" : "目录和资源完全来自已启用的 AList 根目录映射。"}</p></div><div className="index-actions"><button type="button" className={isRolling ? "primary" : ""} disabled={busy} onClick={() => sync.mutate(false)}><RefreshCw className={busy ? "spin" : ""} />{isRolling ? "开始当前窗口" : "立即同步"}</button><button type="button" className={system.data?.automatic_sync ? "danger" : ""} disabled={toggleAutoSync.isPending} onClick={() => toggleAutoSync.mutate()} title={system.data?.automatic_sync ? "关闭后停止按间隔自动同步" : "开启后按间隔自动同步 AList 变化"}><Power />{system.data?.automatic_sync ? "关闭自动同步" : "启用自动同步"}</button>{!isRolling && <button type="button" className="primary" disabled={busy} onClick={() => sync.mutate(true)}><RotateCcw />完整重建</button>}</div>{sync.error && <p className="form-error">{sync.error.message}</p>}</section>
-    {isRolling && rollingCycle && <section className="panel sync-history-panel"><div className="panel-toolbar"><div><h2>滚动周期 #{rollingCycle.id}</h2><p>当前窗口 {Math.min(rollingCycle.windows_completed + 1, rollingCycle.windows_total)} / {rollingCycle.windows_total} · 下一窗口目标 {rollingCycle.next_window_target} 个目录 · 下次计划 {overdue ? "已逾期，可立即补扫" : new Date(rollingCycle.next_window_at).toLocaleString("zh-CN")}</p></div><b className={`sync-status ${rollingCycle.status}`}>{labelOf(runStatusLabel, rollingCycle.status)}</b></div><section className="index-summary-grid"><article><Folder /><span><small>本轮完成</small><strong>{rollingCycle.completed_folder_count} / {rollingCycle.planned_folder_count}</strong></span></article><article><Clock3 /><span><small>剩余目录</small><strong>{rollingCycle.remaining_folder_count}</strong></span></article><article><RefreshCw /><span><small>本轮 List 请求</small><strong>{rollingCycle.window_list_requests}</strong><small className="sub-note">周期累计 {rollingCycle.alist_list_requests}</small></span></article></section></section>}
+    <section className="panel index-control-panel"><div><h2>{isRolling ? "Rolling 1.1 同步" : "动态索引"}</h2><p>{isRolling ? "24 小时一轮，分 4 个 6 小时窗口低速扫描全部已配置目录。" : "目录和资源完全来自已启用的 AList 根目录映射。"}</p></div><div className="index-actions"><button type="button" className={isRolling ? "primary" : ""} disabled={busy} onClick={() => sync.mutate(false)}><RefreshCw className={busy ? "spin" : ""} />{isRolling ? "立即扫描当前窗口" : "立即同步"}</button><button type="button" className={system.data?.automatic_sync ? "danger" : ""} disabled={toggleAutoSync.isPending} onClick={() => toggleAutoSync.mutate()} title={system.data?.automatic_sync ? "关闭后停止按间隔自动同步" : "开启后按间隔自动同步 AList 变化"}><Power />{system.data?.automatic_sync ? "关闭自动同步" : "启用自动同步"}</button>{!isRolling && <button type="button" className="primary" disabled={busy} onClick={() => sync.mutate(true)}><RotateCcw />完整重建</button>}</div>{sync.error && <p className="form-error">{sync.error.message}</p>}{manualSyncRunning && <b className="sync-status running">手动同步进行中</b>}<div className="manual-sync-entry"><input type="text" value={manualPath} onChange={(e) => setManualPath(e.target.value)} placeholder="发生变化内容所在的父目录，例如 /软件/子目录" /><label className="check"><input type="checkbox" checked={forceRefresh} onChange={(e) => setForceRefresh(e.target.checked)} />强制刷新该目录 AList 缓存</label><button type="button" disabled={!manualPath.trim() || manualSync.isPending || manualSyncRunning} onClick={() => manualSync.mutate()}><RefreshCw />手动同步</button>{manualSync.isSuccess && manualSync.data && (() => { const feedback = manualSyncFeedback(manualSync.data); return <p className={feedback.tone === "success" ? "form-success" : feedback.tone === "error" ? "form-error" : "form-warning"}>{feedback.text}</p>; })()}{manualSync.isError && <p className="form-error">{manualSync.error.message}</p>}</div></section>
+    {isRolling && rollingCycle && <section className="panel sync-history-panel"><div className="panel-toolbar"><div><h2>Rolling 周期 #{rollingCycle.id}</h2><p>已完成 {rollingCycle.completed_folder_count} / {rollingCycle.planned_folder_count} 个目录{rollingCycle.next_window_at ? ` · 下次到期 ${overdue ? "已逾期，可立即补扫" : new Date(rollingCycle.next_window_at).toLocaleString("zh-CN")}` : ""}</p></div><b className={`sync-status ${rollingCycle.status}`}>{labelOf(runStatusLabel, rollingCycle.status)}</b></div><section className="index-summary-grid"><article><Folder /><span><small>本轮完成</small><strong>{rollingCycle.completed_folder_count} / {rollingCycle.planned_folder_count}</strong></span></article><article><Clock3 /><span><small>剩余目录</small><strong>{rollingCycle.remaining_folder_count}</strong></span></article><article><RefreshCw /><span><small>本轮 List 请求</small><strong>{rollingCycle.window_list_requests}</strong><small className="sub-note">周期累计 {rollingCycle.alist_list_requests}</small></span></article></section></section>}
     <section className="index-workspace"><article className="panel folder-tree-panel"><div className="panel-toolbar"><div><h2>目录树</h2><p>{mappings.data?.items.filter((item) => item.enabled).map((item) => `${item.display_name} ${item.alist_path}`).join(" · ") || "尚未配置内容根目录"}</p></div><label className="small-search"><Search /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="筛选已索引目录" /></label></div>
       <div className="folder-tree">{filter ? filtered.map((item) => <button type="button" className={selectedId === item.id ? "filter-result selected" : "filter-result"} key={item.id} onClick={() => setSelectedId(item.id)}><Folder /><span><strong>{item.name}</strong><small>{item.path}</small></span></button>) : roots.length ? <ul>{roots.map((root) => <TreeNode key={root.id} node={root} childrenByParent={childrenByParent} expanded={expanded} selectedId={selectedId} toggle={toggle} select={setSelectedId} />)}</ul> : <div className="empty">暂无索引目录，请先配置映射并执行同步。</div>}</div>
     </article><aside className="panel folder-detail-panel"><h2>目录详情</h2>{detail.data ? <dl><div><dt>名称</dt><dd>{detail.data.name}</dd></div><div><dt>真实路径</dt><dd>{detail.data.path}</dd></div><div><dt>内容类型</dt><dd>{typeNames[detail.data.content_type] ?? detail.data.content_type}</dd></div><div><dt>目录深度</dt><dd>{detail.data.depth}</dd></div><div><dt>子目录</dt><dd>{detail.data.child_folder_count}</dd></div><div><dt>直接资源</dt><dd>{detail.data.direct_resource_count}</dd></div><div><dt>最近修改</dt><dd>{detail.data.modified_at ? new Date(detail.data.modified_at).toLocaleString("zh-CN") : "上游未提供"}</dd></div><div><dt>索引状态</dt><dd className="ok-text">已激活</dd></div></dl> : <div className="empty compact">从左侧选择目录查看详情</div>}</aside></section>

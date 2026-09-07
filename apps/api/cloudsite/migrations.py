@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +136,45 @@ async def state_v1_to_v2_upgrade(conn: AsyncConnection) -> None:
     await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_notifications_published_at ON notifications (published_at)")
 
 
+async def state_v2_to_v3_upgrade(conn: AsyncConnection) -> None:
+    """Schema v2 → v3：FolderIdentity / FolderIdentityHistory 表，幂等。"""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS folder_identities("
+        "folder_id VARCHAR(64) PRIMARY KEY,"
+        "current_path VARCHAR(1500),"
+        "root_mapping_id INTEGER,"
+        "status VARCHAR(30) DEFAULT 'active',"
+        "first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "last_name VARCHAR(500) DEFAULT '',"
+        "identity_fingerprint VARCHAR(64),"
+        "fingerprint_version INTEGER DEFAULT 1,"
+        "created_from VARCHAR(30) DEFAULT 'new_folder',"
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identities_current_path ON folder_identities (current_path)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identities_root_mapping_id ON folder_identities (root_mapping_id)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identities_status ON folder_identities (status)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identities_identity_fingerprint ON folder_identities (identity_fingerprint)")
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS folder_identity_histories("
+        "id INTEGER PRIMARY KEY,"
+        "folder_id VARCHAR(64) NOT NULL REFERENCES folder_identities(folder_id) ON DELETE RESTRICT,"
+        "path VARCHAR(1500),"
+        "event_type VARCHAR(30),"
+        "first_observed_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "last_observed_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "from_path VARCHAR(1500),"
+        "to_path VARCHAR(1500),"
+        "cycle_id INTEGER,"
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identity_histories_folder_id ON folder_identity_histories (folder_id)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identity_histories_event_type ON folder_identity_histories (event_type)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identity_histories_cycle_id ON folder_identity_histories (cycle_id)")
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
+    Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
 ]

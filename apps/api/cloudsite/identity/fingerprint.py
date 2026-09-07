@@ -1,5 +1,6 @@
 import hashlib
 from datetime import datetime, timezone
+from typing import Any
 
 
 def _normalized_time(value: datetime | None) -> str:
@@ -27,3 +28,14 @@ def identity_fingerprint(
         )
     )
     return hashlib.blake2s(payload.encode("utf-8")).hexdigest()
+
+
+def folder_identity_fingerprint(entries: list[dict[str, Any]]) -> str:
+    """Folder identity fingerprint based on child names, types, and count."""
+    canonical = []
+    for item in entries:
+        name = str(item.get("name") or "")
+        is_dir = bool(item.get("is_dir"))
+        canonical.append(f"v1|{name}|{'dir' if is_dir else 'file'}")
+    payload = "\n".join(sorted(canonical)).encode("utf-8")
+    return hashlib.blake2s(payload).hexdigest()

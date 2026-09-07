@@ -23,3 +23,20 @@ class IdentityResolution:
     fingerprint: str
     previous_path: str | None = None
     ambiguous_resource_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class FolderIdentityObservation:
+    path: str
+    name: str
+    root_mapping_id: int | None
+    fingerprint: str
+
+
+@dataclass(slots=True)
+class FolderIdentityResolution:
+    observation: FolderIdentityObservation
+    folder_id: str
+    match_type: str
+    previous_path: str | None = None
+    confidence: float = 1.0

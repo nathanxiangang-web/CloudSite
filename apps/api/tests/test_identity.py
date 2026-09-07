@@ -165,6 +165,12 @@ async def test_022_migration_is_idempotent_and_does_zero_id_rewrites(monkeypatch
         await connection.run_sync(StateBase.metadata.create_all)
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
+        await connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+            "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
+            "content_type UNINDEXED, description, tags, breadcrumb_text, "
+            "tokenize='unicode61 remove_diacritics 2')"
+        )
     async with index_sessions() as session:
         session.add(
             Resource(
@@ -219,6 +225,12 @@ async def test_pre_migration_backup_is_consistent_and_idempotent(tmp_path):
         await connection.run_sync(StateBase.metadata.create_all)
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
+        await connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+            "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
+            "content_type UNINDEXED, description, tags, breadcrumb_text, "
+            "tokenize='unicode61 remove_diacritics 2')"
+        )
         await connection.execute(
             Resource.__table__.insert().values(
                 id="r_legacy",
@@ -251,6 +263,12 @@ async def test_identity_diagnostics_require_real_admin_session(monkeypatch):
         await connection.run_sync(StateBase.metadata.create_all)
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
+        await connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+            "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
+            "content_type UNINDEXED, description, tags, breadcrumb_text, "
+            "tokenize='unicode61 remove_diacritics 2')"
+        )
     monkeypatch.setattr(main, "StateSession", state_sessions)
     monkeypatch.setattr(main, "IndexSession", index_sessions)
 
@@ -323,6 +341,12 @@ async def _rolling_identity_fixture(monkeypatch):
         await connection.run_sync(StateBase.metadata.create_all)
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
+        await connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+            "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
+            "content_type UNINDEXED, description, tags, breadcrumb_text, "
+            "tokenize='unicode61 remove_diacritics 2')"
+        )
     monkeypatch.setattr(rolling, "StateSession", state_sessions)
     await seed_identity(state_sessions, "r_stable", "/a/A.zip")
     async with index_sessions() as session:

@@ -92,7 +92,7 @@ export default function AdminNotificationsPage() {
   return <AdminShell title="通知管理"><div className="admin-page">
     <section className="panel">
       <div className="panel-toolbar"><div><h2><Bell />通知管理</h2><p>共 {items.length} 条通知</p></div><div className="share-toolbar"><button className="primary" onClick={openCreate}><Plus size={16} />新建通知</button></div></div>
-      <div className="table-head notification-table-head"><span>标题</span><span>级别</span><span>范围</span><span>状态</span><span>发布时间</span><span>操作</span></div>
+      <div className="table-scroll notification-table-scroll" role="region" aria-label="通知表格" tabIndex={0}><div className="table-head notification-table-head"><span>标题</span><span>级别</span><span>范围</span><span>状态</span><span>发布时间</span><span>操作</span></div>
       {query.isLoading ? <div className="loading">正在读取通知…</div> : items.length ? items.map((item) => <div className="table-row notification-table-row" key={item.id}>
         <span><b>{item.title}{item.pinned && <Pin size={12} className="notification-pin-inline" />}</b><small>{item.body.slice(0, 40) || "—"}</small></span>
         <span><b className={`notification-level level-${item.level}`}>{levelLabel[item.level]}</b></span>
@@ -110,7 +110,7 @@ export default function AdminNotificationsPage() {
             <button className="danger-icon" title="删除" onClick={() => setDeletingId(item.id)}><Trash2 size={16} /></button>
           </>}
         </span>
-      </div>) : <div className="empty">暂无通知。</div>}
+      </div>) : <div className="empty">暂无通知。</div>}</div>
       {query.error && <p className="form-error">{query.error.message}</p>}
     </section>
 

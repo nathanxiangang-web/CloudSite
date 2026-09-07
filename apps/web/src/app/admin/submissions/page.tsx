@@ -68,8 +68,8 @@ export default function AdminSubmissionsPage() {
 
   return <AdminShell title="投稿审核"><div className="admin-page">
     <section className="panel">
-      <div className="panel-toolbar"><div><h2><ClipboardList />投稿审核</h2><p>共 {items.length} 条{statusFilter !== "all" ? `（${statusLabel[statusFilter]}）` : ""}</p></div><div className="share-toolbar"><div className="small-search"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资源名 / 提交者 / 链接" /></div><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | Submission["status"])}><option value="all">全部</option>{Object.entries(statusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
-      <div className="table-head submission-table-head"><span>资源</span><span>提交者</span><span>状态</span><span>提交时间</span><span>操作</span></div>
+      <div className="panel-toolbar"><div><h2><ClipboardList />投稿审核</h2><p>共 {items.length} 条{statusFilter !== "all" ? `（${statusLabel[statusFilter]}）` : ""}</p></div><div className="share-toolbar submission-filter-toolbar"><div className="small-search"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资源名 / 提交者 / 链接" /></div><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | Submission["status"])}><option value="all">全部</option>{Object.entries(statusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
+      <div className="table-scroll submission-table-scroll" role="region" aria-label="投稿表格" tabIndex={0}><div className="table-head submission-table-head"><span>资源</span><span>提交者</span><span>状态</span><span>提交时间</span><span>操作</span></div>
       {query.isLoading ? <div className="loading">正在读取投稿…</div> : items.length ? items.map((item) => <div className="table-row submission-table-row" key={item.id}>
         <span><b>{item.resource_name}<small>{typeLabel[item.resource_type] ?? item.resource_type}{item.download_url ? " · 含网盘链接" : ""}</small></b></span>
         <span><b>{item.username}</b><small>#{item.user_id}</small></span>
@@ -91,7 +91,7 @@ export default function AdminSubmissionsPage() {
             </span> : <button className="danger-icon" title="删除投稿" onClick={() => setDeletingId(item.id)}><Trash2 size={16} /></button>)}
           </>}
         </span>
-      </div>) : <div className="empty">没有匹配的投稿。</div>}
+      </div>) : <div className="empty">没有匹配的投稿。</div>}</div>
       {review.error && <p className="form-error">{review.error.message}</p>}
     </section>
 

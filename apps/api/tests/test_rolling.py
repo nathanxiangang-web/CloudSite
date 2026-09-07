@@ -41,7 +41,9 @@ class FakeClock:
 
 def test_window_target_uses_remaining_div_remaining_windows_without_cap():
     assert calculate_window_target(400, 0) == 100
-    assert calculate_window_target(320, 1) == 107
+    assert calculate_window_target(300, 1) == 100
+    assert calculate_window_target(200, 2) == 100
+    assert calculate_window_target(100, 3) == 100
     assert calculate_window_target(1200, 0) == 300
     assert calculate_window_target(2000, 3) == 2000
 
@@ -350,11 +352,11 @@ async def test_changed_scope_updates_direct_child_and_rebuilds_fts_once(monkeypa
         cycle = await session.scalar(select(SyncCycle))
         fts_count = int((await session.execute(text("SELECT COUNT(*) FROM search_fts"))).scalar_one())
         assert resource.size == 20
-        assert cycle.fts_rebuilt_count == 1
-        assert fts_count == 2
+        assert cycle.fts_rebuilt_count == 0
+        assert fts_count == 1
     async with state_factory() as session:
         dirty = await session.get(SystemSetting, "search_index_dirty")
-        assert dirty is not None and dirty.value == "false"
+        assert dirty is None or dirty.value == "false"
     await state_engine.dispose()
     await index_engine.dispose()
 

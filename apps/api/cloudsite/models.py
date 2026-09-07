@@ -317,6 +317,37 @@ class ResourceIdentityHistory(StateBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class FolderIdentity(StateBase):
+    __tablename__ = "folder_identities"
+    folder_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    current_path: Mapped[str] = mapped_column(String(1500), index=True)
+    root_mapping_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_name: Mapped[str] = mapped_column(String(500), default="")
+    identity_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    fingerprint_version: Mapped[int] = mapped_column(Integer, default=1)
+    created_from: Mapped[str] = mapped_column(String(30), default="new_folder")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class FolderIdentityHistory(StateBase):
+    __tablename__ = "folder_identity_histories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[str] = mapped_column(
+        ForeignKey("folder_identities.folder_id", ondelete="RESTRICT"), index=True
+    )
+    path: Mapped[str] = mapped_column(String(1500), index=True)
+    event_type: Mapped[str] = mapped_column(String(30), index=True)
+    first_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    from_path: Mapped[str | None] = mapped_column(String(1500), nullable=True)
+    to_path: Mapped[str | None] = mapped_column(String(1500), nullable=True)
+    cycle_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Folder(IndexBase):
     __tablename__ = "folders"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -403,6 +434,14 @@ class SyncRun(IndexBase):
     roots_completed: Mapped[int] = mapped_column(Integer, default=0)
     roots_failed: Mapped[int] = mapped_column(Integer, default=0)
     list_requests: Mapped[int] = mapped_column(Integer, default=0)
+    trigger_source: Mapped[str] = mapped_column(String(20), default="auto")
+    target_paths_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    force_refresh_paths_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    renamed_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_verified_count: Mapped[int] = mapped_column(Integer, default=0)
+    refresh_true_count: Mapped[int] = mapped_column(Integer, default=0)
+    auto_interrupted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_resumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SyncRootResult(IndexBase):
@@ -428,7 +467,7 @@ class SyncChange(IndexBase):
     sync_run_id: Mapped[int] = mapped_column(ForeignKey("sync_runs.id", ondelete="CASCADE"), index=True)
     object_type: Mapped[str] = mapped_column(String(20))
     object_id: Mapped[str] = mapped_column(String(64))
-    change_type: Mapped[str] = mapped_column(String(20))
+    change_type: Mapped[str] = mapped_column(String(20))  # added/updated/removed/renamed
     old_path: Mapped[str | None] = mapped_column(String(1500), nullable=True)
     new_path: Mapped[str | None] = mapped_column(String(1500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -451,6 +490,8 @@ class SyncCycle(IndexBase):
     changed_scope_count: Mapped[int] = mapped_column(Integer, default=0)
     unchanged_scope_count: Mapped[int] = mapped_column(Integer, default=0)
     fts_rebuilt_count: Mapped[int] = mapped_column(Integer, default=0)
+    renamed_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_verified_count: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

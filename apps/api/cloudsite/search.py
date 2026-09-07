@@ -1,6 +1,7 @@
 import re
 from collections.abc import Iterable
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from sqlalchemy import bindparam, select, text
 
@@ -184,3 +185,81 @@ async def search_index(
         parameters,
     )
     return [dict(row) for row in result.mappings().all()], total
+
+
+@dataclass(slots=True)
+class FtsDeltaOp:
+    op_type: Literal["insert", "update", "delete", "rename_cascade"]
+    object_id: str
+    object_type: Literal["folder", "resource"]
+    name: str = ""
+    extension: str = ""
+    content_type: str = ""
+    description: str = ""
+    tags: str = ""
+    breadcrumb_text: str = ""
+    old_path_prefix: str = ""
+    new_path_prefix: str = ""
+
+
+_FTS_INSERT_SQL = text(
+    "INSERT INTO search_fts(object_id, object_type, name, extension, content_type, description, tags, breadcrumb_text) "
+    "VALUES (:object_id, :object_type, :name, :extension, :content_type, :description, :tags, :breadcrumb_text)"
+)
+
+_FTS_DELETE_SQL = text(
+    "DELETE FROM search_fts WHERE object_id = :object_id AND object_type = :object_type"
+)
+
+
+async def apply_search_fts_delta(session, ops: list[FtsDeltaOp]) -> dict[str, int]:
+    """Apply row-level delta operations to search_fts.
+
+    insert/update 幂等（先删后插）；rename_cascade 转义 LIKE 通配符仅匹配后代，
+    保留 description/tags；任何 op 失败标记 dirty 由 recover 兜底。
+    """
+    applied = 0
+    failed = 0
+    for op in ops:
+        try:
+            async with session.begin_nested():
+                if op.op_type == "insert":
+                    await session.execute(_FTS_DELETE_SQL, {"object_id": op.object_id, "object_type": op.object_type})
+                    await session.execute(_FTS_INSERT_SQL, {
+                        "object_id": op.object_id, "object_type": op.object_type,
+                        "name": op.name, "extension": op.extension,
+                        "content_type": op.content_type, "description": op.description,
+                        "tags": op.tags, "breadcrumb_text": op.breadcrumb_text,
+                    })
+                elif op.op_type == "update":
+                    await session.execute(_FTS_DELETE_SQL, {"object_id": op.object_id, "object_type": op.object_type})
+                    await session.execute(_FTS_INSERT_SQL, {
+                        "object_id": op.object_id, "object_type": op.object_type,
+                        "name": op.name, "extension": op.extension,
+                        "content_type": op.content_type, "description": op.description,
+                        "tags": op.tags, "breadcrumb_text": op.breadcrumb_text,
+                    })
+                elif op.op_type == "delete":
+                    await session.execute(_FTS_DELETE_SQL, {"object_id": op.object_id, "object_type": op.object_type})
+                elif op.op_type == "rename_cascade":
+                    old_prefix = op.old_path_prefix.rstrip("/")
+                    new_prefix = op.new_path_prefix.rstrip("/")
+                    like_pattern = escape_like(old_prefix + "/") + "%"
+                    rows = await session.execute(
+                        text("SELECT object_id, object_type, name, extension, content_type, description, tags, breadcrumb_text FROM search_fts WHERE breadcrumb_text LIKE :pattern ESCAPE '\\'"),
+                        {"pattern": like_pattern},
+                    )
+                    old_seg_len = len(old_prefix) + 1
+                    for row in rows.fetchall():
+                        new_breadcrumb = new_prefix + "/" + row[7][old_seg_len:]
+                        await session.execute(_FTS_DELETE_SQL, {"object_id": row[0], "object_type": row[1]})
+                        await session.execute(_FTS_INSERT_SQL, {
+                            "object_id": row[0], "object_type": row[1], "name": row[2],
+                            "extension": row[3], "content_type": row[4], "description": row[5],
+                            "tags": row[6], "breadcrumb_text": new_breadcrumb,
+                        })
+            applied += 1
+        except Exception:
+            failed += 1
+            await set_search_index_dirty(True)
+    return {"applied": applied, "failed": failed}

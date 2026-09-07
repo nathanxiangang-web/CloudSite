@@ -38,7 +38,8 @@ from ..models import (
     SyncRun,
     SystemSetting,
 )
-from ..search import rebuild_search_index, set_search_index_dirty
+from ..search import apply_search_fts_delta, rebuild_search_index, set_search_index_dirty
+from ..search import FtsDeltaOp
 from .governor import SyncRequestGovernor
 from .planner import WINDOW_INTERVAL, calculate_window_target, next_cycle_anchor, next_window_due_at
 
@@ -88,7 +89,7 @@ async def rolling_enabled() -> bool:
 async def _active_cycle(session) -> SyncCycle | None:
     return await session.scalar(
         select(SyncCycle)
-        .where(SyncCycle.status.in_(ACTIVE_CYCLE_STATUSES))
+        .where(SyncCycle.status.in_(ACTIVE_CYCLE_STATUSES), SyncCycle.cycle_type != "manual_path")
         .order_by(SyncCycle.id.desc())
         .limit(1)
     )
@@ -368,6 +369,7 @@ async def _resolve_pending_for_parent(
         ).all()
     )
     added = updated = 0
+    fts_ops: list[FtsDeltaOp] = []
     for candidate in candidates:
         source = await session.get(Resource, candidate.matched_resource_id)
         if source is None:
@@ -438,6 +440,7 @@ async def _resolve_pending_for_parent(
                 )
             )
             candidate.status = "resolved_move"
+            fts_ops.append(FtsDeltaOp(op_type="update", object_id=row.id, object_type="resource", name=row.name, extension=row.extension, content_type=row.content_type, breadcrumb_text=row.path))
             updated += 1
         else:
             row = Resource(
@@ -467,9 +470,10 @@ async def _resolve_pending_for_parent(
                 )
             )
             candidate.status = "resolved_new"
+            fts_ops.append(FtsDeltaOp(op_type="insert", object_id=row.id, object_type="resource", name=row.name, extension=row.extension, content_type=row.content_type, breadcrumb_text=row.path))
             added += 1
         candidate.resolved_at = now
-    return {"added": added, "updated": updated}
+    return {"added": added, "updated": updated, "fts_ops": fts_ops}
 
 
 async def _commit_scope(
@@ -480,6 +484,8 @@ async def _commit_scope(
     parent: Folder,
     entries: list[dict[str, Any]],
     fingerprint: str,
+    *,
+    enqueue_discovered: bool = True,
 ) -> dict[str, int | bool]:
     existing_folders = list(
         (
@@ -582,10 +588,64 @@ async def _commit_scope(
         missing_resources = [row for row in missing_resources if row.id not in resolved_resource_ids]
 
     now = datetime.now(timezone.utc)
+    # 同父目录改名匹配：只在唯一 1:1 候选且有 modified_at hint 时保留旧 Folder.id。
+    # 空 hint、多候选、元数据不足均按 new + two-cycle missing，绝不猜（fail-closed）。
+    # rename 的 Folder.id、子孙路径、SyncCycleItem.folder_path 在同一 IndexSession 事务内完成。
+    folder_entries = [entry for entry in entries if entry["is_dir"]]
+    new_folder_entries = [entry for entry in folder_entries if entry["path"] not in folder_by_path]
+    rename_map: dict[str, Folder] = {}
+    renamed = 0
     added = updated = removed = new_folders = 0
+    fts_ops: list[FtsDeltaOp] = []
+    if len(missing_folders) == 1 and len(new_folder_entries) == 1:
+        candidate_entry = new_folder_entries[0]
+        old_folder = missing_folders[0]
+        if (
+            old_folder.modified_at is not None
+            and candidate_entry["modified_at"] is not None
+            and times_equal(old_folder.modified_at, candidate_entry["modified_at"])
+        ):
+            old_path = old_folder.path
+            old_folder.name = candidate_entry["name"]
+            old_folder.path = candidate_entry["path"]
+            old_folder.modified_at = candidate_entry["modified_at"]
+            old_folder.indexed_at = now
+            old_folder.status = "active"
+            old_folder.missing_streak = 0
+            old_folder.missing_candidate_at = None
+            old_folder.missing_last_observed_cycle_id = None
+            session.add(SyncChange(sync_run_id=run.id, object_type="folder", object_id=old_folder.id, change_type="renamed", old_path=old_path, new_path=candidate_entry["path"]))
+            old_seg = old_path.rstrip("/") + "/"
+            new_seg = candidate_entry["path"].rstrip("/") + "/"
+            escaped_seg = old_seg.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            old_len = len(old_seg)
+            await session.execute(
+                update(Folder).where(Folder.path.like(escaped_seg + "%", escape="\\")).values(path=new_seg + func.substr(Folder.path, old_len + 1))
+            )
+            await session.execute(
+                update(Resource).where(Resource.path.like(escaped_seg + "%", escape="\\")).values(path=new_seg + func.substr(Resource.path, old_len + 1))
+            )
+            await session.execute(
+                update(SyncCycleItem).where(SyncCycleItem.cycle_id == cycle.id, SyncCycleItem.folder_path == old_path).values(folder_path=candidate_entry["path"])
+            )
+            await session.execute(
+                update(SyncCycleItem).where(SyncCycleItem.cycle_id == cycle.id, SyncCycleItem.folder_path.like(escaped_seg + "%", escape="\\")).values(folder_path=new_seg + func.substr(SyncCycleItem.folder_path, old_len + 1))
+            )
+            await session.execute(
+                update(FolderScanState).where(FolderScanState.folder_id == old_folder.id).values(path=candidate_entry["path"])
+            )
+            await session.execute(
+                update(FolderScanState).where(FolderScanState.path.like(escaped_seg + "%", escape="\\")).values(path=new_seg + func.substr(FolderScanState.path, old_len + 1))
+            )
+            rename_map[candidate_entry["path"]] = old_folder
+            missing_folders = [f for f in missing_folders if f.id != old_folder.id]
+            fts_ops.append(FtsDeltaOp(op_type="update", object_id=old_folder.id, object_type="folder", name=candidate_entry["name"], content_type=parent.content_type, breadcrumb_text=candidate_entry["path"]))
+            fts_ops.append(FtsDeltaOp(op_type="rename_cascade", object_id=old_folder.id, object_type="folder", old_path_prefix=old_path, new_path_prefix=candidate_entry["path"]))
+            renamed += 1
+
     for entry in entries:
         if entry["is_dir"]:
-            row = folder_by_path.get(entry["path"])
+            row = folder_by_path.get(entry["path"]) or rename_map.get(entry["path"])
             if row is None:
                 row = Folder(
                     id=stable_id("folder", entry["path"]),
@@ -603,6 +663,7 @@ async def _commit_scope(
                 session.add(SyncChange(sync_run_id=run.id, object_type="folder", object_id=row.id, change_type="added", new_path=row.path))
                 added += 1
                 new_folders += 1
+                fts_ops.append(FtsDeltaOp(op_type="insert", object_id=row.id, object_type="folder", name=row.name, content_type=row.content_type, breadcrumb_text=row.path))
             else:
                 changed = any(
                     (
@@ -636,7 +697,7 @@ async def _commit_scope(
                     SyncCycleItem.folder_id == row.id,
                 )
             )
-            if queued is None:
+            if queued is None and enqueue_discovered:
                 session.add(
                     SyncCycleItem(
                         cycle_id=cycle.id,
@@ -654,11 +715,13 @@ async def _commit_scope(
                 continue
             resource_id = entry["resource_id"]
             row = resource_by_path.get(entry["path"]) or resource_by_id.get(resource_id)
+            resource_ext = PurePosixPath(entry["name"]).suffix.lower().lstrip(".")
             if row is None:
                 row = Resource(id=resource_id)
                 session.add(row)
                 session.add(SyncChange(sync_run_id=run.id, object_type="resource", object_id=row.id, change_type="added", new_path=entry["path"]))
                 added += 1
+                fts_ops.append(FtsDeltaOp(op_type="insert", object_id=resource_id, object_type="resource", name=entry["name"], extension=resource_ext, content_type=parent.content_type, breadcrumb_text=entry["path"]))
             else:
                 changed = any(
                     (
@@ -672,6 +735,7 @@ async def _commit_scope(
                 if changed:
                     session.add(SyncChange(sync_run_id=run.id, object_type="resource", object_id=row.id, change_type="updated", old_path=row.path, new_path=entry["path"]))
                     updated += 1
+                    fts_ops.append(FtsDeltaOp(op_type="update", object_id=resource_id, object_type="resource", name=entry["name"], extension=resource_ext, content_type=parent.content_type, breadcrumb_text=entry["path"]))
             row.name = entry["name"]
             row.path = entry["path"]
             row.parent_id = parent.id
@@ -694,10 +758,12 @@ async def _commit_scope(
             if _observe_missing_in_cycle(row, cycle.id, now):
                 session.add(SyncChange(sync_run_id=run.id, object_type=object_type, object_id=row.id, change_type="removed", old_path=row.path))
                 removed += 1
+                fts_ops.append(FtsDeltaOp(op_type="delete", object_id=row.id, object_type=object_type))
 
     pending_result = await _resolve_pending_for_parent(session, cycle, run, parent, now)
     added += pending_result["added"]
     updated += pending_result["updated"]
+    fts_ops.extend(pending_result.get("fts_ops", []))
 
     parent.child_folder_count = sum(entry["is_dir"] for entry in entries)
     parent.resource_count = sum(not entry["is_dir"] for entry in entries)
@@ -712,11 +778,16 @@ async def _commit_scope(
     scan_state.fingerprint_version = 1
     scan_state.last_verified_at = now
     scan_state.last_verified_cycle_id = cycle.id
-    business_changed = bool(added or updated or removed)
+    business_changed = bool(added or updated or removed or renamed)
     scan_state.last_scan_result = "changed" if business_changed else "unchanged"
     if business_changed:
         scan_state.last_changed_at = now
-    return {"added": added, "updated": updated, "removed": removed, "guarded": False, "new_folders": new_folders}
+    if fts_ops:
+        delta_result = await apply_search_fts_delta(session, fts_ops)
+        if delta_result["failed"]:
+            await set_search_index_dirty(True)
+            raise RuntimeError("search FTS delta apply failed, scope transaction rolled back")
+    return {"added": added, "updated": updated, "removed": removed, "guarded": False, "new_folders": new_folders, "renamed": renamed}
 
 
 async def _mark_unchanged(session, cycle: SyncCycle, item: SyncCycleItem, parent: Folder, fingerprint: str) -> None:
@@ -734,13 +805,13 @@ async def _mark_unchanged(session, cycle: SyncCycle, item: SyncCycleItem, parent
     parent.indexed_at = now
 
 
-async def _scan_cycle_item(session, client, cycle: SyncCycle, item: SyncCycleItem, run: SyncRun) -> dict[str, Any]:
+async def _scan_cycle_item(session, client, cycle: SyncCycle, item: SyncCycleItem, run: SyncRun, *, force_refresh: bool = False, enqueue_discovered: bool = True) -> dict[str, Any]:
     parent = await session.get(Folder, item.folder_id)
     if parent is None or parent.status != "active":
         item.status = "superseded"
         item.error_message = "目录已不存在或不再活跃"
-        return {"changed": False, "superseded": True, "added": 0, "updated": 0, "removed": 0}
-    raw_entries = await client.list_path(item.folder_path, refresh=False, strict=True)
+        return {"changed": False, "superseded": True, "added": 0, "updated": 0, "removed": 0, "renamed": 0}
+    raw_entries = await client.list_path(item.folder_path, refresh=force_refresh, strict=True)
     entries = validate_scope_entries(item.folder_path, raw_entries)
     fingerprint = scope_fingerprint(entries)
     state = await session.get(FolderScanState, parent.id)
@@ -775,12 +846,12 @@ async def _scan_cycle_item(session, client, cycle: SyncCycle, item: SyncCycleIte
     )
     if state and state.fingerprint == fingerprint and suspected == 0 and pending_identity == 0:
         await _mark_unchanged(session, cycle, item, parent, fingerprint)
-        return {"changed": False, "superseded": False, "added": 0, "updated": 0, "removed": 0}
-    result = await _commit_scope(session, cycle, item, run, parent, entries, fingerprint)
+        return {"changed": False, "superseded": False, "added": 0, "updated": 0, "removed": 0, "renamed": 0}
+    result = await _commit_scope(session, cycle, item, run, parent, entries, fingerprint, enqueue_discovered=enqueue_discovered)
     if result["guarded"]:
         raise RuntimeError("当前目录触发 suspicious churn，已零写入")
     return {
-        "changed": bool(result["added"] or result["updated"] or result["removed"]),
+        "changed": bool(result["added"] or result["updated"] or result["removed"] or result.get("renamed", 0)),
         "superseded": False,
         **result,
     }
@@ -883,7 +954,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
             run_id = run.id
             governor = SyncRequestGovernor(target_count=len(item_ids))
             attempted = success = failed = changed = unchanged = 0
-            added = updated_count = removed = 0
+            added = updated_count = removed = renamed_total = 0
             circuit_opened = False
             client, _ = await load_client_and_roots()
 
@@ -918,6 +989,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
                                 added += int(result["added"])
                                 updated_count += int(result["updated"])
                                 removed += int(result["removed"])
+                                renamed_total += int(result.get("renamed", 0))
                             else:
                                 unchanged += 1
                             await session.commit()
@@ -950,13 +1022,8 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
                     if circuit_opened:
                         break
 
-            if changed:
-                await set_search_index_dirty(True)
-                folders = list((await session.scalars(select(Folder).where(Folder.status == "active"))).all())
-                resources = list((await session.scalars(select(Resource).where(Resource.status == "active"))).all())
-                await rebuild_search_index(session, folders, resources)
-                cycle.fts_rebuilt_count += 1
             cycle.changed_scope_count += changed
+            cycle.renamed_count = (cycle.renamed_count or 0) + renamed_total
             cycle.unchanged_scope_count += unchanged
             if not circuit_opened:
                 cycle.windows_completed = min(cycle.windows_total, cycle.windows_completed + 1)
@@ -1006,6 +1073,7 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
             run.added_count = added
             run.updated_count = updated_count
             run.removed_count = removed
+            run.renamed_count = renamed_total
             run.roots_completed = success
             run.roots_failed = failed
             run.list_requests = governor.request_count
@@ -1013,8 +1081,6 @@ async def _run_due_rolling_window(manual: bool = False, now: datetime | None = N
             run.duration_ms = int((time.monotonic() - governor.started_at) * 1000)
             run.error_message = "访问限制已打开熔断" if circuit_opened else ""
             await session.commit()
-            if changed:
-                await set_search_index_dirty(False)
 
     await log_operation(
         "sync",
@@ -1080,7 +1146,12 @@ async def rolling_status() -> dict[str, Any]:
     values = await _system_values("sync_engine_version", "sync_engine_migrated_at", "initial_index_completed_at")
     mode = await resolve_rolling_mode()
     async with IndexSession() as session:
-        cycle = await session.scalar(select(SyncCycle).order_by(SyncCycle.id.desc()).limit(1))
+        cycle = await session.scalar(
+            select(SyncCycle)
+            .where(SyncCycle.cycle_type != "manual_path")
+            .order_by(SyncCycle.id.desc())
+            .limit(1)
+        )
         if cycle is None:
             return {"engine_version": values.get("sync_engine_version", "1.0"), "mode": mode, "cycle": None}
         remaining = int(
@@ -1115,11 +1186,14 @@ async def rolling_status() -> dict[str, Any]:
             or 0
         )
         target = calculate_window_target(remaining, cycle.windows_completed, cycle.windows_total)
+        from .path_sync import ManualSyncOrchestrator
+        manual_running = not ManualSyncOrchestrator.instance().can_start()
         return {
             "engine_version": values.get("sync_engine_version", "1.0"),
             "mode": mode,
             "migrated_at": values.get("sync_engine_migrated_at"),
             "initial_index_completed_at": values.get("initial_index_completed_at"),
+            "manual_sync_running": manual_running,
             "cycle": {
                 "id": cycle.id,
                 "type": cycle.cycle_type,

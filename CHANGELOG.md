@@ -2,6 +2,46 @@
 
 本项目按里程碑（M0.1 → M10）开发，版本 `0.1.0` 为 CloudSite V0.1 首个完整版本。
 
+## [1.0.0] - 2026-09-07
+
+CloudSite 1.0.0 稳定版。在 1.0.0-beta.3 基线上完成同步引擎、手动同步、身份合并、备份加固、移动端后台与首装安全收敛，公开契约进入冻结状态。
+
+### Added
+
+- 手动单目录同步 `/api/admin/sync/path`：独立 manual cycle，1 个父目录 = 1 次 `list_path`，不递归后代；`force_refresh=true` 真实传入 `client.list_path(refresh=True)`，`refresh=false` 仅表示不强制刷新并优先复用 AList 缓存，不承诺上游网盘绝对零请求。
+- 同步设置 UI：后台可配置自动同步开关与同步间隔（180/360/720/1440 分钟），前端 `sync-interval.ts` 与对应单元测试。
+- 移动端后台表格、暗色通知弹层与 36x36 顶栏控件，admin/notifications、admin/submissions、admin/system、admin/index 页面响应式适配。
+- 手动路径同步优雅关闭：保存后台任务强引用并纳入应用 lifespan 关闭流程；`run_path_sync` 在 `asyncio.CancelledError` 时把仍为 running/pending 的 manual cycle、items、run 收尾为明确终态，不留 running。
+- 首装安全回归检查脚本 `scripts/check-compose-security.py`：校验正式/Traefik Compose 显式传递 `CLOUDSITE_SETUP_TOKEN`、Traefik 不再默认 `cloudsite-development-key-change-me`、`CLOUDSITE_SECRET_KEY` fail closed。
+- 聚焦测试：`test_manual_path_sync.py`、`test_path_sync_validation.py`、`test_folder_identity.py`、`test_scope_rename_integration.py`、`test_search_fts_delta.py`、`test_pending_resolution_fts.py`、`test_rolling4_correction.py`、`test_sync_interval_migration.py`，覆盖手动同步、身份合并、FTS 增量、Rolling 4-Window 修正与同步间隔迁移。
+
+### Changed
+
+- Generic AList 仍是 Rolling Full Verification：24h Cycle 分 4 个 6h Window，请求默认 5～15 秒随机间隔，不超过约 2 RPS；不宣传 Generic AList "真正增量"。
+- 目录改名仅在同父目录、唯一候选、双方 `modified_at` 非空且相等时保留 Stable ID；歧义时保守地不合并，宁可新 ID 不误合并。
+- 路径变更与 FTS 增量在同一事务内执行；失败回滚，不做全量 FTS DELETE+INSERT；FTS 重建仍使用持久化 dirty 标记，中断后从现有 Folder/Resource 重建。
+- 周期扫描仍是兜底机制，未取消；手动同步仅扫描目标父目录，不改变 Rolling 调度语义。
+- 默认与 Traefik Compose、`.env.example`、README、`docs/contracts.md` 发布标签统一为 `v1.0.0`。
+- `docker-compose.yml` 与 `docker-compose.traefik.yml` 显式向 API 传递 `CLOUDSITE_SETUP_TOKEN`，使 `.env.example` 中的初始化令牌真实生效；Traefik Compose 不再默认 `cloudsite-development-key-change-me`，与正式 Compose 一样对 `CLOUDSITE_SECRET_KEY` fail closed（必填）。开发默认值仅保留在 `docker-compose.dev.yml`。
+
+### Fixed
+
+- 备份加固：运行中使用 SQLite online backup 包含 WAL 已提交数据，归档权限 0600，失败清理临时库，恢复默认拒绝覆盖，`--force` 保留 rollback；不声称 SIGKILL 可被 trap 清理。
+- 手动路径同步任务此前使用未保存引用的 `asyncio.create_task`，可能在 GC 后被回收且不在 lifespan 关闭流程中；现已保存强引用并在关闭时取消并 await。
+- 文档与版本一致性修复：API `pyproject.toml`、`__init__.py`、Web `package.json`、Compose 默认 tag、`.env.example`、README 离线资产名统一为 `v1.0.0`。
+
+### Security
+
+- 首装令牌 `CLOUDSITE_SETUP_TOKEN` 现在在正式与 Traefik Compose 中显式传递给 API，使首次配置真实生效；文档明确初始化令牌仅用于首次配置，配置完成后移除并重启，日常管理员登录使用 AList 账号方式。
+- Traefik Compose 不再使用公开占位密钥默认值，与正式 Compose 一致对 `CLOUDSITE_SECRET_KEY` 必填 fail closed。
+- `.gitignore` 新增 `.arts/`，防止 CodeArts 本地元数据进入 Git。
+
+### Migration Notes
+
+- 从 1.0.0-beta.3 升级到 1.0.0 无破坏性 schema 变更。
+- 升级前仍建议执行 `bash scripts/backup.sh` 创建完整备份。
+- 若此前使用 Traefik Compose 依赖默认 `cloudsite-development-key-change-me`，升级后必须在 `.env` 中显式设置 `CLOUDSITE_SECRET_KEY`，否则启动会被 `validate_production_secrets` 拒绝。
+
 ## [1.0.0-beta.3] - 2026-09-05
 
 ### Added

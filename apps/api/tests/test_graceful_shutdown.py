@@ -31,6 +31,7 @@ async def test_lifespan_cancels_scheduler_on_shutdown(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "migrate_stable_resource_ids", noop)
     monkeypatch.setattr(main, "recover_rolling_state", noop)
     monkeypatch.setattr(main, "migrate_existing_index_to_rolling", noop)
+    monkeypatch.setattr("cloudsite.identity.backfill_folder_identities", noop)
 
     async def fake_resolve_rolling_mode():
         return "normal"
@@ -59,6 +60,9 @@ async def test_lifespan_cancels_scheduler_on_shutdown(monkeypatch, tmp_path):
                 def all(self):
                     return []
             return FakeResult()
+
+        async def scalar(self, *_):
+            return None
 
     monkeypatch.setattr(main, "StateSession", FakeStateSession)
 

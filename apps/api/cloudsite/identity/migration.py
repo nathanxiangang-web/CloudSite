@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 from ..database import IndexSession, StateSession
 from ..config import settings
 from ..models import (
+    Folder,
+    FolderIdentity,
     OperationLog,
     Resource,
     ResourceIdentity,
@@ -184,3 +186,40 @@ async def migrate_stable_resource_ids() -> int:
     except Exception as exc:
         await _set_status("failed", message=str(exc))
         raise
+
+
+async def backfill_folder_identities() -> int:
+    """Backfill FolderIdentity for existing active folders without one."""
+    now = datetime.now(timezone.utc)
+    count = 0
+    async with IndexSession() as index_session, StateSession() as state_session:
+        existing_ids = {
+            row.folder_id
+            for row in (await state_session.scalars(select(FolderIdentity))).all()
+        }
+        folders = list(
+            (
+                await index_session.scalars(
+                    select(Folder).where(Folder.status == "active")
+                )
+            ).all()
+        )
+        for folder in folders:
+            if folder.id in existing_ids:
+                continue
+            state_session.add(
+                FolderIdentity(
+                    folder_id=folder.id,
+                    current_path=folder.path,
+                    root_mapping_id=folder.root_mapping_id,
+                    status="active",
+                    last_name=folder.name,
+                    identity_fingerprint=None,
+                    created_from="legacy_migration",
+                    first_seen_at=now,
+                    last_seen_at=now,
+                )
+            )
+            count += 1
+        await state_session.commit()
+    return count

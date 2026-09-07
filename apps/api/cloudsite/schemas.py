@@ -283,3 +283,8 @@ class NotificationUpdate(BaseModel):
     pinned: bool | None = None
     enabled: bool | None = None
     expires_at: datetime | None = None
+
+
+class PathSyncInput(BaseModel):
+    paths: list[str]
+    force_refresh: bool = False

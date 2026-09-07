@@ -354,6 +354,16 @@ async def init_databases() -> None:
             ("sync_runs", "roots_completed", "INTEGER NOT NULL DEFAULT 0"),
             ("sync_runs", "roots_failed", "INTEGER NOT NULL DEFAULT 0"),
             ("sync_runs", "list_requests", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "trigger_source", "VARCHAR(20) NOT NULL DEFAULT 'auto'"),
+            ("sync_runs", "target_paths_json", "TEXT"),
+            ("sync_runs", "force_refresh_paths_json", "TEXT"),
+            ("sync_runs", "renamed_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "skipped_verified_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "refresh_true_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "auto_interrupted_at", "DATETIME"),
+            ("sync_runs", "auto_resumed_at", "DATETIME"),
+            ("sync_cycles", "renamed_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_cycles", "skipped_verified_count", "INTEGER NOT NULL DEFAULT 0"),
         ):
             columns = await connection.exec_driver_sql(f"PRAGMA table_info({table})")
             if column not in {row[1] for row in columns.fetchall()}:
