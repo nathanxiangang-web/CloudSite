@@ -96,6 +96,7 @@ from .schemas import (
     SubmissionReviewInput,
     NotificationInput,
     NotificationUpdate,
+    PathSyncInput,
     SiteSettingsUpdate,
     SyncInput,
     SystemInput,
@@ -173,24 +174,11 @@ SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
 logger = logging.getLogger(__name__)
 
 
-def create_session_token(username: str) -> str:
-    payload = base64.urlsafe_b64encode(json.dumps({"username": username, "expires": int(time.time()) + 86400 * 7}, separators=(",", ":")).encode()).decode().rstrip("=")
-    signature = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{payload}.{signature}"
-
-
-def verify_session_token(token: str | None) -> bool:
-    if not token or "." not in token:
-        return False
-    payload, signature = token.rsplit(".", 1)
-    expected = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(signature, expected):
-        return False
-    try:
-        decoded = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-        return int(decoded.get("expires", 0)) > int(time.time())
-    except Exception:
-        return False
+from .infrastructure.security import (
+    ADMIN_SESSION_MAX_AGE_SECONDS,
+    create_session_token,
+    verify_session_token,
+)
 
 
 def alist_http_exception(exc: Exception, fallback_status: int = 502) -> HTTPException:
@@ -210,6 +198,8 @@ async def get_system_values(session) -> dict:
         "sync_interval_minutes": interval if interval in SYNC_INTERVAL_OPTIONS else 360,
         "sync_on_startup": values.get("sync_on_startup", "false") == "true",
     }
+
+
 
 
 async def _run_cleanup_job(action: str, label: str, cleanup) -> None:
@@ -547,7 +537,7 @@ async def admin_login(payload: AdminLoginInput, request: Request, response: Resp
     response.set_cookie(
         SESSION_COOKIE,
         create_session_token(payload.username),
-        max_age=86400 * 7,
+        max_age=ADMIN_SESSION_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
         secure=request_is_https(request),
@@ -1888,6 +1878,24 @@ async def admin_rolling_sync_status():
     return await rolling_status()
 
 
+
+@app.post("/api/admin/sync/path", status_code=202)
+async def sync_path(payload: PathSyncInput):
+    from .sync.path_sync import ManualSyncOrchestrator, validate_paths_under_roots
+    async with StateSession() as state_session:
+        roots = list((await state_session.scalars(select(ContentRootMapping).where(ContentRootMapping.enabled == True))).all())
+    accepted, rejected = validate_paths_under_roots(payload.paths, roots)
+    if not accepted:
+        return {"status": "invalid_path", "rejected_paths": rejected}
+    orchestrator = ManualSyncOrchestrator.instance()
+    if not orchestrator.try_reserve():
+        return {"status": "already_running"}
+    force_refresh_paths = set(accepted) if payload.force_refresh else set()
+    asyncio.create_task(orchestrator.start(accepted, force_refresh_paths), name="cloudsite-path-sync")
+    await log_operation("sync", "path_sync_triggered", f"手动同步路径: {accepted}, 强制刷新: {payload.force_refresh}")
+    return {"status": "accepted", "accepted_paths": accepted, "rejected_paths": rejected}
+
+
 @app.post("/api/admin/sync/auto-toggle")
 async def toggle_auto_sync():
     async with StateSession() as session:
@@ -2278,6 +2286,8 @@ async def delete_share(token: str):
 async def get_system():
     async with StateSession() as state, IndexSession() as index:
         values = await get_system_values(state)
+        engine_version_row = await state.get(SystemSetting, "sync_engine_version")
+        initial_index_row = await state.get(SystemSetting, "initial_index_completed_at")
         values.update({
             "version": __version__,
             "database": "SQLite 3",
@@ -2285,6 +2295,8 @@ async def get_system():
             "resources": int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0),
             "folders": int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0),
             "operation_logs": int(await state.scalar(select(func.count()).select_from(OperationLog)) or 0),
+            "sync_engine_version": engine_version_row.value if engine_version_row else "1.0",
+            "initial_index_completed_at": initial_index_row.value if initial_index_row else None,
         })
     values["provider"] = await provider_info()
     return values

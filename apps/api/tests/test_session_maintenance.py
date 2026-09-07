@@ -6,6 +6,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import sessions
 from cloudsite.database import StateBase
+from cloudsite.infrastructure.security import (
+    ADMIN_SESSION_MAX_AGE_SECONDS,
+    create_session_token,
+    verify_session_token,
+)
 from cloudsite.models import User, UserSession
 
 
@@ -143,3 +148,31 @@ async def test_session_token_lookup_uses_unique_index(monkeypatch):
                 ).all()
             )
             assert any("INDEX" in str(row[3]).upper() for row in plan)
+
+
+def test_admin_cookie_max_age_is_24h():
+    assert ADMIN_SESSION_MAX_AGE_SECONDS == 86400
+
+
+def test_user_cookie_max_age_is_24h():
+    assert sessions.USER_SESSION_MAX_AGE == 86400
+
+
+def test_session_retention_days_is_2():
+    assert sessions.SESSION_RETENTION_DAYS == 2
+
+
+def test_admin_login_cookie_max_age():
+    """create_session_token 生成的 token 过期时间为 24 小时后。"""
+    import base64
+    import json
+    import time
+
+    token = create_session_token("admin")
+    payload = token.rsplit(".", 1)[0]
+    decoded = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    expires = int(decoded.get("expires", 0))
+    now = int(time.time())
+    delta = expires - now
+    assert 86390 <= delta <= 86410
+    assert verify_session_token(token)
