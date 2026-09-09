@@ -128,9 +128,19 @@ jobs:
         working-directory: apps/web
         run: pnpm audit --audit-level=high --prod
 
+  backup-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run backup hardening test
+        run: bash scripts/tests/test-backup-hardening.sh
+
   publish:
     if: github.event_name != 'pull_request'
-    needs: [backend, frontend, compose, docker-smoke, version-consistency, dependency-audit]
+    needs: [backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
     permissions:
       contents: read
       packages: write
