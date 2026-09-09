@@ -194,6 +194,7 @@ async def state_v3_to_v4_upgrade(conn: AsyncConnection) -> None:
         "description TEXT DEFAULT '',"
         "cover_resource_id VARCHAR(64),"
         "status VARCHAR(20) NOT NULL DEFAULT 'draft',"
+        "revision INTEGER NOT NULL DEFAULT 1,"
         "sort_order INTEGER DEFAULT 0,"
         "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"

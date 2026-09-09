@@ -68,6 +68,13 @@ async def test_empty_init_creates_catalog_tables(tmp_path, monkeypatch):
         tables = await _table_names(conn)
         for table in CATALOG_TABLES:
             assert table in tables, f"missing table {table}"
+        entry_columns = await conn.run_sync(
+            lambda sync_conn: {
+                column["name"]: column for column in inspect(sync_conn).get_columns("catalog_entries")
+            }
+        )
+        assert "revision" in entry_columns
+        assert str(entry_columns["revision"]["default"]).strip("'\"") == "1"
     async with index_engine.connect() as conn:
         assert await get_index_schema_version(conn) == CURRENT_SCHEMA_VERSION
 
