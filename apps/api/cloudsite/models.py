@@ -226,6 +226,22 @@ class UserSession(StateBase):
     user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class AdminSession(StateBase):
+    __tablename__ = "admin_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    principal: Mapped[str] = mapped_column(String(200), index=True)
+    authority: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    revocation_reason: Mapped[str] = mapped_column(String(40), default="")
+    epoch: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    created_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class UserFavorite(StateBase):
     __tablename__ = "user_favorites"
     id: Mapped[int] = mapped_column(primary_key=True)

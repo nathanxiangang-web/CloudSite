@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     sync_mass_change_ratio: float = 0.10
     sync_max_item_attempts: int = 6
 
+    # Non-secret administrator session epoch. Later login/middleware code compares
+    # AdminSession.epoch against this value and rejects sessions with an older epoch.
+    # Increment during security upgrades or administrator rebind to invalidate all
+    # existing administrator sessions without rotating secrets. Default 1.
+    admin_session_epoch: int = 1
+
     model_config = SettingsConfigDict(env_prefix="CLOUDSITE_", env_file=".env", extra="ignore")
 
     @property

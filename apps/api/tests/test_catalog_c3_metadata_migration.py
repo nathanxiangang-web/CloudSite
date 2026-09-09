@@ -64,7 +64,7 @@ async def _trigger_names(conn) -> set[str]:
 
 
 async def test_empty_init_creates_c3_tables_and_triggers(tmp_path, monkeypatch):
-    """Fresh databases reach schema v5 and contain the four C3 tables and
+    """Fresh databases reach schema v6 and contain the four C3 tables and
     the append-only triggers on catalog_revisions."""
     state_engine, index_engine = _engines(tmp_path)
     monkeypatch.setattr(database, "state_engine", state_engine)
@@ -74,7 +74,7 @@ async def test_empty_init_creates_c3_tables_and_triggers(tmp_path, monkeypatch):
 
     async with state_engine.connect() as conn:
         assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
-        assert CURRENT_SCHEMA_VERSION == 5
+        assert CURRENT_SCHEMA_VERSION == 6
         tables = await _table_names(conn)
         for table in C3_TABLES:
             assert table in tables, f"missing table {table}"

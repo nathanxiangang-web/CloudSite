@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,9 +392,63 @@ async def state_v4_to_v5_upgrade(conn: AsyncConnection) -> None:
 
 
 
+async def state_v5_to_v6_upgrade(conn: AsyncConnection) -> None:
+    """Schema v5 -> v6: Durable administrator sessions (admin_sessions), idempotent.
+
+    Adds admin_sessions to state.db to back revocable administrator sessions.
+    Stores only a SHA-256 hash of the opaque session token, never the raw token.
+    Keeps administrator sessions separate from user_sessions.
+
+    Columns:
+    - session_token_hash: SHA-256 hex of the opaque token (raw token never stored)
+    - principal: recorded administrator principal (e.g. username)
+    - authority: verified upstream role or authority text; explicit textual
+      evidence so later code can record the verified upstream role without
+      guessing from an unverified numeric value
+    - created_at / last_seen_at / expires_at / revoked_at: lifecycle timestamps
+    - revocation_reason: short textual reason (logout, rebind, expiry,
+      epoch_change, admin_force_revoke)
+    - epoch: session epoch; compared against the configured administrator
+      session epoch so an epoch change invalidates older sessions
+    - created_ip_hash / user_agent_hash: optional hashed request metadata
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS admin_sessions("
+        "id INTEGER PRIMARY KEY,"
+        "session_token_hash VARCHAR(64) NOT NULL UNIQUE,"
+        "principal VARCHAR(200) NOT NULL,"
+        "authority VARCHAR(100) NOT NULL DEFAULT '',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "expires_at DATETIME NOT NULL,"
+        "revoked_at DATETIME,"
+        "revocation_reason VARCHAR(40) DEFAULT '',"
+        "epoch INTEGER NOT NULL DEFAULT 1,"
+        "created_ip_hash VARCHAR(64),"
+        "user_agent_hash VARCHAR(64))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_admin_sessions_session_token_hash "
+        "ON admin_sessions (session_token_hash)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_admin_sessions_principal ON admin_sessions (principal)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_admin_sessions_expires_at ON admin_sessions (expires_at)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_admin_sessions_revoked_at ON admin_sessions (revoked_at)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_admin_sessions_epoch ON admin_sessions (epoch)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
     Migration(id="state_v3_to_v4", from_version=3, to_version=4, upgrade=state_v3_to_v4_upgrade),
     Migration(id="state_v4_to_v5", from_version=4, to_version=5, upgrade=state_v4_to_v5_upgrade),
+    Migration(id="state_v5_to_v6", from_version=5, to_version=6, upgrade=state_v5_to_v6_upgrade),
 ]
