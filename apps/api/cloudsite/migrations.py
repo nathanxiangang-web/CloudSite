@@ -280,7 +280,7 @@ async def state_v4_to_v5_upgrade(conn: AsyncConnection) -> None:
     """Schema v4 -> v5: Catalog metadata overlay (tags, entry-tag membership,
     typed relations, append-only revision history), idempotent.
 
-    Adds catalog_tags, catalog_entry_tags, catalog_relations, and
+    Adds catalog_tags, catalog_tag_assignments, catalog_relations, and
     catalog_revisions to state.db per docs/catalog-v1.1-contract.md sections
     3.5-3.8. Enforces:
     - normalized tag slug uniqueness (UNIQUE on catalog_tags.slug)
@@ -308,18 +308,19 @@ async def state_v4_to_v5_upgrade(conn: AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS ix_catalog_tags_slug ON catalog_tags (slug)"
     )
     await conn.exec_driver_sql(
-        "CREATE TABLE IF NOT EXISTS catalog_entry_tags("
+        "CREATE TABLE IF NOT EXISTS catalog_tag_assignments("
         "tag_id VARCHAR(35) NOT NULL REFERENCES catalog_tags(tag_id) ON DELETE CASCADE,"
         "target_type VARCHAR(20) NOT NULL,"
         "target_id VARCHAR(35) NOT NULL,"
         "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
-        "UNIQUE (tag_id, target_type, target_id))"
+        "UNIQUE (tag_id, target_type, target_id),"
+        "CHECK (target_type IN ('entry', 'release', 'asset')))"
     )
     await conn.exec_driver_sql(
-        "CREATE INDEX IF NOT EXISTS ix_catalog_entry_tags_tag_id ON catalog_entry_tags (tag_id)"
+        "CREATE INDEX IF NOT EXISTS ix_catalog_tag_assignments_tag_id ON catalog_tag_assignments (tag_id)"
     )
     await conn.exec_driver_sql(
-        "CREATE INDEX IF NOT EXISTS ix_catalog_entry_tags_target ON catalog_entry_tags (target_type, target_id)"
+        "CREATE INDEX IF NOT EXISTS ix_catalog_tag_assignments_target ON catalog_tag_assignments (target_type, target_id)"
     )
     await conn.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS catalog_relations("
@@ -352,11 +353,13 @@ async def state_v4_to_v5_upgrade(conn: AsyncConnection) -> None:
         "base_revision INTEGER,"
         "resulting_revision INTEGER,"
         "summary TEXT DEFAULT '',"
-        "before_json TEXT DEFAULT '',"
-        "after_json TEXT DEFAULT '',"
-        "diff_json TEXT DEFAULT '',"
+        "before_json TEXT DEFAULT '{}',"
+        "after_json TEXT DEFAULT '{}',"
+        "diff_json TEXT DEFAULT '{}',"
         "payload_json TEXT DEFAULT '{}',"
-        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "CHECK (target_type IN ('entry', 'release', 'asset', 'location', 'tag', 'relation')),"
+        "CHECK (action IN ('create', 'update', 'delete', 'publish', 'unpublish', 'archive', 'disable')))"
     )
     await conn.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_catalog_revisions_target ON catalog_revisions (target_type, target_id)"

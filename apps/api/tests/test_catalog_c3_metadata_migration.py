@@ -3,7 +3,7 @@ revisions) state model.
 
 Covers the persistence boundary only:
 - fresh initialization reaches schema v5 and creates the four new tables
-  (catalog_tags, catalog_entry_tags, catalog_relations, catalog_revisions)
+  (catalog_tags, catalog_tag_assignments, catalog_relations, catalog_revisions)
   plus the append-only triggers on catalog_revisions
 - a synthetic v1.1 (schema_version=4) state.db upgrades to v5 with the four
   new tables, and existing C1 catalog rows survive the upgrade
@@ -34,7 +34,7 @@ from cloudsite.migrations import (
 
 C3_TABLES = (
     "catalog_tags",
-    "catalog_entry_tags",
+    "catalog_tag_assignments",
     "catalog_relations",
     "catalog_revisions",
 )
@@ -212,7 +212,7 @@ async def test_duplicate_entry_tag_membership_rejected(tmp_path, monkeypatch):
     async with factory() as session:
         session.add(models.CatalogTag(tag_id=tag_id, slug="stable", display_name="Stable"))
         session.add(
-            models.CatalogEntryTag(
+            models.CatalogTagAssignment(
                 tag_id=tag_id, target_type="entry", target_id="ce_" + "d" * 32
             )
         )
@@ -220,7 +220,7 @@ async def test_duplicate_entry_tag_membership_rejected(tmp_path, monkeypatch):
 
     async with factory() as session:
         session.add(
-            models.CatalogEntryTag(
+            models.CatalogTagAssignment(
                 tag_id=tag_id, target_type="entry", target_id="ce_" + "d" * 32
             )
         )
@@ -353,7 +353,7 @@ async def test_revision_append_only_rejects_update_and_delete(tmp_path, monkeypa
                 revision_id="cv_" + "b" * 32,
                 target_type="entry",
                 target_id="ce_" + "h" * 32,
-                action="rollback",
+                action="update",
                 actor="admin",
                 source="admin",
                 base_revision=1,

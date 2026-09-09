@@ -627,8 +627,8 @@ class CatalogTag(StateBase):
     __table_args__ = (CheckConstraint("slug = lower(slug)", name="ck_catalog_tags_slug_normalized"),)
 
 
-class CatalogEntryTag(StateBase):
-    __tablename__ = "catalog_entry_tags"
+class CatalogTagAssignment(StateBase):
+    __tablename__ = "catalog_tag_assignments"
     tag_id: Mapped[str] = mapped_column(
         ForeignKey("catalog_tags.tag_id", ondelete="CASCADE"), primary_key=True
     )
@@ -636,7 +636,11 @@ class CatalogEntryTag(StateBase):
     target_id: Mapped[str] = mapped_column(String(35), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (
-        Index("ix_catalog_entry_tags_target", "target_type", "target_id"),
+        Index("ix_catalog_tag_assignments_target", "target_type", "target_id"),
+        CheckConstraint(
+            "target_type IN ('entry', 'release', 'asset')",
+            name="ck_catalog_tag_assignments_target_type",
+        ),
     )
 
 
@@ -669,9 +673,9 @@ class CatalogRevision(StateBase):
     base_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     resulting_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     summary: Mapped[str] = mapped_column(Text, default="")
-    before_json: Mapped[str] = mapped_column(Text, default="")
-    after_json: Mapped[str] = mapped_column(Text, default="")
-    diff_json: Mapped[str] = mapped_column(Text, default="")
+    before_json: Mapped[str] = mapped_column(Text, default="{}")
+    after_json: Mapped[str] = mapped_column(Text, default="{}")
+    diff_json: Mapped[str] = mapped_column(Text, default="{}")
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (
@@ -679,4 +683,12 @@ class CatalogRevision(StateBase):
         Index("ix_catalog_revisions_action", "action"),
         Index("ix_catalog_revisions_actor", "actor"),
         Index("ix_catalog_revisions_created_at", "created_at"),
+        CheckConstraint(
+            "target_type IN ('entry', 'release', 'asset', 'location', 'tag', 'relation')",
+            name="ck_catalog_revisions_target_type",
+        ),
+        CheckConstraint(
+            "action IN ('create', 'update', 'delete', 'publish', 'unpublish', 'archive', 'disable')",
+            name="ck_catalog_revisions_action",
+        ),
     )
