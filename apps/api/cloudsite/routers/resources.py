@@ -73,14 +73,21 @@ async def resource_detail(resource_id: str):
             raise HTTPException(404, {"code": "RESOURCE_NOT_AVAILABLE", "message": "资源不存在或已不可用"})
         parent = await session.get(Folder, row.parent_id) if row.parent_id else None
         breadcrumbs = await breadcrumbs_for_folder(session, parent)
-        related = list((await session.scalars(select(Resource).where(Resource.status == "active", Resource.parent_id == row.parent_id, Resource.id != row.id).order_by(desc(Resource.modified_at)).limit(8))).all())
+        enabled_ids = await enabled_root_ids(state)
+        sibling_scope = (
+            Resource.status == "active",
+            Resource.parent_id == row.parent_id,
+            Resource.root_mapping_id == row.root_mapping_id,
+            Resource.root_mapping_id.in_(enabled_ids) if enabled_ids else False,
+        )
+        related = list((await session.scalars(select(Resource).where(*sibling_scope, Resource.id != row.id).order_by(desc(Resource.modified_at)).limit(8))).all())
         # 只查相邻的 prev/next（各 limit 1），不加载全部 siblings
         previous = (await session.scalars(select(Resource).where(
-            Resource.status == "active", Resource.parent_id == row.parent_id, Resource.content_type == row.content_type,
+            *sibling_scope, Resource.content_type == row.content_type,
             or_(Resource.name < row.name, and_(Resource.name == row.name, Resource.id < row.id)),
         ).order_by(desc(Resource.name), desc(Resource.id)).limit(1))).first()
         next_item = (await session.scalars(select(Resource).where(
-            Resource.status == "active", Resource.parent_id == row.parent_id, Resource.content_type == row.content_type,
+            *sibling_scope, Resource.content_type == row.content_type,
             or_(Resource.name > row.name, and_(Resource.name == row.name, Resource.id > row.id)),
         ).order_by(Resource.name, Resource.id).limit(1))).first()
         return {
