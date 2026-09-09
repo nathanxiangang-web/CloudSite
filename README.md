@@ -11,7 +11,9 @@ It turns selected AList directories into a clean resource website with user acco
 > Current stable baseline: **CloudSite 1.0.0**
 > Live site: [cloud.netioi.com](https://cloud.netioi.com/)
 
-![CloudSite home page](docs/assets/cloudsite-home.webp)
+<p align="center">
+  <img src="docs/assets/cloudsite-home.webp" alt="CloudSite home page" width="960">
+</p>
 
 ## Highlights
 
