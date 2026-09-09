@@ -85,6 +85,7 @@ from .routers.shares import router as shares_router
 from .routers.downloads import router as downloads_router
 from .routers.submissions import router as submissions_router
 from .routers.notifications import router as notifications_router
+from .routers.catalog import router as catalog_router
 
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -100,6 +101,7 @@ app.include_router(shares_router)
 app.include_router(downloads_router)
 app.include_router(submissions_router)
 app.include_router(notifications_router)
+app.include_router(catalog_router)
 
 from .routers.admin.auth import router as admin_auth_router
 from .routers.admin.setup import router as admin_setup_router
@@ -117,6 +119,7 @@ from .routers.admin.system import router as admin_system_router
 from .routers.admin.site import router as admin_site_router, site_settings_dict
 from .routers.admin.submissions import router as admin_submissions_router
 from .routers.admin.notifications import router as admin_notifications_router
+from .routers.admin.catalog import router as admin_catalog_router
 
 app.include_router(admin_auth_router)
 app.include_router(admin_setup_router)
@@ -134,6 +137,7 @@ app.include_router(admin_system_router)
 app.include_router(admin_site_router)
 app.include_router(admin_submissions_router)
 app.include_router(admin_notifications_router)
+app.include_router(admin_catalog_router)
 
 # 公开 DTO 与服务函数 re-export：路由懒加载与测试直接引用。
 from .services.resources import (

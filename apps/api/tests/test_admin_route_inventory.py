@@ -55,6 +55,7 @@ def test_admin_route_inventory_covers_all_modules():
         "/api/admin/notifications",
         "/api/admin/identities",
         "/api/admin/users",
+        "/api/admin/catalog",
     ]
     missing = [prefix for prefix in expected_prefixes if not any(p.startswith(prefix) for p in paths)]
     assert not missing, f"缺少后台路由前缀: {missing}"
