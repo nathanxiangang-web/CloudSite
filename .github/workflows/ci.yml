@@ -227,8 +227,14 @@ jobs:
           expected = os.environ["RELEASE_TAG"].removeprefix("v")
           api = re.search(r'__version__ = "([^"]+)"', Path("apps/api/cloudsite/__init__.py").read_text()).group(1)
           web = json.loads(Path("apps/web/package.json").read_text())["version"]
-          if api != expected or web != expected:
-              raise SystemExit(f"release tag {expected} does not match api={api}, web={web}")
+
+          def normalized_version(value):
+              if re.fullmatch(r"[0-9]+\.[0-9]+", value):
+                  return value + ".0"
+              return value
+
+          if normalized_version(api) != normalized_version(expected) or normalized_version(web) != normalized_version(expected):
+            raise SystemExit(f"release tag {expected} does not match api={api}, web={web}")
           PY
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3

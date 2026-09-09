@@ -4,7 +4,7 @@
 检查所有版本引用一致：api __version__、web package.json、.env.example、
 docker-compose 默认 tag、docker-compose.traefik.yml 默认 tag、README 离线示例、
 docs/contracts.md 部署变量表，
-可选 --tag v1.0.0 比对 Git Tag。不一致 exit 1。
+可选 --tag v1.0 或 v1.0.0 比对 Git Tag。不一致 exit 1。
 """
 import json
 import re
@@ -58,6 +58,13 @@ def contracts_doc_tag():
     return m.group(1)
 
 
+def normalized_version(value):
+    """Treat a concise release tag such as v1.0 as equivalent to package 1.0.0."""
+    if re.fullmatch(r"[0-9]+\.[0-9]+", value):
+        return value + ".0"
+    return value
+
+
 def main():
     expected_tag = None
     if "--tag" in sys.argv:
@@ -80,7 +87,7 @@ def main():
     print("版本引用：")
     for k, v in sources.items():
         print("  " + k + ": " + v)
-    versions = set(sources.values())
+    versions = {normalized_version(version) for version in sources.values()}
     if len(versions) == 1:
         print("")
         print("OK 全部一致：" + versions.pop())
