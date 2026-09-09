@@ -2,7 +2,8 @@
 """CloudSite Release Version Consistency Gate.
 
 检查所有版本引用一致：api __version__、web package.json、.env.example、
-docker-compose 默认 tag、docker-compose.traefik.yml 默认 tag、README 离线示例，
+docker-compose 默认 tag、docker-compose.traefik.yml 默认 tag、README 离线示例、
+docs/contracts.md 部署变量表，
 可选 --tag v1.0.0 比对 Git Tag。不一致 exit 1。
 """
 import json
@@ -47,6 +48,16 @@ def readme_offline_version():
     return m.group(1) if m else None
 
 
+def contracts_doc_tag():
+    m = re.search(
+        r"`CLOUDSITE_IMAGE_TAG`\s*\|\s*`v?([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)`",
+        read("docs/contracts.md"),
+    )
+    if not m:
+        raise SystemExit("无法提取 docs/contracts.md CLOUDSITE_IMAGE_TAG")
+    return m.group(1)
+
+
 def main():
     expected_tag = None
     if "--tag" in sys.argv:
@@ -59,6 +70,7 @@ def main():
         ".env.example CLOUDSITE_IMAGE_TAG": env_example_tag(),
         "docker-compose.yml default": compose_default_tag("docker-compose.yml"),
         "docker-compose.traefik.yml default": compose_default_tag("docker-compose.traefik.yml"),
+        "docs/contracts.md CLOUDSITE_IMAGE_TAG": contracts_doc_tag(),
     }
     rv = readme_offline_version()
     if rv:
