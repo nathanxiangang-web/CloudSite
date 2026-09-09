@@ -2,6 +2,7 @@ import ImageAsset from "next/image";
 import Link from "next/link";
 import { ArrowRight, Camera, FolderKanban, Images, PanelsTopLeft, SquarePlay } from "lucide-react";
 import { Collection } from "@/lib/api";
+import { collectionCoverSrc } from "@/lib/collection-cover";
 
 function formatCount(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
@@ -48,7 +49,7 @@ export function FeaturedCollections({ collections }: { collections: Collection[]
               <div className="cover">
                 <ImageAsset
                   priority={index === 0}
-                  src={collection.cover ? `/p/${collection.cover}` : visual.cover}
+                  src={collectionCoverSrc(collection.cover, visual.cover)}
                   alt={collection.name}
                   fill
                   sizes="(max-width:767px) 50vw, 25vw"

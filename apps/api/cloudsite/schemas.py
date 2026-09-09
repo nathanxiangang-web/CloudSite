@@ -1,7 +1,8 @@
+import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class AListInput(BaseModel):
@@ -60,6 +61,14 @@ class CollectionInput(BaseModel):
     status: str = Field(default="active", pattern=r"^(active|hidden)$")
     visible_on_home: bool = True
     sort_order: int = 0
+
+    @field_validator("cover")
+    @classmethod
+    def validate_cover_resource_id(cls, value: str) -> str:
+        resource_id = value.strip()
+        if resource_id and not re.fullmatch(r"[A-Za-z0-9_-]{3,64}", resource_id):
+            raise ValueError("cover must be a resource ID")
+        return resource_id
 
 
 class CollectionItemsInput(BaseModel):
