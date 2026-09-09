@@ -11,7 +11,7 @@ import re
 import secrets
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import (
@@ -161,6 +161,79 @@ async def create_catalog_tag(
 
 async def list_catalog_tags(state: AsyncSession) -> list[CatalogTag]:
     return list((await state.scalars(select(CatalogTag).order_by(CatalogTag.slug))).all())
+
+
+async def get_catalog_tag(state: AsyncSession, tag_id: str) -> CatalogTag:
+    row = await state.get(CatalogTag, tag_id)
+    if row is None:
+        raise CatalogMetadataNotFound("tag", tag_id)
+    return row
+
+
+async def update_catalog_tag(
+    state: AsyncSession,
+    tag_id: str,
+    *,
+    slug: str | None = None,
+    display_name: str | None = None,
+    actor: str = "system",
+) -> CatalogTag:
+    row = await state.get(CatalogTag, tag_id)
+    if row is None:
+        raise CatalogMetadataNotFound("tag", tag_id)
+    before = {"slug": row.slug, "display_name": row.display_name}
+    changed = False
+    if slug is not None:
+        slug = slug.strip()
+        if not _TAG_SLUG_RE.fullmatch(slug):
+            raise CatalogMetadataInvalid("tag slug must be lowercase URL-safe text")
+        if slug != row.slug:
+            existing = await state.scalar(select(CatalogTag).where(CatalogTag.slug == slug))
+            if existing is not None:
+                raise CatalogMetadataConflict(f"catalog tag slug already exists: {slug}")
+            row.slug = slug
+            changed = True
+    if display_name is not None:
+        display_name = display_name.strip()
+        if not display_name:
+            raise CatalogMetadataInvalid("tag display name is required")
+        if display_name != row.display_name:
+            row.display_name = display_name
+            changed = True
+    if changed:
+        await state.flush()
+        await append_catalog_revision(
+            state,
+            target_type="tag",
+            target_id=row.tag_id,
+            action="update",
+            actor=actor,
+            before=before,
+            after={"slug": row.slug, "display_name": row.display_name},
+        )
+    return row
+
+
+async def delete_catalog_tag(
+    state: AsyncSession,
+    tag_id: str,
+    *,
+    actor: str = "system",
+) -> None:
+    row = await state.get(CatalogTag, tag_id)
+    if row is None:
+        raise CatalogMetadataNotFound("tag", tag_id)
+    snapshot = {"slug": row.slug, "display_name": row.display_name}
+    await state.delete(row)
+    await state.flush()
+    await append_catalog_revision(
+        state,
+        target_type="tag",
+        target_id=tag_id,
+        action="delete",
+        actor=actor,
+        before=snapshot,
+    )
 
 
 async def assign_catalog_tag(
@@ -334,3 +407,45 @@ async def delete_catalog_relation(
         actor=actor,
         before=snapshot,
     )
+
+
+
+async def list_catalog_revisions(
+    state: AsyncSession,
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    action: str | None = None,
+    actor: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> tuple[list[CatalogRevision], int]:
+    """Return (rows, total) for filtered, paginated revision browsing.
+
+    Revisions are immutable audit records; this function never mutates them.
+    """
+    if target_type is not None and target_type not in _REVISION_TARGET_TYPES:
+        raise CatalogMetadataInvalid(f"unsupported revision target type: {target_type}")
+    if action is not None and action not in _REVISION_ACTIONS:
+        raise CatalogMetadataInvalid(f"unsupported revision action: {action}")
+    stmt = select(CatalogRevision).order_by(CatalogRevision.created_at, CatalogRevision.revision_id)
+    count_stmt = select(func.count()).select_from(CatalogRevision)
+    if target_type is not None:
+        stmt = stmt.where(CatalogRevision.target_type == target_type)
+        count_stmt = count_stmt.where(CatalogRevision.target_type == target_type)
+    if target_id is not None:
+        stmt = stmt.where(CatalogRevision.target_id == target_id)
+        count_stmt = count_stmt.where(CatalogRevision.target_id == target_id)
+    if action is not None:
+        stmt = stmt.where(CatalogRevision.action == action)
+        count_stmt = count_stmt.where(CatalogRevision.action == action)
+    if actor is not None:
+        stmt = stmt.where(CatalogRevision.actor == actor)
+        count_stmt = count_stmt.where(CatalogRevision.actor == actor)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    rows = list((await state.scalars(stmt)).all())
+    total = int(await state.scalar(count_stmt) or 0)
+    return rows, total

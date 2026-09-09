@@ -63,6 +63,8 @@ def _collect_admin_endpoints() -> list[tuple[str, str]]:
             path = path.replace("{user_id}", "999999")
             path = path.replace("{entry_id}", "999999")
             path = path.replace("{id}", "999999")
+            path = path.replace("{tag_id}", "999999")
+            path = path.replace("{relation_id}", "999999")
             endpoints.append((method, path))
     return sorted(set(endpoints))
 

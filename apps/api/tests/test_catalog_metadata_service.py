@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import StateBase
-from cloudsite.models import CatalogEntry, CatalogRevision
+from cloudsite.models import CatalogEntry, CatalogRevision, CatalogTag
 from cloudsite.services.catalog_metadata import (
     CatalogMetadataConflict,
     CatalogMetadataInvalid,
@@ -15,8 +15,11 @@ from cloudsite.services.catalog_metadata import (
     create_catalog_relation,
     create_catalog_tag,
     delete_catalog_relation,
+    delete_catalog_tag,
     list_catalog_relations,
+    list_catalog_revisions,
     remove_catalog_tag_assignment,
+    update_catalog_tag,
 )
 
 
@@ -187,4 +190,88 @@ async def test_relation_rejects_self_missing_and_duplicate(tmp_path):
                 to_entry_id=second_id,
                 relation_type="companion",
             )
+    await engine.dispose()
+
+
+
+async def test_tag_update_changes_fields_and_appends_audit(tmp_path):
+    engine, factory = await _state(tmp_path)
+    async with factory() as state:
+        tag = await create_catalog_tag(state, slug="original", display_name="Original")
+        updated = await update_catalog_tag(
+            state, tag_id=tag.tag_id, slug="renamed", display_name="Renamed", actor="admin"
+        )
+        assert updated.slug == "renamed"
+        assert updated.display_name == "Renamed"
+        await state.commit()
+        revisions = list((await state.scalars(select(CatalogRevision))).all())
+        assert [row.action for row in revisions] == ["create", "update"]
+        assert json.loads(revisions[1].before_json) == {"slug": "original", "display_name": "Original"}
+        assert json.loads(revisions[1].after_json) == {"slug": "renamed", "display_name": "Renamed"}
+    await engine.dispose()
+
+
+async def test_tag_update_rejects_duplicate_slug_and_missing_tag(tmp_path):
+    engine, factory = await _state(tmp_path)
+    async with factory() as state:
+        await create_catalog_tag(state, slug="first", display_name="First")
+        second = await create_catalog_tag(state, slug="second", display_name="Second")
+        with pytest.raises(CatalogMetadataConflict):
+            await update_catalog_tag(state, tag_id=second.tag_id, slug="first")
+        with pytest.raises(CatalogMetadataNotFound):
+            await update_catalog_tag(state, tag_id="ct_" + "0" * 32, slug="x")
+    await engine.dispose()
+
+
+async def test_tag_delete_removes_tag_and_appends_audit(tmp_path):
+    engine, factory = await _state(tmp_path)
+    entry_id = "ce_" + "7" * 32
+    async with factory() as state:
+        state.add(_entry(entry_id, "tagged"))
+        tag = await create_catalog_tag(state, slug="removable", display_name="Removable")
+        await assign_catalog_tag(
+            state, tag_id=tag.tag_id, target_type="entry", target_id=entry_id
+        )
+        await delete_catalog_tag(state, tag.tag_id, actor="admin")
+        await state.commit()
+        assert await state.get(CatalogTag, tag.tag_id) is None
+        revisions = list((await state.scalars(select(CatalogRevision))).all())
+        assert [row.action for row in revisions] == ["create", "update", "delete"]
+        assert revisions[2].target_type == "tag"
+    await engine.dispose()
+
+
+async def test_list_catalog_revisions_filters_and_paginates(tmp_path):
+    engine, factory = await _state(tmp_path)
+    async with factory() as state:
+        tag = await create_catalog_tag(state, slug="alpha", display_name="Alpha", actor="admin")
+        await update_catalog_tag(state, tag_id=tag.tag_id, display_name="Beta", actor="editor")
+        await state.commit()
+        all_rows, total = await list_catalog_revisions(state)
+        assert total == 2
+        assert [row.action for row in all_rows] == ["create", "update"]
+        filtered, total = await list_catalog_revisions(state, action="update")
+        assert total == 1
+        assert filtered[0].action == "update"
+        by_actor, total = await list_catalog_revisions(state, actor="editor")
+        assert total == 1
+        assert by_actor[0].actor == "editor"
+        page, total = await list_catalog_revisions(state, limit=1, offset=0)
+        assert len(page) == 1
+        assert page[0].action == "create"
+        page2, total = await list_catalog_revisions(state, limit=1, offset=1)
+        assert len(page2) == 1
+        assert page2[0].action == "update"
+        by_target, total = await list_catalog_revisions(state, target_type="tag", target_id=tag.tag_id)
+        assert total == 2
+    await engine.dispose()
+
+
+async def test_list_catalog_revisions_rejects_bad_filters(tmp_path):
+    engine, factory = await _state(tmp_path)
+    async with factory() as state:
+        with pytest.raises(CatalogMetadataInvalid):
+            await list_catalog_revisions(state, target_type="bogus")
+        with pytest.raises(CatalogMetadataInvalid):
+            await list_catalog_revisions(state, action="bogus")
     await engine.dispose()
