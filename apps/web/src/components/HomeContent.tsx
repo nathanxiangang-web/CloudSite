@@ -1,9 +1,9 @@
-import ImageAsset from "next/image";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { Archive, ArrowRight, Clapperboard, Download, File, FileImage, FileText, Image, PanelsTopLeft, ShieldCheck } from "lucide-react";
+import { Archive, ArrowRight, Clapperboard, Download, File, FileText, Image, PanelsTopLeft, ShieldCheck } from "lucide-react";
 import { MobilePrimaryNavigation } from "./PublicNavigation";
 import { HomeSearch } from "./HomeSearch";
+import { FeaturedCollections } from "./FeaturedCollections";
 import { HeroIllustration } from "./hero/HeroIllustration";
 import { Collection, formatBytes, Resource } from "@/lib/api";
 
@@ -95,21 +95,7 @@ export async function HomeContent() {
         })}
       </section>
 
-      <SectionTitle title="精选合集" href="/collections" />
-      {collections.length ? (
-        <section className="collection-grid">
-          {collections.map((collection, index) => (
-            <Link href={`/collections/${collection.id}`} className="collection-card" key={collection.id}>
-              <div className="cover">
-                <ImageAsset priority={index === 0} src={collection.cover ? `/p/${collection.cover}` : `/assets/collection-${(index % 4) + 1}.webp`} alt={collection.name} fill sizes="(max-width:768px) 50vw, 25vw" />
-              </div>
-              <strong>{collection.name}</strong>
-              <span className="collection-description">{collection.description}</span>
-              <div className="collection-meta"><span><FileImage /> {formatCount(collection.item_count ?? 0)} 个资源</span></div>
-            </Link>
-          ))}
-        </section>
-      ) : <div className="empty">还没有精选合集，管理员可在后台创建。</div>}
+      <FeaturedCollections collections={collections} />
 
       <SectionTitle title="最近更新" href="/resources/file" />
       <section className="recent-table">
@@ -155,7 +141,7 @@ export function HomeSkeleton() {
       </section>
       <div className="section-title"><h2 style={{ background: "#eef1f6", color: "transparent", borderRadius: 6, width: 100, height: 20 }}>精选合集</h2></div>
       <section className="collection-grid">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="collection-card" style={{ background: "#f3f5f9" }}><div className="cover" style={{ background: "#eaeef4" }} /></div>)}
+        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="collection-card" style={{ background: "#f3f5f9" }}><div className="cover" style={{ background: "#eaeef4" }} /><div className="collection-copy" style={{ minHeight: 68 }} /></div>)}
       </section>
       <div className="section-title"><h2 style={{ background: "#eef1f6", color: "transparent", borderRadius: 6, width: 100, height: 20 }}>最近更新</h2></div>
       <section className="recent-table">

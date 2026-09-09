@@ -1,63 +1,50 @@
-# CloudSite 用户指南
+# CloudSite 1.0.0 User Guide
 
-> 面向普通用户的使用说明。管理员请参考 [Admin Guide](admin-guide.md)。
+## Register and sign in
 
-## 注册与登录
+1. Select **Register** in the site header if registration is enabled.
+2. Choose a username containing 2-16 letters, numbers, underscores, or hyphens.
+3. Set a password and sign in.
 
-1. 点击页面右上角"注册"
-2. 用户名 2～16 位字母、数字、下划线或短横线
-3. 设置密码后登录
-4. 站点可能关闭注册（由管理员控制），此时注册入口不显示
+The administrator may disable new registrations. Existing accounts can continue to sign in unless they are disabled or deleted.
 
-## 搜索资源
+## Browse and search
 
-- 顶部搜索框输入关键词
-- 支持按类型过滤：软件、图片、视频、文档、文件
-- 搜索基于全文索引，支持文件名和路径匹配
+- Use the home-page search field to find resources by name or path.
+- Filter results by software, image, video, document, or general file.
+- Browse category pages and nested folders.
+- Open a resource to view metadata, preview support, download controls, and sharing actions.
+- Use curated collections to browse resources grouped across folders and content types.
 
-## 浏览资源
+## Favorites and history
 
-- 首页展示最近更新、热门资源和精选合集
-- 按内容分类浏览不同类型资源
-- 点击文件夹进入子目录
-- 点击资源查看详情页
+- Add or remove a favorite from the resource page.
+- Review favorites and browsing history from the account area.
+- Remove individual history records or clear the complete history.
 
-## 收藏
+Favorites refer to stable resource IDs. A reliably detected rename or move keeps the favorite valid.
 
-- 在资源详情页点击"收藏"
-- 收藏列表在个人中心查看
-- 收藏引用 Stable Resource ID，资源重命名/移动后收藏仍有效
+## Video playback
 
-## 浏览历史
+CloudSite uses the browser's native media decoder. MP4 with H.264 video and AAC audio is the primary supported format. Some MKV, AVI, HEVC, or provider-specific formats may not play in the browser; use the download option when decoding fails.
 
-- 查看资源时自动记录浏览历史
-- 历史列表在个人中心查看
-- 可删除单条历史或清空全部
+Playback progress is saved for signed-in users and can be resumed from the account area.
 
-## 视频播放与继续播放
+## Download
 
-- 视频资源详情页自动播放（浏览器原生解码）
-- 支持 MP4 H.264/AAC，不承诺所有 MKV/AVI/HEVC
-- 播放进度自动保存，下次打开可继续播放
-- 播放进度列表在个人中心查看
+Select **Download** on a resource page. CloudSite validates access and returns an HTTP 302 redirect to an AList-native download entry; it does not stream the file body.
 
-## 下载
+The default protection allows five successful download starts per client IP in a sliding 60-second window. A sixth attempt must wait for the returned retry period.
 
-- 在资源详情页点击"下载"
-- 下载通过 HTTP 302 跳转到 AList 原生下载入口
-- 同一 IP 滑动 60 秒内最多 5 次下载，第 6 次需等待 60 秒
-- CloudSite 不代理文件主体，下载速度取决于存储和网络
+## Share
 
-## 分享
+- Create a share from a resource page.
+- Choose a fixed lifetime or a permanent share.
+- Use either a four-digit access code or direct-download mode where available.
+- Review, copy, update, reset, cancel, or delete your shares under **My shares**.
 
-- 在资源详情页创建分享（4 位分享码或免码直下）
-- 分享链接 `/s/{token}` 无需登录即可访问
-- 有效期：5 分钟 / 1 小时 / 6 小时 / 24 小时 / 7 天 / 永久
-- 每个分享最多 404 次成功下载
-- 在"我的分享"中管理：查看、复制链接、改期、重置分享码、取消或删除
+Share pages are accessible without a CloudSite account, but their scope, expiry, access code, and download limit are enforced by the server.
 
-## 投稿
+## Submit a resource suggestion
 
-- 登录后访问 `/submit` 生成投稿邮件
-- 邮件发送至管理员设定的邮箱
-- CloudSite 不接收上传，仅生成邮件模板
+Signed-in users can open `/submit` to generate a standardized email for the administrator's configured submission address. CloudSite does not accept uploads, connect to SMTP, or grant public users write access to AList.

@@ -64,7 +64,7 @@ def main() -> int:
     if '"/api/health"' not in health_router and "'/api/health'" not in health_router:
         errors += fail("health router does not declare /api/health")
 
-    match = re.search(r"## 一键部署\n(.*?)(?=\n## |\Z)", readme, re.S)
+    match = re.search(r"## Quick start\n(.*?)(?=\n## |\Z)", readme, re.S)
     if not match:
         errors += fail("README missing one-click install section")
     elif "docker compose up -d --wait" not in match.group(1):

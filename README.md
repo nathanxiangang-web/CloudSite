@@ -1,72 +1,39 @@
 # CloudSite
 
-[简体中文](README.md) | [English](README.en.md)
-
 [![CI](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nathanxiangang-web/CloudSite/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?label=release)](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0)
 [![License](https://img.shields.io/github/license/nathanxiangang-web/CloudSite)](LICENSE)
 
-**CloudSite — 基于 AList 的自托管网盘资源浏览、搜索、预览与分享平台。**
+**CloudSite is a self-hosted AList-powered portal for browsing, searching, previewing, organizing, and sharing cloud-drive resources.**
 
-CloudSite 将 AList 中的网盘目录转换为清晰易用的资源网站，并通过 AList 原生下载入口提供浏览器 HTTP 302 直连下载。它适合搭建私有文件门户、软件资源库、图片与视频媒体库，以及带访问控制的文件分享站点。
+It turns selected AList directories into a clean resource website with user accounts, media and document previews, curated collections, controlled sharing, and HTTP 302 direct downloads. CloudSite does not proxy file bodies: AList and the underlying storage provider remain responsible for file delivery.
 
-> CloudSite is a self-hosted AList file browser, search, media preview, and file-sharing portal powered by Next.js and FastAPI.
+> Current stable baseline: **CloudSite 1.0.0**
+> Live site: [cloud.netioi.com](https://cloud.netioi.com/)
 
-> 当前稳定发布基线：**1.0.0**。在线站点：[cloud.netioi.com](https://cloud.netioi.com/)
->
-> 发布源码不包含 AList 账号、访问令牌、`.env`、数据库、索引、日志、依赖目录或构建产物。
+![CloudSite home page](docs/assets/cloudsite-home.webp)
 
-## 快速入口
+## Highlights
 
-- [下载 1.0 稳定版](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0)
-- [部署与升级](docs/部署升级与备份.md)
-- [用户指南](docs/user-guide.md)
-- [管理员指南](docs/admin-guide.md)
-- [公开契约](docs/contracts.md)
-- [问题排查](docs/faq.md)
+- Browse and search deeply nested AList directories.
+- Organize software, images, videos, documents, and general files through configurable content roots.
+- Preview images, browser-compatible video, PDF, text, Markdown, and common Office documents.
+- Keep resource links stable across reliable rename and move operations.
+- Create expiring shares with optional four-digit access codes and download limits.
+- Manage users, content roots, collections, shares, site settings, synchronization, and diagnostics from the administration console.
+- Protect AList credentials with server-side encryption.
+- Run on `linux/amd64` and `linux/arm64` with Docker Compose.
+- Use rolling full verification after the initial index without presenting generic AList as a true delta source.
 
-## 文档
+## Technology
 
-| 文档 | 说明 |
-|------|------|
-| [架构](docs/architecture.md) | 系统架构、302 语义、数据库所有权、Sync 架构 |
-| [安装指南](docs/installation.md) | 在线/Traefik/离线部署、AMD64/ARM64、升级回滚 |
-| [用户指南](docs/user-guide.md) | 注册/登录、搜索、浏览、收藏、下载、分享、投稿 |
-| [管理员指南](docs/admin-guide.md) | AList 连接、内容根、同步、用户、合集、分享、备份 |
-| [公开契约](docs/contracts.md) | URL 路由、Error Code、环境变量、数据库所有权 |
-| [FAQ](docs/faq.md) | 常见问题解答 |
-| [限制说明](docs/limitations.md) | 技术边界和 1.0 不包含的功能 |
-| [恢复指南](docs/recovery-guide.md) | index.db/state.db 丢失、AList 故障、Sync 熔断 |
-| [离线安装](docs/离线安装.md) | 离线部署步骤 |
-| [部署升级与备份](docs/部署升级与备份.md) | 升级、回滚、备份、恢复 |
-| [长期运行与故障恢复](docs/长期运行与故障恢复.md) | 运行维护和故障处理 |
+- Web: Next.js 16, React 19, TypeScript
+- API: FastAPI, SQLAlchemy, SQLite
+- Deployment: Docker Compose, with optional Traefik HTTPS integration
 
-## 功能概览
+## Quick start
 
-- 使用 AList 凭据连接网盘，配置在服务端加密保存。
-- 扫描任意深度目录，按软件、图片、视频、文档等类型浏览和搜索。
-- 支持图片、视频、PDF、文本、Markdown 和常见 Office 文档预览。
-- 登录用户可从文件详情创建 4 位分享码或免提取码直下分享，并管理自己的分享；接收者无需登录。分享支持固定有效期与查看/下载统计，每个分享最多成功下载 404 次。
-- 支持独立的前台用户注册、强制登录、账户安全与后台用户完整生命周期管理；用户名为 2～16 位字母、数字、下划线或短横线，普通用户身份不与 AList 管理员身份混用。
-- 资源下载由 `/d/{resource_id}` 解析 Resource，向 AList 获取文件信息及签名，构造 AList Native `/d/` 下载入口并返回 HTTP 302。
-- 下载按真实客户端 IP 固定执行滑动 60 秒最多 5 次、第 6 次等待 60 秒；状态持久化在 `state.db`，刷新页面或重启 API 均不能绕过。
-- 0.3.0 起 Resource 使用持久身份注册表：已有 ID 原样保留，新资源使用随机 Stable ID，可靠 Rename / Move 不改变资源链接，Copy 与歧义场景采用保守策略。
-- 登录用户可在 `/submit` 生成发送至 `nathxo@outlook.com` 的标准投稿邮件；CloudSite 不接收用户上传、不连接 SMTP、不给普通用户 AList 写权限。
-- CloudSite 不解析最终 Storage `raw_url`、不代理文件主体，也不按文件大小选择下载策略。
-- 内置后台概览、内容索引、合集、分享、下载诊断、站点设置、同步历史和 AList 后台认证；站点设置可自定义桌面分享页右侧展示图。
-- 首次同步保持原有完整内容根扫描流程不变；Sync Engine 1.1 只在首次同步成功并已有索引后迁移接管，迁移不请求 AList、不重建现有索引。
-- 后续校验按 24 小时 Cycle、4 个 6 小时 Window 覆盖全部目录；请求默认随机间隔 5～15 秒，并根据窗口工作量动态调速，绝对不超过约 2 RPS。
-- Rolling Scope 严格校验 AList 响应；缺失对象需跨两个独立 Cycle 确认，大规模路径变化按目录 Scope 零写入保护。
-
-## 技术栈
-
-- 前端：Next.js 16、React 19、TypeScript、Tailwind CSS
-- 后端：FastAPI、SQLAlchemy、SQLite
-- 部署：Docker Compose；可选 Traefik HTTPS
-
-## 一键部署
-
-要求：Docker Engine 与 Docker Compose Plugin。服务器无需安装 Node.js 或 Python。
+Requirements: Docker Engine and the Docker Compose plugin. Node.js and Python are not required on the server.
 
 ```bash
 git clone https://github.com/nathanxiangang-web/CloudSite.git
@@ -74,174 +41,77 @@ cd CloudSite
 cp .env.example .env
 ```
 
-编辑 `.env`，至少替换 `CLOUDSITE_SECRET_KEY`（`.env.example` 注释中附带了生成命令，可在任意装有 Python 的机器上运行后粘贴结果，服务器本身无需安装 Python）。随后启动并等待健康检查通过：
+Edit `.env` and replace `CLOUDSITE_SECRET_KEY` with a long random value. Set `CLOUDSITE_SETUP_TOKEN` for the initial AList configuration flow, then start the fixed 1.0.0 images:
 
 ```bash
 docker compose up -d --wait
 docker compose ps
-```
-
-打开 `http://服务器IP:3000`。默认 Compose 只公开 Web 端口 `3000`，API 仅在内部网络提供服务，运行数据保存在 `./data`。
-
-首启验收（约 30 秒内完成）：
-
-```bash
 curl -fsS http://127.0.0.1:3000/api/health
 ```
 
-返回 JSON 中 `status` 为 `healthy`、`version` 为 `1.0.0` 即通过。Web 容器经同源 rewrite 将 `/api/health` 转发到内部 API，因此该命令同时验证 Web 与 API 已就绪。
+Open `http://SERVER_IP:3000`. The default Compose file exposes only the Web service; the API stays on the internal Docker network, and persistent data is stored in `./data`.
 
-除登录、注册和 `/s/{token}` 匿名分享网关外，前台页面、资源接口、预览和普通下载均要求有效 CloudSite 用户登录。所有分享模式都不要求 CloudSite 账号登录：无分享码模式直接下载，分享码模式验证 4 位分享码后只获得当前分享路径下的短时票据，不能访问站内其他资源；管理后台继续使用独立的 AList 管理员认证。
+After the initial configuration is complete, remove `CLOUDSITE_SETUP_TOKEN` from `.env` and restart the services. Keep `CLOUDSITE_SECRET_KEY` and `CLOUDSITE_MASTER_KEY` stable after credentials have been saved, otherwise the stored AList password cannot be decrypted.
 
-首次进入后台后，在“系统设置”中配置 AList 地址和独立账号，再配置内容根并执行同步。Traefik HTTPS、离线安装、升级与回滚等进阶场景见 [`docs/installation.md`](docs/installation.md)。
+## Documentation
 
-## 离线安装
+- [Installation](docs/installation.md)
+- [Architecture](docs/architecture.md)
+- [User guide](docs/user-guide.md)
+- [Administrator guide](docs/admin-guide.md)
+- [Public contracts](docs/contracts.md)
+- [Deployment, upgrade, and backup](docs/deployment-upgrade-backup.md)
+- [Offline installation](docs/offline-installation.md)
+- [Operations and disaster recovery](docs/operations-disaster-recovery.md)
+- [Recovery guide](docs/recovery-guide.md)
+- [FAQ](docs/faq.md)
+- [Limitations](docs/limitations.md)
+- [Changelog](CHANGELOG.md)
 
-没有外网、不能访问 GHCR 的服务器，请从 GitHub Releases 下载当前版本的离线附件，不要执行 `docker compose pull`：
+## Download behavior
 
-- `cloudsite-api-v1.0.0-linux-amd64.tar.gz`
-- `cloudsite-api-v1.0.0-linux-arm64.tar.gz`
-- `cloudsite-web-v1.0.0-linux-amd64.tar.gz`
-- `cloudsite-web-v1.0.0-linux-arm64.tar.gz`
-- `cloudsite-v1.0.0-offline-deploy.zip`
-- `SHA256SUMS.txt`
+CloudSite validates the request and redirects the browser to an AList-native entry:
 
-在联网电脑下载并校验附件，复制到离线服务器后导入两个镜像，再使用离线 Compose 覆盖文件启动：
-
-```bash
-sha256sum -c SHA256SUMS.txt
-arch=arm64 # x86_64 服务器改为 amd64
-gzip -dc "cloudsite-api-v1.0.0-linux-${arch}.tar.gz" | docker load
-gzip -dc "cloudsite-web-v1.0.0-linux-${arch}.tar.gz" | docker load
-unzip cloudsite-v1.0.0-offline-deploy.zip -d CloudSite
-cd CloudSite
-cp .env.example .env
-# 编辑 .env，至少替换 CLOUDSITE_SECRET_KEY
-docker compose -f docker-compose.yml -f docker-compose.offline.yml config --images
-docker compose -f docker-compose.yml -f docker-compose.offline.yml up -d --wait
+```text
+Browser -> CloudSite authorization -> AList entry -> HTTP 302 -> storage provider
 ```
 
-离线镜像同时提供 `linux/amd64` 与 `linux/arm64`，目标服务器仍需事先安装 Docker Engine 与 Docker Compose Plugin。完整传输、安装、验收和离线升级步骤见 [`docs/离线安装.md`](docs/离线安装.md)。
+The `/d/{resource_id}`, `/p/{resource_id}`, and share-download routes do not stream file bodies through CloudSite. Transfer speed and codec compatibility therefore depend on AList, the storage provider, the network, and the browser.
 
-## 使用现有 Traefik
-
-在 `.env` 中设置：
-
-```dotenv
-CLOUDSITE_DOMAIN=cloud.example.com
-TRAEFIK_NETWORK=my-servers_app-net
-TRAEFIK_ENTRYPOINT=websecure
-TRAEFIK_CERT_RESOLVER=myresolver
-```
-
-确认外部网络已经存在，然后启动独立 Traefik 配置：
-
-```bash
-docker network inspect "$TRAEFIK_NETWORK"
-docker compose -f docker-compose.traefik.yml up -d
-```
-
-`docker-compose.traefik.yml` 不映射宿主机端口，由现有 Traefik 通过指定网络访问 Web 容器。
-
-## 本地源码开发
+## Development
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build
 ```
 
-源码开发模式公开 Web `3000` 和 API `8000`。停止服务不会删除 `data/`：
+The development Compose file exposes Web on port `3000` and API on port `8000`.
+
+Run the primary checks before submitting changes:
 
 ```bash
-docker compose -f docker-compose.dev.yml down
-```
-
-## 升级与回滚
-
-生产环境固定使用 `.env` 中的 `CLOUDSITE_IMAGE_TAG`。升级前先备份：
-
-```bash
-bash scripts/backup.sh
-docker compose pull
-docker compose up -d
-curl -f http://127.0.0.1:3000/
-```
-
-如果升级失败，把 `.env` 中的镜像标签改回原版本，再执行：
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-数据库需要回滚时，再使用升级前备份恢复。完整步骤与验证清单见 [`docs/部署升级与备份.md`](docs/部署升级与备份.md)。
-
-## 常用操作
-
-```bash
-docker compose ps
-docker compose logs -f --tail=200
-docker compose restart
-docker compose down
-```
-
-请勿执行 `docker compose down -v`，也不要在未备份时删除 `data/`。
-
-## 开发与验证
-
-```bash
-# 后端测试
 docker compose -f docker-compose.dev.yml run --rm api pytest
-
-# 前端类型检查与生产构建
 docker compose -f docker-compose.dev.yml run --rm web npm run lint
+docker compose -f docker-compose.dev.yml run --rm web npm run typecheck
 docker compose -f docker-compose.dev.yml run --rm web npm run build
-
-# Compose 静态校验
 docker compose config
 docker compose -f docker-compose.traefik.yml config
-
-# 两个源码镜像构建冒烟
-docker compose -f docker-compose.dev.yml build
 ```
 
-GitHub Actions 对 pull request 和主分支执行以上质量检查；只有全部通过后，主分支或 `v*` 标签才发布 GHCR 镜像：
+## Security and data
 
-- `ghcr.io/nathanxiangang-web/cloudsite-api`
-- `ghcr.io/nathanxiangang-web/cloudsite-web`
+The repository does not include AList credentials, access tokens, `.env`, databases, indexes, logs, dependency directories, or build artifacts.
 
-`v*` 标签还会在镜像发布完成后自动生成两个 `linux/amd64` 离线镜像包、离线部署压缩包和 `SHA256SUMS.txt`，并上传到同版本 GitHub Release。标签版本必须与 API、Web 版本号一致，否则发布会被拒绝。
+- `state.db` contains instance identity, users, encrypted credentials, settings, collections, and shares. It must be backed up.
+- `index.db` contains the rebuildable resource index and synchronization state.
+- Never run `docker compose down -v` against a production instance.
+- Back up before every upgrade and verify that the backup can be restored.
 
-## 同步安全模型
+See [Public contracts](docs/contracts.md) and [Operations and disaster recovery](docs/operations-disaster-recovery.md) for the 1.0.0 guarantees and operational boundaries.
 
-- 新实例和未完成首次同步的实例继续运行原有首次完整同步；Rolling 迁移前必须同时存在成功同步记录和有效 Folder 索引。
-- 迁移仅创建 Cycle、Window 和 Folder 队列状态，保留 Folder、Resource、合集、配置以及首次同步完成时间，不发起 AList 请求。
-- 同一时间只允许一个同步任务运行；Rolling Window 对计划内目录逐个校验并持久化进度，服务重启后从未完成项继续。
-- 目录扫描失败时保留旧索引，不把“没扫到”当作删除。
-- 第一个独立 Cycle 未见对象：`active → suspected_missing`；下一独立 Cycle 仍未见：`suspected_missing → missing`。
-- 对象在确认前重新出现时，状态、缺失次数和候选时间全部恢复。
-- 大规模候选新增/缺失触发 Scope 级零写入保护，只保存审计结果，不写入新项也不改变旧项。
-- `index.db` 丢失但 `state.db` 身份仍在时进入 `INDEX_RECOVERY`，不会退回首次安装或覆盖首次同步历史。
+## Release
 
-## 长期运行与恢复
+Download CloudSite 1.0.0 and its offline deployment assets from the [v1.0.0 release](https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0).
 
-- 已过期或已撤销超过 7 天的用户 Session 每 6 小时清理一次；有效 Session 不参与清理，`last_seen_at` 最多每 5 分钟写入一次。
-- 下载限流记录每 6 小时清理一次，只删除超过 24 小时且不处于封禁期的旧记录。
-- `state.db` 保存用户、凭据、站点身份和 Stable Resource ID 注册表，丢失或身份异常时服务拒绝把旧实例当成新安装；它是必须备份的数据。
-- `index.db` 保存可重建索引，丢失时进入恢复态，保留 `state.db`，恢复前不重新执行第一次同步。
-- 首次升级 0.3.0 时会在数据目录的 `.codex-backups/pre-0.3.0-stable-id/` 创建一次 `state.db` 与 `index.db` 一致性快照；正式升级仍应在容器外另存完整 `data/` 备份。
-- FTS 重建使用持久化 dirty 标记；中断后从现有 Folder/Resource 重建，不访问 AList。
-- 安全和管理日志建议保留 180 天，普通运行日志建议保留 30～90 天；0.3.0 暂不自动删除 OperationLog，管理员应定期观察行数和数据库体积。
+## License
 
-详细恢复、升级与回滚步骤见 [`docs/长期运行与故障恢复.md`](docs/长期运行与故障恢复.md) 和 [`docs/部署升级与备份.md`](docs/部署升级与备份.md)。
-
-## 安全说明
-
-- `.env`、`data/`、备份、预览缓存和日志均被 `.gitignore` 排除。
-- `CLOUDSITE_MASTER_KEY` 或其回退密钥一旦用于保存 AList 凭据，不可随意更换。
-- AList 账号应独立创建并遵循最小权限；不要把浏览器登录令牌写进 `.env`。
-- `CLOUDSITE_TRUSTED_PROXY_CIDRS` 只应包含实际反向代理网段，不能把普通客户端所在的整个局域网加入可信代理。
-- 下载入口由 AList 临时签名，失效时可在后台“下载诊断”重新测试。
-
-## 许可证
-
-本项目采用仓库中的 [LICENSE](LICENSE) 许可。
+CloudSite is released under the [MIT License](LICENSE).

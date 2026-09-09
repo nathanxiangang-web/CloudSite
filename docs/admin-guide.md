@@ -1,78 +1,70 @@
-# CloudSite 管理员指南
+# CloudSite 1.0.0 Administrator Guide
 
-> 面向管理员的配置和运维说明。普通用户请参考 [User Guide](user-guide.md)。
+## Initial setup
 
-## 首次配置
+1. Start CloudSite with a one-time `CLOUDSITE_SETUP_TOKEN`.
+2. Open the administration console and save the AList connection.
+3. Create enabled content roots for the AList directories that should be published.
+4. Run the initial synchronization and verify folder and resource counts.
+5. Remove the setup token from `.env` and restart CloudSite.
 
-1. 访问站点，进入后台（`/api/admin/auth/login`）
-2. **系统设置** → 配置 AList 地址、账号、密码
-3. **内容根** → 添加要索引的 AList 目录（如 `/软件`、`/图片`）
-4. **同步** → 触发首次同步，等待索引完成
+## AList connection
 
-## AList 连接
+- Use a dedicated account with the minimum required permissions.
+- Credentials are encrypted in `state.db`.
+- Keep `CLOUDSITE_MASTER_KEY`, or its `CLOUDSITE_SECRET_KEY` fallback, stable for the life of the saved credentials.
+- Use the connection test and download diagnostics before starting a full synchronization.
 
-- 配置 AList 服务地址和独立账号
-- 凭据加密保存在 state.db
-- 账号应遵循最小权限，不要使用 AList 管理员账号
-- 可在"下载诊断"测试连接是否正常
+Changing the encryption key makes previously saved credentials unreadable. If that occurs, restore the matching key or save the AList password again.
 
-## 内容根（ContentRoot）
+## Content roots
 
-- 每个 ContentRoot 映射一个 AList 目录到一种内容类型
-- 可启用/禁用：禁用后该根的资源不出现在任何公开接口
-- 删除 ContentRoot 不会删除已索引数据，但资源不再公开
+Each content root maps one AList directory to a content type. Disabled roots are excluded from public browse, search, resource detail, download, preview, and collection output.
 
-## 同步（Sync）
+Removing a root mapping does not immediately erase indexed rows, but those rows are no longer published through the public API.
 
-- **首次同步**：完整扫描所有目录
-- **Rolling Sync**：首次同步成功后自动迁移，24h Cycle、4 个 6h Window
-- 请求默认 5～15 秒随机间隔，不超过约 2 RPS
-- 缺失对象需跨两个独立 Cycle 确认才标记为 missing
-- 可在后台查看 Cycle、Window、剩余目录和下次计划
+## Synchronization
 
-## 用户管理
+- The initial synchronization performs a complete scan of enabled roots.
+- After the initial index is valid, generic AList uses a 24-hour rolling verification cycle divided into four 6-hour windows.
+- Missing objects require confirmation in two independent cycles.
+- Suspicious large-scale path churn fails closed with zero-write scope protection.
+- A manual path synchronization scans only the selected parent directory and does not replace the rolling verification schedule.
 
-- 创建、改名、停用/恢复、重置密码、软删除用户
-- 停用/重置密码/删除会立即撤销该用户所有 Session
-- 已删除用户名永久保留
-- 密码使用 Argon2id 哈希，管理界面不显示密码或哈希
+Review cycle state, pending work, upstream errors, and recent runs before manually retrying a failed window.
 
-## 合集（Collections）
+## Users
 
-- 跨目录、跨类型编排资源
-- 可设置封面、状态、首页展示
-- 合集数量只统计当前 active 资源
+Administrators can create, rename, enable, disable, reset, and soft-delete users. Disabling, deleting, or resetting a password revokes the user's sessions. Deleted usernames remain reserved.
 
-## 分享管理
+Passwords use Argon2id hashes and are never returned by the API or displayed in the administration console.
 
-- 查看所有分享、创建、更新、删除
-- 旧版无分享码哈希的分享标记为待升级
-- 可重置分享码、取消、恢复
+## Collections
 
-## 站点设置
+Collections can group resources across folders and content types. Configure the name, cover, visibility, status, and backend sort value. Home-page order follows the backend sort value, and counts include only currently active resources.
 
-- 站点名称、首页标题、描述
-- 分享页背景图上传
-- 投稿邮箱、GitHub 地址
-- 注册开关
-- 默认分享时长
+## Shares
 
-## 备份与恢复
+Administrators can inspect, create, update, cancel, restore, and delete shares. Four-digit access codes are stored as HMAC hashes, not plaintext. Share tickets are short-lived and limited to the selected share scope.
+
+## Site settings
+
+Site settings control the site name, home-page title and description, registration, submission address, GitHub URL, default share duration, and the desktop share-page image.
+
+## Backup and recovery
 
 ```bash
-# 备份
 bash scripts/backup.sh
-
-# 恢复（需先停止服务）
-docker compose down
-bash scripts/restore.sh <backup.tar.gz> --force
-docker compose up -d
+bash scripts/verify-backup.sh cloudsite-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
-备份包含：state.db（一致性 SQLite Backup）、index.db、.env、branding。
+A complete backup includes consistent SQLite snapshots, `.env`, and site assets. Store backups on another disk or host and protect them as sensitive files.
 
-## 诊断
+See [Deployment, upgrade, and backup](deployment-upgrade-backup.md) and [Recovery guide](recovery-guide.md).
 
-- 后台"下载诊断"可测试下载链路
-- `/api/health` 暴露 status + version
-- 日志建议：安全日志 180 天，普通日志 30～90 天
+## Diagnostics
+
+- `/api/health` reports service status and the 1.0.0 version.
+- Download diagnostics validate the AList redirect path.
+- The system page reports provider capability and synchronization strategy.
+- Security and administration logs should be retained longer than ordinary runtime logs.

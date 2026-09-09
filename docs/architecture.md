@@ -1,151 +1,79 @@
-# CloudSite 架构
+# CloudSite 1.0.0 Architecture
 
-> 对应 1.0 开发文档第 69 节：正式画出 Browser → CloudSite → AList → Storage，并写清下载/预览 = 302。
+## System overview
 
-## 系统架构
-
-```
-                     Browser
-                        ↓
-                 Next.js / React
-                        ↓
-                     FastAPI
-       ┌────────────────┼─────────────────┐
-       ↓                ↓                 ↓
-    Auth/User        Business          Sync
-       ↓                ↓                 ↓
-   state.db        state.db/index.db  Provider
-       │                │                 ↓
-       │                │               AList
-       │                │                 ↓
-       └──────────────┬─┴────────────── Storage
-                      ↓
-              Stable Resource ID
-                      ↓
-       Browse / Search / Collection
-       Favorite / History / Playback
-       Preview / Download / Share
-                      ↓
-                  HTTP 302
+```text
+Browser
+  -> Next.js / React
+  -> FastAPI
+       -> authentication and application state -> state.db
+       -> browse and search index              -> index.db
+       -> synchronization provider             -> AList -> storage provider
+  -> HTTP 302 download or binary preview       -> AList -> storage provider
 ```
 
-## 传输语义
+CloudSite is an index, policy, presentation, and redirect layer. AList remains the storage gateway, and the underlying provider remains responsible for file delivery.
 
-下载、二进制预览、分享下载均使用 HTTP 302 跳转到 AList 原生入口，CloudSite 不代理文件主体。
+## Transfer semantics
 
-| 入口 | 流程 |
-|------|------|
-| `/d/{resource_id}` | CloudSite 校验 → AList Entry → **302** |
-| `/p/{resource_id}` | CloudSite 校验 → AList Entry → **302** |
-| `/s/{token}/d...` | Share 校验 → Stable ID → AList Entry → **302** |
+Downloads, binary previews, and share downloads use HTTP 302 redirects to an AList-native entry. CloudSite does not proxy file bodies.
 
-**设计决策**：避免 CloudSite 成为文件传输瓶颈，下载速度取决于 AList 和存储后端。1.0 禁止改为 Body Proxy。
+| Entry | Behavior |
+|---|---|
+| `/d/{resource_id}` | Authorize, resolve the resource, build an AList entry, return `302` |
+| `/p/{resource_id}` | Authorize, resolve the preview entry, return `302` |
+| `/s/{token}/d...` | Validate the share scope, resolve a stable resource ID, return `302` |
 
-## 数据库所有权
+This boundary prevents CloudSite from becoming the file-transfer bottleneck. Transfer speed and codec support depend on AList, the storage provider, the network, and the browser.
 
-### state.db — 业务真相（必须备份）
+## Database ownership
 
-| 类别 | 表 |
-|------|-----|
-| 连接配置 | `alist_connections`、`site_settings`、`system_settings`、`content_root_mappings` |
-| 用户体系 | `users`、`user_sessions`、`user_favorites`、`user_resource_history`、`user_playback_progress` |
-| 分享 | `shares`、`share_verify_attempts` |
-| 合集 | `collections`、`collection_items` |
-| 身份 | `resource_identities`、`resource_identity_history`、`resource_identity_candidates` |
-| 运维 | `download_events`、`download_diagnostics`、`operation_logs`、`download_rate_limits` |
+### `state.db`: authoritative instance state
 
-**语义**：删除 state.db → 拒绝启动（STATE_RECOVERY_REQUIRED），不静默创建新库。
+`state.db` contains configuration, users, sessions, encrypted AList credentials, content-root mappings, collections, shares, resource identities, operation logs, and rate-limit state. It must be backed up.
 
-### index.db — 可重建索引（建议备份）
+If an established instance loses `state.db`, CloudSite fails closed with `STATE_RECOVERY_REQUIRED` instead of silently creating a new identity database.
 
-| 类别 | 表 |
-|------|-----|
-| 索引 | `folders`、`resources`、`search_fts`（FTS5 虚拟表） |
-| 同步 | `sync_runs`、`sync_root_results`、`sync_changes`、`sync_cycles`、`sync_cycle_items`、`folder_scan_state`、`provider_sync_state` |
+### `index.db`: rebuildable content index
 
-**语义**：删除 index.db → INDEX_RECOVERY（从 state.db 身份恢复，不退回首次安装）。
+`index.db` contains folders, resources, full-text search data, synchronization runs, cycles, cycle items, folder scan state, and provider synchronization state.
 
-## Sync 架构
+If `index.db` is unavailable while `state.db` is valid, CloudSite enters `INDEX_RECOVERY`. The instance identity and business data remain intact while the content index is rebuilt.
 
-### 首次同步
+## Synchronization model
 
-完整扫描所有 ContentRoot 目录，建立 Folder/Resource 索引和 FTS 搜索索引。
+The first successful synchronization scans every enabled content root and creates the folder, resource, and FTS indexes. CloudSite then uses Rolling Full Verification for a generic AList provider:
 
-### Rolling Full Verification
-
-首次同步成功后自动迁移到 Rolling：
-
-```
-24h Cycle = 4 个 6h Window
-每个 Window 校验一部分目录
-请求默认 5～15 秒随机间隔，不超过约 2 RPS
+```text
+24-hour cycle = four 6-hour windows
+each window verifies a subset of folders
+default request spacing = randomized 5-15 seconds
+absolute request ceiling = approximately 2 requests per second
 ```
 
-| 机制 | 说明 |
-|------|------|
-| 缺失确认 | 跨两个独立 Cycle 未见才标记 missing |
-| Scope 保护 | 大规模路径变化触发零写入保护 |
-| 重启恢复 | 持久化 Cycle/Window/Folder 进度，重启后继续 |
-| 405/429 熔断 | AList 限流时打开熔断，保留未完成队列 |
+Safety rules:
 
-### Provider Capability
+- A missing object must remain absent across two independent cycles before it becomes `missing`.
+- Large path churn triggers scope-level zero-write protection.
+- Cycle, window, and folder progress is persistent and resumes after restart.
+- AList rate limits or access restrictions open a circuit breaker and retain unfinished work.
+- Generic AList is not presented as a true delta provider.
 
-Generic AList 默认声明 Delta 能力为 NO，使用 Rolling Full Verification。只有明确声明 Delta 能力的 Provider 才进入 Delta Strategy。1.0 不宣传 Generic AList "真正增量"。
+## Stable resource identity
 
-## 认证架构
+New resources receive random 128-bit stable IDs. A reliable rename or move preserves the ID; copies, path reuse, and ambiguous matches receive a new ID. The resolver favors a new identity over an incorrect merge.
 
-```
-Admin Auth（cloudsite_session）
-  → AList 管理员凭据 → 后台配置
-  → 独立于前台用户体系
+Folder IDs may still be path-derived, and generic AList cannot identify every move or copy with complete certainty.
 
-User Auth（cloudsite_user_session）
-  → 前台用户注册/登录
-  → Session Token Hash 存储
-  → Disabled/Deleted/Reset Password → Session 熔断
-```
+## Authentication boundaries
 
-**公开白名单**：`/api/health`、`/api/auth/login`、`/api/auth/register`、`/api/site`、`/api/public/shares/*`、`/s/*`。其余所有端点要求 User Session。
+- Public user sessions and administrator sessions are separate.
+- AList administrator authentication is never treated as a public user account.
+- Disabled, deleted, password-reset, or revoked users lose their active sessions.
+- Only the explicit public allowlist is accessible without a user session.
 
-## 分享架构
+## Video and document previews
 
-```
-/s/{token} → 匿名入口（无需 CloudSite 账号）
-  → 4 位分享码（HMAC 哈希存储，不存明文）
-  → 验证成功 → 签发短时 HttpOnly 票据（仅限当前分享路径）
-  → CloudSite 302 to AList
-```
+CloudSite relies on browser-native video decoding and does not transcode or generate HLS. MP4 with H.264/AAC is the primary compatibility target. Unsupported media falls back to download.
 
-| 属性 | 值 |
-|------|-----|
-| 分享码 | 4 位，HMAC 哈希存储 |
-| 有效期 | 5m / 1h / 6h / 24h / 7d / permanent |
-| 下载上限 | 每分享 404 次 |
-| 清理 | Expired/Cancelled 约 48h 后清理 |
-
-## Stable Resource ID
-
-```
-新资源 → 128-bit 随机 ID
-已有资源 → 原样保留（0.3.0 迁移不换 ID）
-
-身份解析（保守策略）：
-  同路径 → 复用 ID
-  可靠 Rename/Move → 保留 ID
-  Copy / Path Reuse → 生成新 ID
-  歧义场景 → 宁可新 ID，不误合并
-```
-
-**边界**：Generic AList 无法 100% 识别所有 Move/Copy。Folder ID 仍可能 Path-derived。
-
-## 视频架构
-
-```
-Browser Native Decode
-  → CloudSite 不转码、不代理文件主体、不预生成 HLS
-  → 支持 MP4 H.264/AAC
-  → 不承诺所有 MKV/AVI/HEVC
-  → Decode Failure → 下载降级
-```
-
-1.0 不把 FFmpeg、HLS、GPU 加入必需依赖。
+Office previews use a bounded local cache. PDF, text, and Markdown previews follow their dedicated guarded endpoints.
