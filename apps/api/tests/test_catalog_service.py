@@ -276,6 +276,67 @@ async def test_publish_revision_conflict(tmp_path, monkeypatch):
     await index_engine.dispose()
 
 
+async def test_publish_rejects_entry_without_available_location(tmp_path, monkeypatch):
+    state_engine, index_engine, sf, ix = await _bootstrap(monkeypatch, tmp_path)
+    async with sf() as state, ix() as index:
+        entry_result = await create_catalog_entry(
+            state, content_type="software", slug="no-location", title="NoLocation"
+        )
+        await state.commit()
+
+        with pytest.raises(CatalogPublishValidationFailed) as exc:
+            await publish_catalog_entry(
+                state,
+                index,
+                entry_result.entry.entry_id,
+                expected_revision=entry_result.entry.revision,
+            )
+        assert any("no available active" in reason for reason in exc.value.reasons)
+        assert entry_result.entry.status == "draft"
+
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+async def test_publish_rechecks_content_type_after_entry_update(tmp_path, monkeypatch):
+    state_engine, index_engine, sf, ix = await _bootstrap(monkeypatch, tmp_path)
+    async with sf() as state, ix() as index:
+        entry_result = await create_catalog_entry(
+            state, content_type="software", slug="changed-type", title="ChangedType"
+        )
+        asset_result = await create_catalog_asset(
+            state,
+            release_id=entry_result.release.release_id,
+            slug="iso",
+            display_name="ubuntu.iso",
+        )
+        await attach_catalog_location(
+            state,
+            index,
+            asset_id=asset_result.asset.asset_id,
+            resource_id="r_soft_1",
+        )
+        await update_catalog_entry(
+            state,
+            entry_result.entry.entry_id,
+            expected_revision=entry_result.entry.revision,
+            content_type="document",
+        )
+        await state.commit()
+
+        with pytest.raises(CatalogPublishValidationFailed) as exc:
+            await publish_catalog_entry(
+                state,
+                index,
+                entry_result.entry.entry_id,
+                expected_revision=entry_result.entry.revision,
+            )
+        assert any("content_type_mismatch" in reason for reason in exc.value.reasons)
+
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
 async def test_preview_does_not_mutate_state(tmp_path, monkeypatch):
     state_engine, index_engine, sf, ix = await _bootstrap(monkeypatch, tmp_path)
     async with sf() as state, ix() as index:

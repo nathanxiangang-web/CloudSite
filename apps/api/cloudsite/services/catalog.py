@@ -495,8 +495,10 @@ async def _collect_location_blockers(
     index: AsyncSession,
     entry_id: str,
     roots: set[int],
+    expected_content_type: str,
 ) -> list[str]:
     reasons: list[str] = []
+    available_count = 0
     releases = list(
         (
             await state.scalars(
@@ -511,7 +513,8 @@ async def _collect_location_blockers(
             (
                 await state.scalars(
                     select(CatalogAsset).where(
-                        CatalogAsset.release_id == release.release_id
+                        CatalogAsset.release_id == release.release_id,
+                        CatalogAsset.status == "active",
                     )
                 )
             ).all()
@@ -530,12 +533,16 @@ async def _collect_location_blockers(
             for loc in locations:
                 resource = await index.get(Resource, loc.resource_id)
                 resolution = _resolve_location(
-                    resource, loc.resource_id, roots, None
+                    resource, loc.resource_id, roots, expected_content_type
                 )
-                if not resolution.available:
+                if resolution.available:
+                    available_count += 1
+                else:
                     reasons.append(
                         f"location {loc.location_id} -> {loc.resource_id}: {resolution.reason}"
                     )
+    if available_count == 0:
+        reasons.append("entry has no available active catalog location")
     return reasons
 
 
@@ -592,8 +599,19 @@ async def validate_catalog_entry_for_preview(
             )
             asset_available = False
             for loc in locations:
+                if asset.status != "active" or loc.status != "active":
+                    unavailable.append(
+                        {
+                            "location_id": loc.location_id,
+                            "resource_id": loc.resource_id,
+                            "reason": "disabled",
+                        }
+                    )
+                    continue
                 resource = await index.get(Resource, loc.resource_id)
-                resolution = _resolve_location(resource, loc.resource_id, roots, None)
+                resolution = _resolve_location(
+                    resource, loc.resource_id, roots, entry.content_type
+                )
                 if resolution.available:
                     asset_available = True
                 else:
@@ -607,7 +625,7 @@ async def validate_catalog_entry_for_preview(
             asset_summaries.append(
                 {"asset_id": asset.asset_id, "slug": asset.slug, "available": asset_available}
             )
-            if asset_available:
+            if asset_available and release.status == "published":
                 any_available = True
         release_payloads.append(
             {
@@ -654,7 +672,9 @@ async def publish_catalog_entry(
         raise CatalogRevisionConflict(entry_id, expected_revision, entry.revision)
 
     roots = await enabled_root_ids(state)
-    reasons = await _collect_location_blockers(state, index, entry_id, roots)
+    reasons = await _collect_location_blockers(
+        state, index, entry_id, roots, entry.content_type
+    )
     if reasons:
         raise CatalogPublishValidationFailed(entry_id, reasons)
 
