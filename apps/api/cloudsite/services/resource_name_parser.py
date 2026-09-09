@@ -135,7 +135,7 @@ _COMPOUND_SUFFIXES: tuple[tuple[str, str], ...] = (
 # Regex patterns.
 # ---------------------------------------------------------------------------
 
-_TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
+_TOKEN_RE = re.compile(r"x86_64|[a-zA-Z0-9]+", re.IGNORECASE)
 _CJK_RE = re.compile(r"[一-鿿㐀-䶿]")
 _DATE_VERSION_RE = re.compile(r"(?<![0-9.])((?:19|20)\d{2}\.\d{2}\.\d{2})(?![0-9])")
 _SEMVER_RE = re.compile(r"(?<![0-9a-zA-Z])v?(\d+\.\d+\.\d+)(?![0-9])")
@@ -187,3 +187,139 @@ class ParseResult:
     version: str
     package_form: str
     evidence: dict[str, Evidence]
+
+
+def _token_matches(value: str):
+    for match in _TOKEN_RE.finditer(value):
+        yield match.group(0), match.group(0).casefold(), match.start()
+
+
+def _first_token_evidence(
+    sources: tuple[tuple[str, str], ...],
+    mapping: dict[str, str],
+) -> tuple[str, Evidence] | None:
+    for source, value in sources:
+        for token, folded, index in _token_matches(value):
+            mapped = mapping.get(folded)
+            if mapped is not None:
+                return mapped, Evidence(token=token, source=source, index=index)
+    return None
+
+
+def _architecture_evidence(
+    sources: tuple[tuple[str, str], ...],
+) -> tuple[str, Evidence] | None:
+    for source, value in sources:
+        special = _X86_64_HYPHEN_RE.search(value)
+        if special is not None:
+            return "x64", Evidence(
+                token=special.group(0), source=source, index=special.start()
+            )
+        for token, folded, index in _token_matches(value):
+            mapped = _ARCH_TOKENS.get(folded)
+            if mapped is not None:
+                return mapped, Evidence(token=token, source=source, index=index)
+    return None
+
+
+def _version_evidence(
+    sources: tuple[tuple[str, str], ...],
+) -> tuple[str, Evidence] | None:
+    for pattern in _VERSION_PATTERNS:
+        for source, value in sources:
+            match = pattern.search(value)
+            if match is not None:
+                return match.group(1), Evidence(
+                    token=match.group(0), source=source, index=match.start()
+                )
+    return None
+
+
+def _package_evidence(
+    name: str,
+    extension: str,
+    mime_type: str,
+) -> tuple[str, Evidence] | None:
+    folded_name = name.casefold()
+    for suffix, package_form in _COMPOUND_SUFFIXES:
+        if folded_name.endswith(suffix):
+            return package_form, Evidence(
+                token=name[-len(suffix) :],
+                source="name",
+                index=len(name) - len(suffix),
+            )
+
+    normalized_extension = extension.strip().lstrip(".").casefold()
+    if normalized_extension in _EXTENSION_TO_PACKAGE:
+        token_start = extension.casefold().rfind(normalized_extension)
+        return _EXTENSION_TO_PACKAGE[normalized_extension], Evidence(
+            token=extension[token_start:] if token_start >= 0 else extension,
+            source="extension",
+            index=max(token_start, 0),
+        )
+
+    suffix = name.rsplit(".", 1)[-1].casefold() if "." in name else ""
+    if suffix in _EXTENSION_TO_PACKAGE:
+        return _EXTENSION_TO_PACKAGE[suffix], Evidence(
+            token=name[-len(suffix) :], source="name", index=len(name) - len(suffix)
+        )
+
+    normalized_mime = mime_type.strip().casefold()
+    if normalized_mime in _MIME_TO_PACKAGE:
+        return _MIME_TO_PACKAGE[normalized_mime], Evidence(
+            token=mime_type, source="mime_type", index=0
+        )
+    return None
+
+
+def parse_resource_name(
+    resource_id: str,
+    name: str,
+    path: str = "",
+    extension: str = "",
+    mime_type: str = "",
+) -> ParseResult:
+    """Return conservative suggestions without mutating application state."""
+    evidence: dict[str, Evidence] = {}
+    text_sources = (("name", name), ("path", path))
+
+    platform_match = _first_token_evidence(text_sources, _PLATFORM_TOKENS)
+    architecture_match = _architecture_evidence(text_sources)
+    language_match = _first_token_evidence(text_sources, _LANGUAGE_TOKENS)
+    if language_match is None:
+        for source, value in text_sources:
+            cjk = _CJK_RE.search(value)
+            if cjk is not None:
+                language_match = (
+                    "zh",
+                    Evidence(token=cjk.group(0), source=source, index=cjk.start()),
+                )
+                break
+    version_match = _version_evidence(text_sources)
+    package_match = _package_evidence(name, extension, mime_type)
+
+    matches = {
+        "platform": platform_match,
+        "architecture": architecture_match,
+        "language": language_match,
+        "version": version_match,
+        "package_form": package_match,
+    }
+    for field, match in matches.items():
+        if match is not None:
+            evidence[field] = match[1]
+
+    return ParseResult(
+        parser_version=PARSER_VERSION,
+        resource_id=resource_id,
+        original_name=name,
+        original_path=path,
+        original_extension=extension,
+        original_mime_type=mime_type,
+        platform=platform_match[0] if platform_match else UNKNOWN,
+        architecture=architecture_match[0] if architecture_match else UNKNOWN,
+        language=language_match[0] if language_match else UNKNOWN,
+        version=version_match[0] if version_match else UNKNOWN,
+        package_form=package_match[0] if package_match else UNKNOWN,
+        evidence=evidence,
+    )
