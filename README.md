@@ -74,18 +74,26 @@ cd CloudSite
 cp .env.example .env
 ```
 
-编辑 `.env`，至少替换 `CLOUDSITE_SECRET_KEY`。随后启动：
+编辑 `.env`，至少替换 `CLOUDSITE_SECRET_KEY`（`.env.example` 注释中附带了生成命令，可在任意装有 Python 的机器上运行后粘贴结果，服务器本身无需安装 Python）。随后启动并等待健康检查通过：
 
 ```bash
-docker compose up -d
+docker compose up -d --wait
 docker compose ps
 ```
 
 打开 `http://服务器IP:3000`。默认 Compose 只公开 Web 端口 `3000`，API 仅在内部网络提供服务，运行数据保存在 `./data`。
 
+首启验收（约 30 秒内完成）：
+
+```bash
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+返回 JSON 中 `status` 为 `healthy`、`version` 为 `1.0.0` 即通过。Web 容器经同源 rewrite 将 `/api/health` 转发到内部 API，因此该命令同时验证 Web 与 API 已就绪。
+
 除登录、注册和 `/s/{token}` 匿名分享网关外，前台页面、资源接口、预览和普通下载均要求有效 CloudSite 用户登录。所有分享模式都不要求 CloudSite 账号登录：无分享码模式直接下载，分享码模式验证 4 位分享码后只获得当前分享路径下的短时票据，不能访问站内其他资源；管理后台继续使用独立的 AList 管理员认证。
 
-首次进入后台后，在“系统设置”中配置 AList 地址和独立账号，再配置内容根并执行同步。
+首次进入后台后，在“系统设置”中配置 AList 地址和独立账号，再配置内容根并执行同步。Traefik HTTPS、离线安装、升级与回滚等进阶场景见 [`docs/installation.md`](docs/installation.md)。
 
 ## 离线安装
 

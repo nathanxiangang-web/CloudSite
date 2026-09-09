@@ -155,6 +155,8 @@ jobs:
           else
             python scripts/check-release-version.py
           fi
+      - name: Check README install consistency
+        run: python scripts/check-readme-install.py
 
   dependency-audit:
     # 1.0 Supply Chain Gate: pip-audit + pnpm audit。HIGH/CRITICAL 阻止发布。
