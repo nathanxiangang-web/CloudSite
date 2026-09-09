@@ -193,6 +193,8 @@ jobs:
           python-version: "3.12"
       - name: Run backup hardening test
         run: bash scripts/tests/test-backup-hardening.sh
+      - name: Run backup content roundtrip test
+        run: bash scripts/tests/test-backup-content-roundtrip.sh
 
   publish:
     if: github.event_name != 'pull_request'
