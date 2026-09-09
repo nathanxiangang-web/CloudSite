@@ -544,3 +544,72 @@ class ProviderSyncState(IndexBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     __table_args__ = (UniqueConstraint("connection_id", "root_mapping_id"),)
+
+
+class CatalogEntry(StateBase):
+    __tablename__ = "catalog_entries"
+    entry_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(40), index=True)
+    slug: Mapped[str] = mapped_column(String(160), unique=True)
+    title: Mapped[str] = mapped_column(String(200))
+    summary: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    cover_resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CatalogRelease(StateBase):
+    __tablename__ = "catalog_releases"
+    release_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    entry_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_entries.entry_id", ondelete="CASCADE"), index=True
+    )
+    slug: Mapped[str] = mapped_column(String(160), default="unversioned")
+    title: Mapped[str] = mapped_column(String(200))
+    release_notes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (UniqueConstraint("entry_id", "slug"),)
+
+
+class CatalogAsset(StateBase):
+    __tablename__ = "catalog_assets"
+    asset_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    release_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_releases.release_id", ondelete="CASCADE"), index=True
+    )
+    slug: Mapped[str] = mapped_column(String(160))
+    display_name: Mapped[str] = mapped_column(String(500))
+    platform: Mapped[str] = mapped_column(String(40), default="")
+    kind: Mapped[str] = mapped_column(String(40), default="file")
+    checksum: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    checksum_algorithm: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (UniqueConstraint("release_id", "slug"),)
+
+
+class CatalogLocation(StateBase):
+    __tablename__ = "catalog_locations"
+    location_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_assets.asset_id", ondelete="CASCADE"), index=True
+    )
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    root_mapping_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    label: Mapped[str] = mapped_column(String(100), default="")
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (UniqueConstraint("asset_id", "resource_id"),)

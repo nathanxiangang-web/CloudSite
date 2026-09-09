@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,7 +174,109 @@ async def state_v2_to_v3_upgrade(conn: AsyncConnection) -> None:
     await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_folder_identity_histories_cycle_id ON folder_identity_histories (cycle_id)")
 
 
+async def state_v3_to_v4_upgrade(conn: AsyncConnection) -> None:
+    """Schema v3 -> v4: Catalog core state tables, idempotent.
+
+    Adds catalog_entries, catalog_releases, catalog_assets, catalog_locations
+    to state.db per docs/catalog-v1.1-contract.md sections 3.1-3.4. Foreign
+    keys are declared only within state.db. catalog_locations.resource_id is a
+    plain stable ID reference to index.db resources.id (cross-database, no SQL
+    foreign key). The catalog_releases.slug default 'unversioned' provides an
+    explicit default unversioned release representation.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_entries("
+        "entry_id VARCHAR(35) PRIMARY KEY,"
+        "content_type VARCHAR(40) NOT NULL,"
+        "slug VARCHAR(160) NOT NULL UNIQUE,"
+        "title VARCHAR(200) NOT NULL,"
+        "summary TEXT DEFAULT '',"
+        "description TEXT DEFAULT '',"
+        "cover_resource_id VARCHAR(64),"
+        "status VARCHAR(20) NOT NULL DEFAULT 'draft',"
+        "sort_order INTEGER DEFAULT 0,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "published_at DATETIME)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_entries_status ON catalog_entries (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_entries_content_type ON catalog_entries (content_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_releases("
+        "release_id VARCHAR(35) PRIMARY KEY,"
+        "entry_id VARCHAR(35) NOT NULL REFERENCES catalog_entries(entry_id) ON DELETE CASCADE,"
+        "slug VARCHAR(160) NOT NULL DEFAULT 'unversioned',"
+        "title VARCHAR(200) NOT NULL,"
+        "release_notes TEXT DEFAULT '',"
+        "status VARCHAR(20) NOT NULL DEFAULT 'draft',"
+        "sort_order INTEGER DEFAULT 0,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "published_at DATETIME,"
+        "UNIQUE (entry_id, slug))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_releases_entry_id ON catalog_releases (entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_releases_status ON catalog_releases (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_assets("
+        "asset_id VARCHAR(35) PRIMARY KEY,"
+        "release_id VARCHAR(35) NOT NULL REFERENCES catalog_releases(release_id) ON DELETE CASCADE,"
+        "slug VARCHAR(160) NOT NULL,"
+        "display_name VARCHAR(500) NOT NULL,"
+        "platform VARCHAR(40) DEFAULT '',"
+        "kind VARCHAR(40) DEFAULT 'file',"
+        "checksum VARCHAR(200),"
+        "checksum_algorithm VARCHAR(20),"
+        "size BIGINT,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'active',"
+        "sort_order INTEGER DEFAULT 0,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (release_id, slug))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_assets_release_id ON catalog_assets (release_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_assets_status ON catalog_assets (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_locations("
+        "location_id VARCHAR(35) PRIMARY KEY,"
+        "asset_id VARCHAR(35) NOT NULL REFERENCES catalog_assets(asset_id) ON DELETE CASCADE,"
+        "resource_id VARCHAR(64) NOT NULL,"
+        "root_mapping_id INTEGER,"
+        "label VARCHAR(100) DEFAULT '',"
+        "is_primary BOOLEAN DEFAULT 0 NOT NULL,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'active',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (asset_id, resource_id))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_locations_asset_id ON catalog_locations (asset_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_locations_resource_id ON catalog_locations (resource_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_locations_root_mapping_id ON catalog_locations (root_mapping_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_locations_status ON catalog_locations (status)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
+    Migration(id="state_v3_to_v4", from_version=3, to_version=4, upgrade=state_v3_to_v4_upgrade),
 ]

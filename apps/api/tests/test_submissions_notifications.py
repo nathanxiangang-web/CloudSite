@@ -42,8 +42,8 @@ async def test_state_v1_to_v2_is_idempotent(tmp_path):
     await engine.dispose()
 
 
-async def test_run_migrations_advances_v1_to_v2(tmp_path):
-    """run_migrations 将 v1 库升级到 v2 并记录已应用迁移。"""
+async def test_run_migrations_advances_v1_to_current(tmp_path):
+    """run_migrations 将 v1 库升级到当前版本并记录已应用迁移。"""
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
     async with engine.begin() as conn:
         await conn.run_sync(StateBase.metadata.create_all)
@@ -51,13 +51,13 @@ async def test_run_migrations_advances_v1_to_v2(tmp_path):
         final, applied = await run_migrations(
             conn, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
         )
-        assert final == 3
-        assert applied == ["state_v1_to_v2", "state_v2_to_v3"]
+        assert final == 4
+        assert applied == ["state_v1_to_v2", "state_v2_to_v3", "state_v3_to_v4"]
     await engine.dispose()
 
 
-async def test_run_migrations_skips_when_already_v2(tmp_path):
-    """已是 v3 的库不重复执行迁移。"""
+async def test_run_migrations_advances_v3_to_v4(tmp_path):
+    """已是 v3 的库仅执行 v3->v4 迁移。"""
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
     async with engine.begin() as conn:
         await conn.run_sync(StateBase.metadata.create_all)
@@ -65,8 +65,8 @@ async def test_run_migrations_skips_when_already_v2(tmp_path):
         final, applied = await run_migrations(
             conn, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
         )
-        assert final == 3
-        assert applied == []
+        assert final == 4
+        assert applied == ["state_v3_to_v4"]
     await engine.dispose()
 
 
