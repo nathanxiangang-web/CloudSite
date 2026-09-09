@@ -194,7 +194,7 @@ export async function fetchAdminCatalogRevisions(params: { target_id?: string; p
   if (params.target_id) query.set("target_id", params.target_id);
   if (params.page) query.set("page", String(params.page));
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return api<CatalogPage<AdminCatalogRevision>>(`/api/admin/catalog/revisions${suffix}`);
+  return api<CatalogPage<AdminCatalogRevision>>(`/api/admin/catalog/metadata/revisions${suffix}`);
 }
 
 export {
