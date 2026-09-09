@@ -20,6 +20,7 @@ def submission_dict(row, username: str) -> dict:
         "admin_note": row.admin_note,
         "reviewed_by": row.reviewed_by,
         "reviewed_at": row.reviewed_at,
+        "published_resource_id": row.published_resource_id,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }

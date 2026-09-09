@@ -192,6 +192,7 @@ class Submission(StateBase):
     admin_note: Mapped[str] = mapped_column(Text, default="")
     reviewed_by: Mapped[str] = mapped_column(String(100), default="")
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
