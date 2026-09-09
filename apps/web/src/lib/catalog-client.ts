@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { buildCatalogEntriesQuery } from "./catalog";
 import type {
   CatalogAssetDetail,
   CatalogAssetKind,
@@ -89,13 +90,7 @@ export async function fetchCatalogEntries(params: {
   content_type?: string;
   tag?: string;
 } = {}): Promise<CatalogPage<CatalogEntrySummary>> {
-  const query = new URLSearchParams();
-  if (params.page) query.set("page", String(params.page));
-  if (params.page_size) query.set("page_size", String(params.page_size));
-  if (params.content_type) query.set("content_type", params.content_type);
-  if (params.tag) query.set("tag", params.tag);
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return api<CatalogPage<CatalogEntrySummary>>(`/api/catalog/entries${suffix}`);
+  return api<CatalogPage<CatalogEntrySummary>>(buildCatalogEntriesQuery(params));
 }
 
 export async function fetchCatalogEntry(entryId: string): Promise<CatalogEntryDetail> {

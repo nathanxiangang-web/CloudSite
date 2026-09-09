@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Boxes, ChevronLeft, Download, File, Link2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DownloadButton } from "@/components/DownloadButton";
@@ -59,13 +59,13 @@ export default function CatalogEntryPage() {
 
 function ReleasePicker({ releases }: { releases: Array<{ release_id: string; slug: string; title: string; published_at: string | null }> }) {
   const [releaseId, setReleaseId] = useState(releases[0].release_id);
-  useEffect(() => { if (!releases.some((release) => release.release_id === releaseId)) setReleaseId(releases[0].release_id); }, [releases, releaseId]);
-  const release = useQuery({ queryKey: ["catalog-release", releaseId], queryFn: () => fetchCatalogRelease(releaseId), enabled: Boolean(releaseId) });
-  const current = releases.find((item) => item.release_id === releaseId);
+  const activeReleaseId = releases.some((release) => release.release_id === releaseId) ? releaseId : releases[0].release_id;
+  const release = useQuery({ queryKey: ["catalog-release", activeReleaseId], queryFn: () => fetchCatalogRelease(activeReleaseId), enabled: Boolean(activeReleaseId) });
+  const current = releases.find((item) => item.release_id === activeReleaseId);
 
   return <section className="catalog-release-picker">
     <div className="catalog-release-tabs">
-      {releases.map((item) => <button key={item.release_id} type="button" className={item.release_id === releaseId ? "selected" : ""} onClick={() => setReleaseId(item.release_id)}>{item.title}</button>)}
+      {releases.map((item) => <button key={item.release_id} type="button" className={item.release_id === activeReleaseId ? "selected" : ""} onClick={() => setReleaseId(item.release_id)}>{item.title}</button>)}
     </div>
     {current?.published_at && <p className="catalog-release-published">发布于 {formatCatalogTimestamp(current.published_at)}</p>}
     {release.isLoading ? <div className="loading">正在加载版本资源…</div>
@@ -77,13 +77,13 @@ function ReleasePicker({ releases }: { releases: Array<{ release_id: string; slu
 
 function AssetList({ assets }: { assets: CatalogAssetSummary[] }) {
   const [assetId, setAssetId] = useState(assets[0].asset_id);
-  useEffect(() => { if (!assets.some((asset) => asset.asset_id === assetId)) setAssetId(assets[0].asset_id); }, [assets, assetId]);
-  const asset = useQuery({ queryKey: ["catalog-asset", assetId], queryFn: () => fetchCatalogAsset(assetId), enabled: Boolean(assetId) });
-  const selected = useMemo(() => assets.find((item) => item.asset_id === assetId), [assets, assetId]);
+  const activeAssetId = assets.some((asset) => asset.asset_id === assetId) ? assetId : assets[0].asset_id;
+  const asset = useQuery({ queryKey: ["catalog-asset", activeAssetId], queryFn: () => fetchCatalogAsset(activeAssetId), enabled: Boolean(activeAssetId) });
+  const selected = useMemo(() => assets.find((item) => item.asset_id === activeAssetId), [assets, activeAssetId]);
 
   return <div className="catalog-asset-section">
     <div className="catalog-asset-tabs">
-      {assets.map((item) => <button key={item.asset_id} type="button" className={item.asset_id === assetId ? "selected" : ""} onClick={() => setAssetId(item.asset_id)}>
+      {assets.map((item) => <button key={item.asset_id} type="button" className={item.asset_id === activeAssetId ? "selected" : ""} onClick={() => setAssetId(item.asset_id)}>
         <span className="catalog-asset-name">{item.display_name}</span>
         {item.platform && <span className="catalog-asset-platform">{item.platform}</span>}
       </button>)}
@@ -103,7 +103,7 @@ function AssetList({ assets }: { assets: CatalogAssetSummary[] }) {
   </div>;
 }
 
-function LocationActions({ locations }: { locations: Array<{ location_id: string; resource_id: string; label: string; is_primary: boolean; availability: "available" | "unavailable"; status: "active" | "disabled"; download_url: string; resource: { id: string; name: string; extension: string; size: number; content_type: string } | null }> }) {
+function LocationActions({ locations }: { locations: Array<{ location_id: string; resource_id: string; root_mapping_id: number | null; label: string; is_primary: boolean; availability: "available" | "unavailable"; status: "active" | "disabled"; download_url: string; resource: { id: string; name: string; extension: string; size: number; content_type: string } | null }> }) {
   if (locations.length === 0) return <div className="empty compact">该资源暂无下载位置。</div>;
   const primary = pickDownloadLocation(locations);
   return <div className="catalog-locations">

@@ -3,12 +3,12 @@ import test from "node:test";
 
 import {
   assetKindLabel,
+  buildCatalogEntriesQuery,
   catalogAssetHref,
   catalogEntryHref,
   catalogReleaseHref,
   contentTypeLabel,
   entryIsAvailable,
-  fetchCatalogEntries,
   pickDownloadLocation,
   releaseIsPublished,
   statusLabel,
@@ -54,22 +54,21 @@ test("label helpers fall back gracefully for unknown values", () => {
 });
 
 
-test("fetchCatalogEntries builds a query string only for provided filters", () => {
-  const calls: string[] = [];
-  const original = globalThis.fetch;
-  globalThis.fetch = ((input: URL | RequestInfo) => {
-    calls.push(String(input));
-    return Promise.resolve(new Response(JSON.stringify({ items: [], page: 1, page_size: 24, total: 0, total_pages: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
-  }) as typeof fetch;
-  try {
-    return fetchCatalogEntries({ page: 2, content_type: "software", tag: "lts" }).then(() => {
-      assert.match(calls[0], /^\/api\/catalog\/entries\?/);
-      const search = new URL(calls[0], "http://t").searchParams;
-      assert.equal(search.get("page"), "2");
-      assert.equal(search.get("content_type"), "software");
-      assert.equal(search.get("tag"), "lts");
-    });
-  } finally {
-    globalThis.fetch = original;
-  }
+test("buildCatalogEntriesQuery builds a query string only for provided filters", () => {
+  const path = buildCatalogEntriesQuery({ page: 2, content_type: "software", tag: "lts" });
+  assert.match(path, /^\/api\/catalog\/entries\?/);
+  const search = new URL(path, "http://t").searchParams;
+  assert.equal(search.get("page"), "2");
+  assert.equal(search.get("content_type"), "software");
+  assert.equal(search.get("tag"), "lts");
+
+  const empty = buildCatalogEntriesQuery({});
+  assert.equal(empty, "/api/catalog/entries");
+
+  const paged = buildCatalogEntriesQuery({ page: 3, page_size: 24 });
+  const pagedSearch = new URL(paged, "http://t").searchParams;
+  assert.equal(pagedSearch.get("page"), "3");
+  assert.equal(pagedSearch.get("page_size"), "24");
+  assert.equal(pagedSearch.has("content_type"), false);
+  assert.equal(pagedSearch.has("tag"), false);
 });

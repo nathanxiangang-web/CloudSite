@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Plus, Search } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
@@ -17,6 +18,7 @@ const CONTENT_TYPES = ["software", "image", "video", "document", "file"];
 
 export default function AdminCatalogEntriesPage() {
   const client = useQueryClient();
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [contentType, setContentType] = useState("software");
   const [summary, setSummary] = useState("");
@@ -25,7 +27,7 @@ export default function AdminCatalogEntriesPage() {
   const entries = useQuery({ queryKey: ["admin-catalog-entries"], queryFn: fetchAdminCatalogEntries });
   const create = useMutation({
     mutationFn: () => createAdminCatalogEntry({ content_type: contentType, title: title.trim(), summary: summary.trim(), status: "draft" }),
-    onSuccess: (data) => { setTitle(""); setSummary(""); client.invalidateQueries({ queryKey: ["admin-catalog-entries"] }); window.location.assign(`/admin/catalog/entries/${data.entry_id}`); },
+    onSuccess: (data) => { setTitle(""); setSummary(""); client.invalidateQueries({ queryKey: ["admin-catalog-entries"] }); router.push(`/admin/catalog/entries/${data.entry_id}`); },
   });
 
   const submit = (event: FormEvent) => { event.preventDefault(); if (title.trim()) create.mutate(); };

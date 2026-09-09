@@ -4,13 +4,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Boxes, Check, ChevronLeft, Eye, File, Plus, Search, Star, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, formatBytes, SearchResponse } from "@/lib/api";
 import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
 import {
-  attachAdminCatalogLocation,
   contentTypeLabel,
+  statusLabel,
+  type CatalogAssetKind,
+  type CatalogStatus,
+} from "@/lib/catalog";
+import {
+  attachAdminCatalogLocation,
   createAdminCatalogAsset,
   createAdminCatalogRelease,
   deleteAdminCatalogAsset,
@@ -20,14 +25,11 @@ import {
   fetchAdminCatalogReleases,
   fetchAdminCatalogAssets,
   fetchAdminCatalogLocations,
-  statusLabel,
   updateAdminCatalogAsset,
   updateAdminCatalogEntry,
   updateAdminCatalogLocation,
   updateAdminCatalogRelease,
-  type CatalogAssetKind,
-  type CatalogStatus,
-} from "@/lib/catalog";
+} from "@/lib/catalog-client";
 
 const CONTENT_TYPES = ["software", "image", "video", "document", "file"];
 const ASSET_KINDS: CatalogAssetKind[] = ["file", "document", "image", "video", "archive", "other"];
@@ -151,13 +153,11 @@ function ReleaseManager({ entryId }: { entryId: string }) {
 
 function ReleaseStatusSelect({ entryId, releaseId, current }: { entryId: string; releaseId: string; current: CatalogStatus }) {
   const client = useQueryClient();
-  const [value, setValue] = useState(current);
-  useEffect(() => setValue(current), [current]);
   const update = useMutation({
     mutationFn: (next: CatalogStatus) => updateAdminCatalogRelease(releaseId, { status: next }),
     onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-releases", entryId] }); },
   });
-  return <select value={value} onChange={(event) => { const next = event.target.value as CatalogStatus; setValue(next); update.mutate(next); }}>{RELEASE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select>;
+  return <select value={current} onChange={(event) => { const next = event.target.value as CatalogStatus; update.mutate(next); }}>{RELEASE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select>;
 }
 
 function AssetManager({ entryId, releaseId }: { entryId: string; releaseId: string }) {
