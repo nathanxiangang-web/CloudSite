@@ -15,11 +15,11 @@ application layer only (no HTTP, no FastAPI). Scenarios:
 Full regression is deferred to integration.
 """
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
-from cloudsite.models import ContentRootMapping, Resource
+from cloudsite.models import CatalogRevision, ContentRootMapping, Resource
 from cloudsite.services.catalog import (
     CatalogLocationInvalid,
     CatalogPublishValidationFailed,
@@ -138,6 +138,19 @@ async def test_update_revision_conflict_and_increment(tmp_path, monkeypatch):
         await state.commit()
         assert updated.revision == 2
         assert updated.title == "Rev v2"
+
+        revisions = list(
+            (
+                await state.scalars(
+                    select(CatalogRevision).where(
+                        CatalogRevision.target_id == result.entry.entry_id
+                    )
+                )
+            ).all()
+        )
+        assert [row.action for row in revisions] == ["create", "update"]
+        assert revisions[-1].base_revision == 1
+        assert revisions[-1].resulting_revision == 2
 
         with pytest.raises(CatalogRevisionConflict):
             await update_catalog_entry(state, result.entry.entry_id, expected_revision=1, title="Stale again")

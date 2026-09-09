@@ -38,6 +38,7 @@ from ..models import (
     Resource,
     utcnow,
 )
+from .catalog_metadata import append_catalog_revision
 
 ENTRY_ID_PREFIX = "ce_"
 RELEASE_ID_PREFIX = "cr_"
@@ -52,6 +53,20 @@ _UNSET: object = object()
 
 def _new_id(prefix: str) -> str:
     return prefix + secrets.token_hex(_ID_HEX_LEN // 2)
+
+
+def _entry_snapshot(entry: CatalogEntry) -> dict:
+    return {
+        "content_type": entry.content_type,
+        "slug": entry.slug,
+        "title": entry.title,
+        "summary": entry.summary,
+        "description": entry.description,
+        "cover_resource_id": entry.cover_resource_id,
+        "status": entry.status,
+        "revision": entry.revision,
+        "sort_order": entry.sort_order,
+    }
 
 
 class CatalogError(Exception):
@@ -255,6 +270,28 @@ async def create_catalog_entry(
     )
     state.add_all([entry, release])
     await state.flush()
+    await append_catalog_revision(
+        state,
+        target_type="entry",
+        target_id=entry.entry_id,
+        action="create",
+        actor=actor,
+        resulting_revision=entry.revision,
+        after=_entry_snapshot(entry),
+    )
+    await append_catalog_revision(
+        state,
+        target_type="release",
+        target_id=release.release_id,
+        action="create",
+        actor=actor,
+        after={
+            "entry_id": entry.entry_id,
+            "slug": release.slug,
+            "title": release.title,
+            "status": release.status,
+        },
+    )
     return CreateCatalogEntryResult(entry=entry, release=release)
 
 
@@ -311,6 +348,7 @@ async def update_catalog_entry(
     if entry.revision != expected_revision:
         raise CatalogRevisionConflict(entry_id, expected_revision, entry.revision)
 
+    before = _entry_snapshot(entry)
     changed = False
     if title is not _UNSET and entry.title != title:
         entry.title = title  # type: ignore[assignment]
@@ -337,6 +375,24 @@ async def update_catalog_entry(
     if changed:
         entry.revision = entry.revision + 1
         await state.flush()
+        after = _entry_snapshot(entry)
+        diff = {
+            key: [before.get(key), after.get(key)]
+            for key in after
+            if before.get(key) != after.get(key)
+        }
+        await append_catalog_revision(
+            state,
+            target_type="entry",
+            target_id=entry.entry_id,
+            action="update",
+            actor=actor,
+            base_revision=expected_revision,
+            resulting_revision=entry.revision,
+            before=before,
+            after=after,
+            diff=diff,
+        )
     return entry
 
 
@@ -372,6 +428,21 @@ async def create_catalog_release(
     )
     state.add(release)
     await state.flush()
+    await append_catalog_revision(
+        state,
+        target_type="release",
+        target_id=release.release_id,
+        action="create",
+        actor=actor,
+        after={
+            "entry_id": entry_id,
+            "slug": slug,
+            "title": title,
+            "release_notes": release_notes,
+            "status": release.status,
+            "sort_order": sort_order,
+        },
+    )
     return CreateCatalogReleaseResult(release=release)
 
 
@@ -409,6 +480,22 @@ async def create_catalog_asset(
     )
     state.add(asset)
     await state.flush()
+    await append_catalog_revision(
+        state,
+        target_type="asset",
+        target_id=asset.asset_id,
+        action="create",
+        actor=actor,
+        after={
+            "release_id": release_id,
+            "slug": slug,
+            "display_name": display_name,
+            "platform": platform,
+            "kind": kind,
+            "status": asset.status,
+            "sort_order": sort_order,
+        },
+    )
     return CreateCatalogAssetResult(asset=asset)
 
 
@@ -487,6 +574,21 @@ async def attach_catalog_location(
     )
     state.add(location)
     await state.flush()
+    await append_catalog_revision(
+        state,
+        target_type="location",
+        target_id=location.location_id,
+        action="create",
+        actor=actor,
+        after={
+            "asset_id": asset_id,
+            "resource_id": resource_id,
+            "root_mapping_id": resolution.root_mapping_id,
+            "label": label,
+            "is_primary": is_primary,
+            "status": location.status,
+        },
+    )
     return AttachCatalogLocationResult(location=location, resolution=resolution)
 
 
@@ -679,6 +781,7 @@ async def publish_catalog_entry(
         raise CatalogPublishValidationFailed(entry_id, reasons)
 
     published_at = utcnow()
+    before = _entry_snapshot(entry)
     entry.status = "published"
     entry.published_at = published_at
     entry.revision = entry.revision + 1
@@ -690,8 +793,37 @@ async def publish_catalog_entry(
         )
     )
     if default_release is not None and default_release.status != "published":
+        release_before = {
+            "status": default_release.status,
+            "published_at": None,
+        }
         default_release.status = "published"
         default_release.published_at = published_at
+        await append_catalog_revision(
+            state,
+            target_type="release",
+            target_id=default_release.release_id,
+            action="publish",
+            actor=actor,
+            before=release_before,
+            after={"status": "published", "published_at": published_at.isoformat()},
+        )
 
     await state.flush()
+    after = _entry_snapshot(entry)
+    await append_catalog_revision(
+        state,
+        target_type="entry",
+        target_id=entry.entry_id,
+        action="publish",
+        actor=actor,
+        base_revision=expected_revision,
+        resulting_revision=entry.revision,
+        before=before,
+        after=after,
+        diff={
+            "status": [before["status"], after["status"]],
+            "revision": [before["revision"], after["revision"]],
+        },
+    )
     return PublishCatalogEntryResult(entry=entry, published_at=published_at)
