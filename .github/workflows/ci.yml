@@ -26,6 +26,60 @@ jobs:
         run: pip install -e ".[test]"
       - name: Run backend tests
         run: pytest
+      - name: Build API wheel
+        run: pip wheel . --no-deps -w dist
+      - name: Verify API wheel contents
+        run: |
+          python - <<'PY'
+          import glob
+          import sys
+          import zipfile
+
+          wheels = sorted(glob.glob("dist/*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(
+                  "wheel content gate FAILED: expected exactly one wheel, found "
+                  + str(wheels)
+              )
+          wheel = wheels[0]
+          with zipfile.ZipFile(wheel) as zf:
+              names = zf.namelist()
+
+          errors = []
+          if not any(name.startswith("cloudsite/") for name in names):
+              errors.append("wheel is missing the cloudsite/ package")
+          for prefix in ("tests/", "data/"):
+              count = sum(name.startswith(prefix) for name in names)
+              if count:
+                  errors.append(f"wheel contains forbidden {prefix!r} payload ({count} entries)")
+          for name in names:
+              lower = name.lower()
+              if lower.endswith((
+                  ".db", ".sqlite", ".sqlite3", ".sqlite-journal",
+                  ".db-journal", ".db-wal", ".db-shm",
+              )):
+                  errors.append("wheel contains database file: " + name)
+              basename = lower.rsplit("/", 1)[-1]
+              if basename == ".env" or basename.startswith(".env."):
+                  errors.append("wheel contains environment file: " + name)
+
+          top_level = {name.split("/", 1)[0] for name in names}
+          extras = {
+              item for item in top_level
+              if not item.endswith((".dist-info", ".egg-info"))
+              and item != "cloudsite"
+          }
+          if extras:
+              errors.append("wheel contains unexpected top-level entries: " + str(sorted(extras)))
+          if errors:
+              print("wheel content gate FAILED for " + wheel, file=sys.stderr)
+              for error in errors:
+                  print("  - " + error, file=sys.stderr)
+              raise SystemExit(1)
+          print("wheel content gate PASSED for " + wheel)
+          print("  entries: " + str(len(names)))
+          print("  top-level: " + str(sorted(top_level)))
+          PY
 
   frontend:
     runs-on: ubuntu-latest
