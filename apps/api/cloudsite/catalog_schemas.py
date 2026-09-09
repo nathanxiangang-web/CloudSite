@@ -5,13 +5,17 @@ C1 surface stays self-contained. Service-level exceptions are declared here so
 both the routers and the parallel-developed ``services/catalog.py`` share one
 error contract without duplicating business logic. The routers translate these
 errors to HTTP responses; business validation stays in the service module.
+
+All identifiers use the reviewed C1 stable-ID contract: a 3-character prefix
+followed by 32 hex characters (35 characters total), matching the String(35)
+columns on CatalogEntry, CatalogRelease, CatalogAsset, and CatalogLocation.
 """
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---- Service contract errors ----
@@ -40,12 +44,16 @@ class CatalogEntryNotPreviewable(CatalogError):
 # ---- Shared field patterns ----
 
 _CONTENT_TYPE_PATTERN = r"^[a-z][a-z0-9_-]{1,39}$"
-_ASSET_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+_ENTRY_ID_PATTERN = r"^ce_[A-Za-z0-9_-]{32}$"
+_ASSET_ID_PATTERN = r"^ca_[A-Za-z0-9_-]{32}$"
+_RESOURCE_ID_PATTERN = r"^r_[A-Za-z0-9_-]{32}$"
 
 
 # ---- Request schemas ----
 
 class CatalogEntryCreateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(min_length=1, max_length=200)
     summary: str = Field(default="", max_length=500)
     description: str = Field(default="", max_length=4000)
@@ -53,6 +61,8 @@ class CatalogEntryCreateInput(BaseModel):
 
 
 class CatalogEntryUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     expected_revision: int = Field(ge=0)
     title: str | None = Field(default=None, min_length=1, max_length=200)
     summary: str | None = Field(default=None, max_length=500)
@@ -61,15 +71,28 @@ class CatalogEntryUpdateInput(BaseModel):
 
 
 class CatalogLocationBindInput(BaseModel):
-    asset_id: str = Field(min_length=1, max_length=64, pattern=_ASSET_ID_PATTERN)
-    display_name: str = Field(default="", max_length=200)
+    """Bind an indexed resource as a download location for a catalog asset.
+
+    Only stable resource_id references are accepted; arbitrary upstream or
+    mirror URLs are never accepted. Extra fields are forbidden so callers
+    cannot sneak in url/upstream_url/mirror_url fields. The resource_id must
+    exist in index.db (enforced by the service layer).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: str = Field(pattern=_ASSET_ID_PATTERN)
+    resource_id: str = Field(pattern=_RESOURCE_ID_PATTERN)
+    root_mapping_id: int | None = Field(default=None, ge=1)
+    label: str = Field(default="", max_length=100)
+    is_primary: bool = False
     sort_order: int = 0
 
 
 # ---- Response schemas ----
 
 class CatalogLocationSummary(BaseModel):
-    id: int
+    location_id: str
     asset_id: str
     display_name: str
     sort_order: int
@@ -80,7 +103,7 @@ class CatalogLocationSummary(BaseModel):
 
 
 class CatalogEntrySummary(BaseModel):
-    id: int
+    entry_id: str
     title: str
     summary: str
     content_type: str

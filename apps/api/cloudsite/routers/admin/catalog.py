@@ -5,6 +5,9 @@ admin_session_middleware (any /api/admin/** path requires an administrator
 cookie). HTTP translation lives here; business validation lives in
 services/catalog.py, imported lazily so application startup does not depend on
 the parallel-developed service module being present.
+
+Path and body identifiers use the reviewed C1 stable-ID contract (str, 35
+characters) matching CatalogEntry.entry_id and CatalogAsset.asset_id.
 """
 from fastapi import APIRouter, HTTPException, Query
 
@@ -65,7 +68,7 @@ async def admin_catalog_list(
 
 
 @router.get("/api/admin/catalog/{entry_id}", response_model=CatalogEntryDetail)
-async def admin_catalog_detail(entry_id: int):
+async def admin_catalog_detail(entry_id: str):
     from ...main import IndexSession, StateSession
 
     service = _catalog_service()
@@ -91,7 +94,7 @@ async def admin_catalog_create(payload: CatalogEntryCreateInput):
 
 
 @router.put("/api/admin/catalog/{entry_id}", response_model=CatalogEntryDetail)
-async def admin_catalog_update(entry_id: int, payload: CatalogEntryUpdateInput):
+async def admin_catalog_update(entry_id: str, payload: CatalogEntryUpdateInput):
     from ...main import IndexSession, StateSession
 
     service = _catalog_service()
@@ -109,7 +112,7 @@ async def admin_catalog_update(entry_id: int, payload: CatalogEntryUpdateInput):
     response_model=CatalogLocationSummary,
     status_code=201,
 )
-async def admin_catalog_bind_location(entry_id: int, payload: CatalogLocationBindInput):
+async def admin_catalog_bind_location(entry_id: str, payload: CatalogLocationBindInput):
     from ...main import IndexSession, StateSession
 
     service = _catalog_service()
@@ -126,7 +129,7 @@ async def admin_catalog_bind_location(entry_id: int, payload: CatalogLocationBin
     "/api/admin/catalog/{entry_id}/preview",
     response_model=CatalogPreviewOutput,
 )
-async def admin_catalog_preview(entry_id: int):
+async def admin_catalog_preview(entry_id: str):
     from ...main import IndexSession, StateSession
 
     service = _catalog_service()
@@ -141,7 +144,7 @@ async def admin_catalog_preview(entry_id: int):
     "/api/admin/catalog/{entry_id}/publish",
     response_model=CatalogEntryDetail,
 )
-async def admin_catalog_publish(entry_id: int):
+async def admin_catalog_publish(entry_id: str):
     from ...main import IndexSession, StateSession
 
     service = _catalog_service()
