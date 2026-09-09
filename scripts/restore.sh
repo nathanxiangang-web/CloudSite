@@ -27,14 +27,24 @@ done
 
 # Resolve the host data directory deterministically.
 # Precedence: exported CLOUDSITE_DATA_PATH > simple KEY=VALUE in the archive .env > ./data.
-# Relative paths resolve from $base_dir. Fail closed on empty or shell-expansion syntax;
-# never source or eval the .env file.
+# Relative paths resolve from $base_dir and must stay strictly below it.
+# Fail closed on empty explicit values, shell-expansion syntax, quotes, control
+# characters, leading ~, traversal, the base directory itself, and filesystem root.
+# Never source or eval the .env file.
+# Args: base_dir env_file context  (context = backup|restore; restore treats an
+# absolute path read from env_file as untrusted and rejects it before any move/copy).
 resolve_data_path() {
   local base_dir="$1"
   local env_file="${2:-}"
+  local context="${3:-backup}"
   local raw=""
-  if [[ -n "${CLOUDSITE_DATA_PATH:-}" ]]; then
+  local source="absent"
+  local err_tag="backup failed"
+  [[ "$context" == "restore" ]] && err_tag="restore failed"
+
+  if [[ -n "${CLOUDSITE_DATA_PATH+x}" ]]; then
     raw="$CLOUDSITE_DATA_PATH"
+    source="exported"
   elif [[ -n "$env_file" && -f "$env_file" ]]; then
     local line trimmed
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -43,23 +53,65 @@ resolve_data_path() {
       case "$trimmed" in
         CLOUDSITE_DATA_PATH=*)
           raw="${trimmed#CLOUDSITE_DATA_PATH=}"
+          source="envfile"
           break
           ;;
       esac
     done < "$env_file"
   fi
-  [[ -z "$raw" ]] && raw="./data"
-  case "$raw" in
-    *'$'*|*'`'*)
-      echo "恢复失败：CLOUDSITE_DATA_PATH 含不被支持的语法：$raw" >&2
+
+  if [[ "$source" == "absent" ]]; then
+    raw="./data"
+    source="default"
+  fi
+
+  if [[ "$source" != "default" ]]; then
+    if [[ -z "$raw" ]]; then
+      echo "$err_tag: CLOUDSITE_DATA_PATH is set to an empty value" >&2
+      exit 1
+    fi
+    case "$raw" in
+      '~'*|*'"'*|*"'"*|*'$'*|*'`'*)
+        echo "$err_tag: CLOUDSITE_DATA_PATH has unsupported syntax: $raw" >&2
+        exit 1
+        ;;
+    esac
+    if printf '%s' "$raw" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+      echo "$err_tag: CLOUDSITE_DATA_PATH contains control characters" >&2
+      exit 1
+    fi
+  fi
+
+  if [[ "$raw" == /* ]]; then
+    if [[ "$source" == "envfile" && "$context" == "restore" ]]; then
+      echo "$err_tag: absolute CLOUDSITE_DATA_PATH from archived .env rejected: $raw" >&2
+      exit 1
+    fi
+    local absolute_real
+    absolute_real="$(realpath -m -- "$raw")"
+    if [[ "$absolute_real" == "/" ]]; then
+      echo "$err_tag: CLOUDSITE_DATA_PATH cannot be filesystem root" >&2
+      exit 1
+    fi
+    printf '%s' "$absolute_real"
+    return
+  fi
+
+  local base_real cand_real
+  base_real="$(realpath -m -- "$base_dir")"
+  cand_real="$(realpath -m -- "$base_real/$raw")"
+  if [[ "$cand_real" == "$base_real" || "$cand_real" == "/" ]]; then
+    echo "$err_tag: CLOUDSITE_DATA_PATH cannot be base dir or root: $raw" >&2
+    exit 1
+  fi
+  case "$cand_real" in
+    "$base_real"/*) ;;
+    *)
+      echo "$err_tag: CLOUDSITE_DATA_PATH escapes base directory: $raw" >&2
       exit 1
       ;;
   esac
-  if [[ "$raw" == /* ]]; then
-    printf '%s' "$raw"
-  else
-    printf '%s/%s' "$base_dir" "$raw"
-  fi
+  printf '%s' "$cand_real"
 }
 
 bash "$ROOT/scripts/verify-backup.sh" "$BACKUP"
@@ -68,7 +120,7 @@ trap 'rm -rf -- "$STAGE"' EXIT
 tar -xzf "$BACKUP" -C "$STAGE"
 
 # 归档保持可移植 data/ 布局；恢复目标切换到目标项目配置的宿主数据目录。
-DATA_PATH="$(resolve_data_path "$TARGET" "$STAGE/.env")"
+DATA_PATH="$(resolve_data_path "$TARGET" "$STAGE/.env" "restore")"
 
 if [[ "$TARGET" == "$ROOT" ]]; then
   running="$(docker compose -f "$ROOT/docker-compose.yml" ps --status running -q 2>/dev/null || true)"

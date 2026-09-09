@@ -165,6 +165,70 @@ else
 fi
 [[ ! -e "$WORK/should-not-exist.tar.gz" ]] && pass "no archive on fail-closed" || fail "archive created despite fail-closed"
 
+# ---------------------------------------------------------------------------
+# Fail closed on empty, escaping, base, and canonical-root paths.
+# ---------------------------------------------------------------------------
+BAD="$WORK/nested/proj-invalid"
+mkdir -p "$BAD/data" "$BAD/scripts"
+cp "$ROOT/scripts/backup.sh" "$BAD/scripts/backup.sh"
+cp "$ROOT/scripts/verify-backup.sh" "$BAD/scripts/verify-backup.sh"
+cat > "$BAD/docker-compose.yml" <<'YML'
+services:
+  api:
+    image: fake/api
+YML
+
+assert_bad_backup_path() {
+  local label="$1" value="$2" out="$3"
+  printf 'CLOUDSITE_SECRET_KEY=invalid-path-fixture\nCLOUDSITE_DATA_PATH=%s\n' "$value" > "$BAD/.env"
+  if ( cd "$BAD" && bash scripts/backup.sh "$out" ) >&2; then
+    fail "$label should fail closed"
+  else
+    pass "$label fails closed"
+  fi
+  [[ ! -e "$out" ]] && pass "$label creates no archive" || fail "$label created an archive"
+}
+
+assert_bad_backup_path "empty data path" "" "$WORK/empty-should-not-exist.tar.gz"
+assert_bad_backup_path "relative traversal" "../../escape" "$WORK/traversal-should-not-exist.tar.gz"
+[[ ! -e "$WORK/escape" ]] && pass "relative traversal creates no external path" || fail "relative traversal created external path"
+assert_bad_backup_path "base-directory data path" "." "$WORK/base-should-not-exist.tar.gz"
+
+printf 'CLOUDSITE_SECRET_KEY=invalid-path-fixture\n' > "$BAD/.env"
+if ( cd "$BAD" && CLOUDSITE_DATA_PATH=/tmp/.. bash scripts/backup.sh "$WORK/root-should-not-exist.tar.gz" ) >&2; then
+  fail "canonical root path should fail closed"
+else
+  pass "canonical root path fails closed"
+fi
+[[ ! -e "$WORK/root-should-not-exist.tar.gz" ]] && pass "canonical root creates no archive" || fail "canonical root created an archive"
+
+# ---------------------------------------------------------------------------
+# Restore must not trust an absolute host path stored in the archive .env.
+# ---------------------------------------------------------------------------
+ABS_STAGE="$WORK/absolute-archive-stage"
+ABS_ARCHIVE="$WORK/absolute-archive.tar.gz"
+ABS_ESCAPE="$WORK/absolute-escape"
+ABS_TARGET="$WORK/absolute-target"
+mkdir -p "$ABS_STAGE"
+cp -a "$STAGE/." "$ABS_STAGE/"
+python3 - "$ABS_STAGE/.env" "$ABS_ESCAPE" <<'PYABS'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+text = text.replace("CLOUDSITE_DATA_PATH=./customdata", f"CLOUDSITE_DATA_PATH={sys.argv[2]}", 1)
+path.write_text(text, encoding="utf-8")
+PYABS
+tar -czf "$ABS_ARCHIVE" -C "$ABS_STAGE" .
+if bash "$ROOT/scripts/restore.sh" "$ABS_ARCHIVE" --target "$ABS_TARGET" >&2; then
+  fail "archived absolute restore path should fail closed"
+else
+  pass "archived absolute restore path fails closed"
+fi
+[[ ! -e "$ABS_ESCAPE" ]] && pass "archived absolute path creates no external data" || fail "archived absolute path wrote external data"
+[[ ! -e "$ABS_TARGET" ]] && pass "rejected restore creates no target" || fail "rejected restore created target"
+
 if [[ "$FAIL" == "0" ]]; then
   echo "ALL TESTS PASSED"
   exit 0
