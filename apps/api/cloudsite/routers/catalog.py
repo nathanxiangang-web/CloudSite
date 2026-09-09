@@ -11,6 +11,7 @@ from ..services.catalog_views import (
     catalog_release_view,
     published_catalog_page,
 )
+from ..services.catalog_search import search_published_catalog
 
 router = APIRouter()
 
@@ -78,6 +79,36 @@ async def catalog_entries(
             content_type=content_type,
             tag=tag,
         )
+
+
+@router.get("/api/catalog/search")
+async def catalog_search(
+    q: str = "",
+    content_type: str | None = Query(default=None, alias="type"),
+    tag: str | None = None,
+    platform: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=24, ge=1, le=100),
+):
+    from ..main import IndexSession, StateSession
+
+    try:
+        async with StateSession() as state, IndexSession() as index:
+            return await search_published_catalog(
+                state,
+                index,
+                query=q,
+                page=page,
+                page_size=page_size,
+                content_type=content_type,
+                tag=tag,
+                platform=platform,
+            )
+    except ValueError as exc:
+        raise HTTPException(
+            400,
+            {"code": "CATALOG_SEARCH_INVALID", "message": str(exc)},
+        ) from exc
 
 
 @router.get("/api/catalog/entries/{entry_id}")
