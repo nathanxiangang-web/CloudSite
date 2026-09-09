@@ -40,10 +40,14 @@ class CatalogEntryUpdateInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: int = Field(ge=0)
+    slug: str | None = Field(default=None, min_length=1, max_length=160)
     title: str | None = Field(default=None, min_length=1, max_length=200)
     summary: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=4000)
     content_type: str | None = Field(default=None, pattern=_CONTENT_TYPE_PATTERN)
+    cover_resource_id: str | None = Field(default=None, max_length=64)
+    status: Literal["draft", "published", "archived", "disabled"] | None = None
+    sort_order: int | None = None
 
 
 class CatalogEntryPublishInput(BaseModel):

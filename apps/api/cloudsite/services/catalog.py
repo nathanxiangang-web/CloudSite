@@ -326,6 +326,7 @@ async def update_catalog_entry(
     entry_id: str,
     *,
     expected_revision: int,
+    slug: str | object = _UNSET,
     title: str | object = _UNSET,
     summary: str | object = _UNSET,
     description: str | object = _UNSET,
@@ -350,6 +351,17 @@ async def update_catalog_entry(
 
     before = _entry_snapshot(entry)
     changed = False
+    if slug is not _UNSET and entry.slug != slug:
+        existing_slug = await state.scalar(
+            select(CatalogEntry).where(
+                CatalogEntry.slug == slug,
+                CatalogEntry.entry_id != entry_id,
+            )
+        )
+        if existing_slug is not None:
+            raise CatalogSlugConflict(str(slug))
+        entry.slug = slug  # type: ignore[assignment]
+        changed = True
     if title is not _UNSET and entry.title != title:
         entry.title = title  # type: ignore[assignment]
         changed = True

@@ -45,6 +45,9 @@ def test_catalog_routes_registered():
     assert found["/api/catalog/{entry_id}"] == {"GET"}
     assert found["/api/admin/catalog"] == {"GET", "POST"}
     assert found["/api/admin/catalog/{entry_id}"] == {"GET", "PUT"}
+    assert found["/api/admin/catalog/entries"] == {"GET", "POST"}
+    assert found["/api/admin/catalog/entries/{entry_id}"] == {"GET", "PATCH"}
+    assert found["/api/admin/catalog/entries/{entry_id}/publish"] == {"POST"}
     assert found["/api/admin/catalog/{entry_id}/locations"] == {"POST"}
     assert found["/api/admin/catalog/{entry_id}/preview"] == {"POST"}
     assert found["/api/admin/catalog/{entry_id}/publish"] == {"POST"}
@@ -143,6 +146,22 @@ async def test_real_create_bind_publish_and_public_read(monkeypatch):
         entry_id = created.json()["entry_id"]
         assert created.json()["revision"] == 1
 
+        admin_listing = await admin.get("/api/admin/catalog/entries")
+        assert admin_listing.status_code == 200, admin_listing.text
+        assert admin_listing.json()["items"][0]["slug"] == "cloudsite"
+        updated = await admin.patch(
+            f"/api/admin/catalog/entries/{entry_id}",
+            json={"expected_revision": 1, "summary": "Updated summary"},
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["revision"] == 2
+        stale = await admin.patch(
+            f"/api/admin/catalog/entries/{entry_id}",
+            json={"expected_revision": 1, "title": "Stale overwrite"},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "CATALOG_REVISION_CONFLICT"
+
         async with state_factory() as state:
             from cloudsite.models import CatalogRelease
 
@@ -177,12 +196,12 @@ async def test_real_create_bind_publish_and_public_read(monkeypatch):
         assert preview.json()["previewable"] is True
 
         published = await admin.post(
-            f"/api/admin/catalog/{entry_id}/publish",
-            json={"expected_revision": 1},
+            f"/api/admin/catalog/entries/{entry_id}/publish",
+            json={"expected_revision": 2},
         )
         assert published.status_code == 200, published.text
         assert published.json()["status"] == "published"
-        assert published.json()["revision"] == 2
+        assert published.json()["revision"] == 3
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as reader:
         reader.cookies.set(USER_SESSION_COOKIE, user_token)
