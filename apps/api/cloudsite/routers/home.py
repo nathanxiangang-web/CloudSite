@@ -27,6 +27,12 @@ _alist_connection_cache: dict = {"data": None, "fetched_at": 0.0}
 _ALIST_CONNECTION_CACHE_TTL_SECONDS = 30
 
 
+def invalidate_home_cache() -> None:
+    """Drop cached home data after an admin mutation changes its contents."""
+    _home_cache["data"] = None
+    _home_cache["fetched_at"] = 0.0
+
+
 @router.get("/api/home")
 async def home():
     from ..main import StateSession, IndexSession, resource_dict, collection_dict

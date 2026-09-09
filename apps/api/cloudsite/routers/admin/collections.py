@@ -5,6 +5,7 @@ from sqlalchemy import delete, desc, select
 from ...models import Collection, CollectionItem, Resource
 from ...schemas import CollectionInput, CollectionItemsInput
 from ...services.collections import collection_dict
+from ..home import invalidate_home_cache
 
 router = APIRouter()
 
@@ -61,6 +62,7 @@ async def create_collection(payload: CollectionInput):
         session.add(row)
         await session.commit()
         await session.refresh(row)
+        invalidate_home_cache()
         return {"id": row.id}
 
 
@@ -75,6 +77,7 @@ async def update_collection(collection_id: int, payload: CollectionInput):
         for key, value in payload.model_dump().items():
             setattr(row, key, value)
         await session.commit()
+        invalidate_home_cache()
         return {"ok": True}
 
 
@@ -94,6 +97,7 @@ async def set_collection_items(collection_id: int, payload: CollectionItemsInput
         await state.execute(delete(CollectionItem).where(CollectionItem.collection_id == collection_id))
         state.add_all([CollectionItem(collection_id=collection_id, resource_id=resource_id, sort_order=position) for position, resource_id in enumerate(resource_ids)])
         await state.commit()
+        invalidate_home_cache()
         return {"ok": True, "item_count": len(resource_ids)}
 
 
@@ -107,4 +111,5 @@ async def delete_collection(collection_id: int):
             raise HTTPException(404, "合集不存在")
         await session.delete(row)
         await session.commit()
+        invalidate_home_cache()
         return {"ok": True}
