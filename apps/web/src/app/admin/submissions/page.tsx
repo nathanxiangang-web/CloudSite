@@ -5,6 +5,7 @@ import { ClipboardList, ExternalLink, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api } from "@/lib/api";
+import { buildReviewPayload, canPublishSubmission, defaultReviewAction, isPublishReady, type ReviewAction } from "@/lib/submission-review";
 
 type Submission = {
   id: number;
@@ -23,6 +24,7 @@ type Submission = {
   reviewed_at: string | null;
   created_at: string;
   updated_at: string;
+  published_resource_id: string | null;
 };
 
 const statusLabel: Record<Submission["status"], string> = { pending: "待审核", approved: "已通过", rejected: "已拒绝", published: "已发布" };
@@ -40,14 +42,15 @@ export default function AdminSubmissionsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | Submission["status"]>("pending");
   const [search, setSearch] = useState("");
   const [reviewingId, setReviewingId] = useState<number | null>(null);
-  const [action, setAction] = useState<"approve" | "reject" | "publish">("approve");
+  const [action, setAction] = useState<ReviewAction>("approve");
   const [adminNote, setAdminNote] = useState("");
+  const [resourceId, setResourceId] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const query = useQuery({ queryKey: ["admin-submissions", statusFilter], queryFn: () => api<{ items: Submission[] }>(`/api/admin/submissions${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`) });
   const review = useMutation({
-    mutationFn: () => api<Submission>(`/api/admin/submissions/${reviewingId}`, { method: "PATCH", body: JSON.stringify({ action, admin_note: adminNote }) }),
-    onSuccess: () => { setReviewingId(null); setAdminNote(""); client.invalidateQueries({ queryKey: ["admin-submissions"] }); },
+    mutationFn: () => api<Submission>(`/api/admin/submissions/${reviewingId}`, { method: "PATCH", body: JSON.stringify(buildReviewPayload(action, adminNote, resourceId)) }),
+    onSuccess: () => { setReviewingId(null); setAdminNote(""); setResourceId(""); client.invalidateQueries({ queryKey: ["admin-submissions"] }); },
   });
   const remove = useMutation({
     mutationFn: (id: number) => api<{ ok: boolean }>(`/api/admin/submissions/${id}`, { method: "DELETE" }),
@@ -60,10 +63,15 @@ export default function AdminSubmissionsPage() {
     return `${item.resource_name} ${item.username} ${item.description} ${item.download_url}`.toLowerCase().includes(needle);
   });
 
-  function openReview(id: number, defaultAction: "approve" | "reject" | "publish") {
+  const reviewingItem = reviewingId !== null ? (query.data?.items ?? []).find((item) => item.id === reviewingId) : undefined;
+  const canPublish = canPublishSubmission(reviewingItem?.status ?? "pending");
+  const publishReady = isPublishReady(action, resourceId);
+
+  function openReview(id: number, defaultAction: ReviewAction) {
     setReviewingId(id);
     setAction(defaultAction);
     setAdminNote("");
+    setResourceId("");
   }
 
   return <AdminShell title="投稿审核"><div className="admin-page">
@@ -77,14 +85,15 @@ export default function AdminSubmissionsPage() {
         <span>{formatTime(item.created_at)}</span>
         <span className="submission-actions">
           {reviewingId === item.id ? <span className="submission-review-form">
-            <select value={action} onChange={(event) => setAction(event.target.value as "approve" | "reject" | "publish")}><option value="approve">通过</option><option value="reject">拒绝</option><option value="publish">发布</option></select>
+            <select value={action} onChange={(event) => setAction(event.target.value as ReviewAction)}><option value="approve">通过</option><option value="reject">拒绝</option>{canPublish && <option value="publish">发布</option>}</select>
             <input value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="审核备注（可选）" maxLength={500} />
-            <button className="primary" disabled={review.isPending} onClick={() => review.mutate()}>{review.isPending ? "处理中…" : "确认"}</button>
+            {action === "publish" && <input value={resourceId} onChange={(event) => setResourceId(event.target.value)} placeholder="资源 ID（必填）" maxLength={200} />}
+            <button className="primary" disabled={review.isPending || !publishReady} onClick={() => review.mutate()}>{review.isPending ? "处理中…" : "确认"}</button>
             <button onClick={() => setReviewingId(null)}>取消</button>
           </span> : <>
             {item.download_url && <a title="打开网盘链接" href={item.download_url} target="_blank" rel="noreferrer"><ExternalLink /></a>}
             {item.status === "pending" && <button onClick={() => openReview(item.id, "approve")}>审核</button>}
-            {item.status !== "pending" && <button onClick={() => openReview(item.id, item.status === "rejected" ? "reject" : "publish")}>改判</button>}
+            {item.status !== "pending" && <button onClick={() => openReview(item.id, defaultReviewAction(item.status))}>改判</button>}
             {item.status === "rejected" && (deletingId === item.id ? <span className="submission-delete-confirm">
               <button className="danger" disabled={remove.isPending} onClick={() => remove.mutate(item.id)}>{remove.isPending ? "删除中…" : "确认删除"}</button>
               <button onClick={() => setDeletingId(null)}>取消</button>
@@ -111,9 +120,10 @@ export default function AdminSubmissionsPage() {
           {item.admin_note && <div><dt>审核备注</dt><dd>{item.admin_note}</dd></div>}
         </dl>
         <div className="submission-review-inline">
-          <select value={action} onChange={(event) => setAction(event.target.value as "approve" | "reject" | "publish")}><option value="approve">通过</option><option value="reject">拒绝</option><option value="publish">发布</option></select>
+          <select value={action} onChange={(event) => setAction(event.target.value as ReviewAction)}><option value="approve">通过</option><option value="reject">拒绝</option>{canPublish && <option value="publish">发布</option>}</select>
           <input value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="审核备注（可选）" maxLength={500} />
-          <button className="primary" disabled={review.isPending} onClick={() => review.mutate()}>{review.isPending ? "处理中…" : "提交审核"}</button>
+          {action === "publish" && <input value={resourceId} onChange={(event) => setResourceId(event.target.value)} placeholder="资源 ID（必填）" maxLength={200} />}
+          <button className="primary" disabled={review.isPending || !publishReady} onClick={() => review.mutate()}>{review.isPending ? "处理中…" : "提交审核"}</button>
           <button onClick={() => setReviewingId(null)}>关闭</button>
         </div>
       </section>; })()}

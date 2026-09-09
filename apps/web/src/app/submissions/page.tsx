@@ -6,6 +6,7 @@ import Link from "next/link";
 import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
 import { api } from "@/lib/api";
+import { publishedResultHref } from "@/lib/submission-review";
 
 type Submission = {
   id: number;
@@ -18,6 +19,7 @@ type Submission = {
   admin_note: string;
   reviewed_at: string | null;
   created_at: string;
+  published_resource_id: string | null;
 };
 
 const statusLabel: Record<Submission["status"], string> = { pending: "待审核", approved: "已通过", rejected: "已拒绝", published: "已发布" };
@@ -42,14 +44,15 @@ export default function MySubmissionsPage() {
       : query.error ? <div className="empty error-state">加载失败：{query.error.message}</div>
       : items.length === 0 ? <div className="empty">你还没有提交过投稿。前往 <Link href="/submit">资源投稿</Link> 提交第一个资源。</div>
       : <div className="account-resource-list">
-        {items.map((item) => <article key={item.id}>
+        {items.map((item) => { const resultHref = publishedResultHref(item.status, item.published_resource_id); return <article key={item.id}>
           <div>
             <strong>{item.resource_name}</strong>
             <small>{typeLabel[item.resource_type] ?? item.resource_type} · {formatTime(item.created_at)}</small>
             {item.admin_note && <small className="submission-admin-note">审核备注：{item.admin_note}</small>}
+            {resultHref && <Link className="submission-result-link" href={resultHref}>查看结果</Link>}
           </div>
           <b className={`submission-status ${item.status}`}>{statusLabel[item.status]}</b>
-        </article>)}
+        </article>; })}
       </div>}
     <SiteFooter />
   </div></PublicShell>;
