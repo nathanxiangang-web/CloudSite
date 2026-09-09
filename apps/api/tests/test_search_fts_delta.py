@@ -3,8 +3,8 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from cloudsite.database import IndexBase
-from cloudsite.models import Folder, Resource
+from cloudsite.database import IndexBase, StateBase
+from cloudsite.models import Folder, Resource, SystemSetting
 from cloudsite.search import FtsDeltaOp, apply_search_fts_delta
 
 
@@ -82,6 +82,14 @@ async def test_rename_cascade_updates_breadcrumb_prefix():
 
 
 async def test_failed_op_marks_dirty(monkeypatch):
+    from cloudsite import search as search_mod
+
+    state_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    state_factory = async_sessionmaker(state_engine, expire_on_commit=False)
+    async with state_engine.begin() as conn:
+        await conn.run_sync(StateBase.metadata.create_all)
+    monkeypatch.setattr(search_mod, "StateSession", state_factory)
+
     engine, factory = await _make_factory()
     async with factory() as session:
         op = FtsDeltaOp(op_type="insert", object_id="r1", object_type="resource", name="test", content_type="file", breadcrumb_text="/root/test")
@@ -98,7 +106,12 @@ async def test_failed_op_marks_dirty(monkeypatch):
         monkeypatch.setattr(session, "execute", failing_execute)
         result = await apply_search_fts_delta(session, [op])
         assert result["failed"] >= 1
+    async with state_factory() as state:
+        marker = await state.get(SystemSetting, search_mod.SEARCH_INDEX_DIRTY_KEY)
+        assert marker is not None
+        assert marker.value == "true"
     await engine.dispose()
+    await state_engine.dispose()
 
 
 async def test_partial_failure_preserves_prior_ops(monkeypatch):

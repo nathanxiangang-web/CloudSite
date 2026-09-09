@@ -76,17 +76,17 @@ async def test_download_returns_error_when_alist_is_offline(monkeypatch):
     """AList 不可用时，下载返回清晰错误（302 到错误页），不崩溃。"""
     state_engine, index_engine, token = await _alist_offline_store(monkeypatch)
 
-    # Mock AList 不可用
+    from cloudsite.routers import downloads as downloads_router
+
     async def failing_resolve(*_args, **_kwargs):
         raise DownloadError("AL-503", "AList 不可用", "resolve")
 
-    monkeypatch.setattr(main, "resolve_download_entry", failing_resolve)
+    monkeypatch.setattr(downloads_router, "resolve_download_entry", failing_resolve)
 
-    # Mock 下载限流为允许
     from types import SimpleNamespace
     async def allow_rate(*_args):
         return SimpleNamespace(allowed=True, retry_after=0)
-    monkeypatch.setattr(main, "check_download_rate", allow_rate)
+    monkeypatch.setattr(downloads_router, "check_download_rate", allow_rate)
 
     transport = httpx.ASGITransport(app=main.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
