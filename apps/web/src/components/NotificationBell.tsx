@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Pin, Info, CheckCircle2, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
+import { useHydrated } from "./useHydrated";
 
 type Notification = {
   id: number;
@@ -59,6 +60,7 @@ function formatTime(value: string) {
 
 export function NotificationBell() {
   const client = useQueryClient();
+  const hydrated = useHydrated();
   const [open, setOpen] = useState(false);
   const lastReadAt = useSyncExternalStore(subscribeLastRead, getLastReadSnapshot, () => "");
   const ref = useRef<HTMLDivElement>(null);
@@ -89,7 +91,7 @@ export function NotificationBell() {
   });
 
   const items = query.data?.items ?? [];
-  const unreadCount = lastReadAt
+  const unreadCount = !hydrated ? 0 : lastReadAt
     ? items.filter((item) => new Date(item.published_at) > new Date(lastReadAt)).length
     : items.length;
 

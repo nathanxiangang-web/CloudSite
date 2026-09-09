@@ -7,8 +7,10 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, useAuth } from "@/lib/auth";
 import { useSite } from "@/lib/site";
+import { useHydrated } from "./useHydrated";
 
 export function AuthMenu() {
+  const hydrated = useHydrated();
   const auth = useAuth();
   const site = useSite();
   const queryClient = useQueryClient();
@@ -21,7 +23,7 @@ export function AuthMenu() {
     },
   });
 
-  if (auth.isLoading) return <span className="auth-menu-loading">正在读取账号…</span>;
+  if (!hydrated || auth.isLoading) return <span className="auth-menu-loading">正在读取账号…</span>;
   if (!auth.data?.authenticated || !auth.data.user) {
     return <nav className="auth-links" aria-label="账号入口">
       <Link href="/login"><LogIn />登录</Link>
