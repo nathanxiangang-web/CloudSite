@@ -1,5 +1,12 @@
 import { api } from "./api";
 import { buildCatalogEntriesQuery } from "./catalog";
+import {
+  adminCatalogEntryPath,
+  adminCatalogEntryPublishPath,
+  buildAdminCatalogPublishPayload,
+  type AdminCatalogEntryPublishInput,
+  type AdminCatalogEntryUpdateInput,
+} from "./catalog-admin-helpers";
 import type {
   CatalogAssetDetail,
   CatalogAssetKind,
@@ -15,6 +22,7 @@ import type {
 } from "./catalog";
 
 export type AdminCatalogEntry = CatalogEntryDetail & {
+  revision: number;
   sort_order: number;
   created_at: string;
   published_at: string | null;
@@ -121,8 +129,12 @@ export async function createAdminCatalogEntry(input: CatalogEntryInput): Promise
   return api<{ entry_id: string }>("/api/admin/catalog/entries", { method: "POST", body: JSON.stringify(input) });
 }
 
-export async function updateAdminCatalogEntry(entryId: string, input: Partial<CatalogEntryInput>): Promise<void> {
-  return api<void>(`/api/admin/catalog/entries/${encodeURIComponent(entryId)}`, { method: "PATCH", body: JSON.stringify(input) });
+export async function updateAdminCatalogEntry(entryId: string, input: AdminCatalogEntryUpdateInput): Promise<void> {
+  return api<void>(adminCatalogEntryPath(entryId), { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function publishAdminCatalogEntry(entryId: string, expectedRevision: number): Promise<void> {
+  return api<void>(adminCatalogEntryPublishPath(entryId), { method: "POST", body: JSON.stringify(buildAdminCatalogPublishPayload(expectedRevision)) });
 }
 
 export async function deleteAdminCatalogEntry(entryId: string): Promise<void> {
@@ -184,6 +196,15 @@ export async function fetchAdminCatalogRevisions(params: { target_id?: string; p
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return api<CatalogPage<AdminCatalogRevision>>(`/api/admin/catalog/revisions${suffix}`);
 }
+
+export {
+  adminCatalogEntryPath,
+  adminCatalogEntryPublishPath,
+  buildAdminCatalogEntryUpdatePayload,
+  buildAdminCatalogPublishPayload,
+  type AdminCatalogEntryPublishInput,
+  type AdminCatalogEntryUpdateInput,
+} from "./catalog-admin-helpers";
 
 export type {
   CatalogAssetDetail,

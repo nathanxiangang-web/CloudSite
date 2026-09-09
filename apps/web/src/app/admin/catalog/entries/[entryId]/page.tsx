@@ -25,6 +25,7 @@ import {
   fetchAdminCatalogReleases,
   fetchAdminCatalogAssets,
   fetchAdminCatalogLocations,
+  publishAdminCatalogEntry,
   updateAdminCatalogAsset,
   updateAdminCatalogEntry,
   updateAdminCatalogLocation,
@@ -64,15 +65,24 @@ export default function AdminCatalogEntryEditor() {
   }
 
   const save = useMutation({
-    mutationFn: () => updateAdminCatalogEntry(entryId, { title: title.trim(), slug: slug.trim() || undefined, content_type: contentType, summary, description, cover_resource_id: coverResourceId || null, status }),
+    mutationFn: () => {
+      if (!entry.data) throw new Error("条目尚未加载");
+      return updateAdminCatalogEntry(entryId, { expected_revision: entry.data.revision, title: title.trim(), slug: slug.trim() || undefined, content_type: contentType, summary, description, cover_resource_id: coverResourceId || null, status });
+    },
     onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-entry", entryId] }); client.invalidateQueries({ queryKey: ["admin-catalog-entries"] }); },
   });
   const publish = useMutation({
-    mutationFn: () => updateAdminCatalogEntry(entryId, { status: "published" }),
+    mutationFn: () => {
+      if (!entry.data) throw new Error("条目尚未加载");
+      return publishAdminCatalogEntry(entryId, entry.data.revision);
+    },
     onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-entry", entryId] }); client.invalidateQueries({ queryKey: ["admin-catalog-entries"] }); },
   });
   const unpublish = useMutation({
-    mutationFn: () => updateAdminCatalogEntry(entryId, { status: "draft" }),
+    mutationFn: () => {
+      if (!entry.data) throw new Error("条目尚未加载");
+      return updateAdminCatalogEntry(entryId, { expected_revision: entry.data.revision, status: "draft" });
+    },
     onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-entry", entryId] }); client.invalidateQueries({ queryKey: ["admin-catalog-entries"] }); },
   });
 
@@ -105,6 +115,7 @@ export default function AdminCatalogEntryEditor() {
       <div className="form-actions"><button className="primary" disabled={save.isPending} onClick={() => save.mutate()}>保存条目</button></div>
       {save.error && <p className="form-error">{save.error.message}</p>}
       {publish.error && <p className="form-error">{publish.error.message}</p>}
+      {unpublish.error && <p className="form-error">{unpublish.error.message}</p>}
     </section>
 
     <ReleaseManager entryId={entryId} />
