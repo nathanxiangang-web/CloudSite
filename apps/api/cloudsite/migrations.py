@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,10 +445,77 @@ async def state_v5_to_v6_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+
+
+
+async def state_v6_to_v7_upgrade(conn: AsyncConnection) -> None:
+    """Schema v6 -> v7: explicit release and asset delivery metadata, idempotent.
+
+    Adds explicit, non-inferred metadata columns to catalog_releases and
+    catalog_assets so callers can distinguish versions, channels, platforms,
+    architectures, and package forms without parsing slugs or names.
+
+    catalog_releases gains:
+    - channel: explicit release channel (default 'unknown'; never inferred
+      from slugs or names)
+    - release_date: optional explicit release date (nullable)
+    - is_recommended: explicit recommendation flag (default 0). At most one
+      release per entry may be recommended, enforced by a partial unique index
+      on entry_id WHERE is_recommended = 1. Recommendation never depends on
+      version-string comparison.
+
+    catalog_assets gains:
+    - architecture: explicit architecture (default 'unknown'; never inferred)
+    - package_type: explicit package form (default 'unknown'; never inferred)
+
+    Existing C1 rows keep every current column, ID, and uniqueness rule. New
+    columns use conservative defaults so unknown metadata stays 'unknown' and
+    existing unversioned C1 releases remain valid without inference.
+    """
+    release_cols = await conn.exec_driver_sql("PRAGMA table_info(catalog_releases)")
+    release_col_names = {row[1] for row in release_cols.fetchall()}
+    if "channel" not in release_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_releases ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'unknown'"
+        )
+    if "release_date" not in release_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_releases ADD COLUMN release_date DATETIME"
+        )
+    if "is_recommended" not in release_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_releases ADD COLUMN is_recommended BOOLEAN NOT NULL DEFAULT 0"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_releases_channel ON catalog_releases (channel)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_releases_one_recommended_per_entry "
+        "ON catalog_releases (entry_id) WHERE is_recommended = 1"
+    )
+
+    asset_cols = await conn.exec_driver_sql("PRAGMA table_info(catalog_assets)")
+    asset_col_names = {row[1] for row in asset_cols.fetchall()}
+    if "architecture" not in asset_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_assets ADD COLUMN architecture VARCHAR(20) NOT NULL DEFAULT 'unknown'"
+        )
+    if "package_type" not in asset_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_assets ADD COLUMN package_type VARCHAR(40) NOT NULL DEFAULT 'unknown'"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_assets_architecture ON catalog_assets (architecture)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_assets_package_type ON catalog_assets (package_type)"
+    )
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
     Migration(id="state_v3_to_v4", from_version=3, to_version=4, upgrade=state_v3_to_v4_upgrade),
     Migration(id="state_v4_to_v5", from_version=4, to_version=5, upgrade=state_v4_to_v5_upgrade),
     Migration(id="state_v5_to_v6", from_version=5, to_version=6, upgrade=state_v5_to_v6_upgrade),
+    Migration(id="state_v6_to_v7", from_version=6, to_version=7, upgrade=state_v6_to_v7_upgrade),
 ]

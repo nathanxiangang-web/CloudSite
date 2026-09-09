@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import IndexBase, StateBase
@@ -591,10 +591,21 @@ class CatalogRelease(StateBase):
     release_notes: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    channel: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown", index=True)
+    release_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_recommended: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    __table_args__ = (UniqueConstraint("entry_id", "slug"),)
+    __table_args__ = (
+        UniqueConstraint("entry_id", "slug"),
+        Index(
+            "ux_catalog_releases_one_recommended_per_entry",
+            "entry_id",
+            unique=True,
+            sqlite_where=text("is_recommended = 1"),
+        ),
+    )
 
 
 class CatalogAsset(StateBase):
@@ -607,6 +618,8 @@ class CatalogAsset(StateBase):
     display_name: Mapped[str] = mapped_column(String(500))
     platform: Mapped[str] = mapped_column(String(40), default="")
     kind: Mapped[str] = mapped_column(String(40), default="file")
+    architecture: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown", index=True)
+    package_type: Mapped[str] = mapped_column(String(40), default="unknown", server_default="unknown")
     checksum: Mapped[str | None] = mapped_column(String(200), nullable=True)
     checksum_algorithm: Mapped[str | None] = mapped_column(String(20), nullable=True)
     size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

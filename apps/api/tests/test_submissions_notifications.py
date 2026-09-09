@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from cloudsite import models  # noqa: F401  注册所有表到 metadata
 from cloudsite.database import StateBase
 from cloudsite.migrations import (
+    CURRENT_SCHEMA_VERSION,
     STATE_MIGRATIONS,
     get_state_schema_version,
     run_migrations,
@@ -51,8 +52,8 @@ async def test_run_migrations_advances_v1_to_current(tmp_path):
         final, applied = await run_migrations(
             conn, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
         )
-        assert final == 4
-        assert applied == ["state_v1_to_v2", "state_v2_to_v3", "state_v3_to_v4"]
+        assert final == CURRENT_SCHEMA_VERSION
+        assert applied == [m.id for m in STATE_MIGRATIONS]
     await engine.dispose()
 
 
@@ -65,8 +66,8 @@ async def test_run_migrations_advances_v3_to_v4(tmp_path):
         final, applied = await run_migrations(
             conn, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
         )
-        assert final == 4
-        assert applied == ["state_v3_to_v4"]
+        assert final == CURRENT_SCHEMA_VERSION
+        assert applied == [m.id for m in STATE_MIGRATIONS if m.from_version >= 3]
     await engine.dispose()
 
 
