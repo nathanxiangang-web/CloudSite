@@ -193,6 +193,20 @@ async def test_real_create_bind_publish_and_public_read(monkeypatch):
         assert detail.status_code == 200, detail.text
         assert detail.json()["locations"][0]["asset_id"] == asset.asset.asset_id
 
+        rich_listing = await reader.get("/api/catalog/entries")
+        assert rich_listing.status_code == 200, rich_listing.text
+        assert rich_listing.json()["items"][0]["availability"] == "available"
+        rich_detail = await reader.get(f"/api/catalog/entries/{entry_id}")
+        assert rich_detail.status_code == 200, rich_detail.text
+        assert rich_detail.json()["releases"][0]["release_id"] == release.release_id
+        release_detail = await reader.get(f"/api/catalog/releases/{release.release_id}")
+        assert release_detail.status_code == 200, release_detail.text
+        assert release_detail.json()["assets"][0]["asset_id"] == asset.asset.asset_id
+        asset_detail = await reader.get(f"/api/catalog/assets/{asset.asset.asset_id}")
+        assert asset_detail.status_code == 200, asset_detail.text
+        assert asset_detail.json()["locations"][0]["resource_id"] == "r_" + "b" * 32
+        assert asset_detail.json()["locations"][0]["download_url"].startswith("/d/")
+
     await state_engine.dispose()
     await index_engine.dispose()
 
@@ -212,6 +226,8 @@ async def test_public_detail_hides_draft(monkeypatch):
         response = await reader.get(f"/api/catalog/{entry_id}")
         assert response.status_code == 404
         assert response.json()["detail"]["code"] == "CATALOG_ENTRY_NOT_FOUND"
+        rich_response = await reader.get(f"/api/catalog/entries/{entry_id}")
+        assert rich_response.status_code == 404
     await state_engine.dispose()
     await index_engine.dispose()
 

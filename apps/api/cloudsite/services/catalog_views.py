@@ -1,0 +1,303 @@
+"""Catalog read models used by the version-aware web client.
+
+Every public projection is assembled from state.db and then revalidated
+against the live index and enabled content roots. Stale or disabled locations
+are never returned as downloadable choices.
+"""
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..models import (
+    CatalogAsset,
+    CatalogEntry,
+    CatalogLocation,
+    CatalogRelation,
+    CatalogRelease,
+    CatalogTag,
+    CatalogTagAssignment,
+    Resource,
+)
+from .catalog import enabled_root_ids
+
+
+class CatalogViewNotFound(Exception):
+    pass
+
+
+async def _location_view(
+    index: AsyncSession,
+    location: CatalogLocation,
+    *,
+    roots: set[int],
+    content_type: str,
+) -> dict:
+    resource = await index.get(Resource, location.resource_id)
+    available = bool(
+        location.status == "active"
+        and resource is not None
+        and resource.status == "active"
+        and resource.root_mapping_id is not None
+        and resource.root_mapping_id in roots
+        and resource.content_type == content_type
+    )
+    return {
+        "location_id": location.location_id,
+        "resource_id": location.resource_id,
+        "root_mapping_id": location.root_mapping_id,
+        "label": location.label,
+        "is_primary": location.is_primary,
+        "status": location.status,
+        "availability": "available" if available else "unavailable",
+        "download_url": f"/d/{location.resource_id}" if available else "",
+        "resource": (
+            {
+                "id": resource.id,
+                "name": resource.name,
+                "extension": resource.extension,
+                "size": resource.size or 0,
+                "content_type": resource.content_type,
+            }
+            if available and resource is not None
+            else None
+        ),
+    }
+
+
+async def catalog_asset_view(
+    state: AsyncSession,
+    index: AsyncSession,
+    asset: CatalogAsset,
+    *,
+    content_type: str,
+    public: bool,
+    roots: set[int] | None = None,
+) -> dict:
+    active_roots = roots if roots is not None else await enabled_root_ids(state)
+    locations = list(
+        (
+            await state.scalars(
+                select(CatalogLocation)
+                .where(CatalogLocation.asset_id == asset.asset_id)
+                .order_by(CatalogLocation.is_primary.desc(), CatalogLocation.created_at)
+            )
+        ).all()
+    )
+    location_views = [
+        await _location_view(index, location, roots=active_roots, content_type=content_type)
+        for location in locations
+    ]
+    if public:
+        location_views = [
+            location for location in location_views if location["availability"] == "available"
+        ]
+    available = asset.status == "active" and bool(location_views)
+    return {
+        "asset_id": asset.asset_id,
+        "slug": asset.slug,
+        "display_name": asset.display_name,
+        "platform": asset.platform or "unknown",
+        "architecture": getattr(asset, "architecture", "unknown") or "unknown",
+        "package_type": getattr(asset, "package_type", "unknown") or "unknown",
+        "kind": asset.kind,
+        "checksum": asset.checksum,
+        "checksum_algorithm": asset.checksum_algorithm,
+        "size": asset.size,
+        "status": asset.status,
+        "availability": "available" if available else "unavailable",
+        "location_count": len(location_views),
+        "locations": location_views,
+    }
+
+
+async def _entry_for_release(state: AsyncSession, release: CatalogRelease) -> CatalogEntry:
+    entry = await state.get(CatalogEntry, release.entry_id)
+    if entry is None:
+        raise CatalogViewNotFound(release.release_id)
+    return entry
+
+
+async def catalog_release_view(
+    state: AsyncSession,
+    index: AsyncSession,
+    release: CatalogRelease,
+    *,
+    public: bool,
+    roots: set[int] | None = None,
+) -> dict:
+    entry = await _entry_for_release(state, release)
+    assets = list(
+        (
+            await state.scalars(
+                select(CatalogAsset)
+                .where(CatalogAsset.release_id == release.release_id)
+                .order_by(CatalogAsset.sort_order, CatalogAsset.created_at)
+            )
+        ).all()
+    )
+    if public:
+        assets = [asset for asset in assets if asset.status == "active"]
+    asset_views = [
+        await catalog_asset_view(
+            state,
+            index,
+            asset,
+            content_type=entry.content_type,
+            public=public,
+            roots=roots,
+        )
+        for asset in assets
+    ]
+    return {
+        "release_id": release.release_id,
+        "entry_id": release.entry_id,
+        "slug": release.slug,
+        "title": release.title,
+        "release_notes": release.release_notes,
+        "channel": getattr(release, "channel", "unknown") or "unknown",
+        "is_recommended": bool(getattr(release, "is_recommended", False)),
+        "status": release.status,
+        "sort_order": release.sort_order,
+        "created_at": release.created_at,
+        "updated_at": release.updated_at,
+        "published_at": release.published_at,
+        "assets": asset_views,
+    }
+
+
+async def _entry_tags(state: AsyncSession, entry_id: str) -> list[dict]:
+    rows = (
+        await state.execute(
+            select(CatalogTag)
+            .join(CatalogTagAssignment, CatalogTagAssignment.tag_id == CatalogTag.tag_id)
+            .where(
+                CatalogTagAssignment.target_type == "entry",
+                CatalogTagAssignment.target_id == entry_id,
+            )
+            .order_by(CatalogTag.slug)
+        )
+    ).scalars()
+    return [
+        {"tag_id": tag.tag_id, "slug": tag.slug, "display_name": tag.display_name}
+        for tag in rows.all()
+    ]
+
+
+async def _entry_relations(state: AsyncSession, entry_id: str, *, public: bool) -> list[dict]:
+    rows = list(
+        (
+            await state.scalars(
+                select(CatalogRelation)
+                .where(CatalogRelation.from_entry_id == entry_id)
+                .order_by(CatalogRelation.created_at)
+            )
+        ).all()
+    )
+    result: list[dict] = []
+    for relation in rows:
+        target = await state.get(CatalogEntry, relation.to_entry_id)
+        if target is None or (public and target.status != "published"):
+            continue
+        result.append(
+            {
+                "relation_id": relation.relation_id,
+                "to_entry_id": target.entry_id,
+                "to_title": target.title,
+                "relation_type": relation.relation_type,
+                "note": relation.note,
+            }
+        )
+    return result
+
+
+async def catalog_entry_view(
+    state: AsyncSession,
+    index: AsyncSession,
+    entry: CatalogEntry,
+    *,
+    public: bool,
+) -> dict:
+    roots = await enabled_root_ids(state)
+    releases = list(
+        (
+            await state.scalars(
+                select(CatalogRelease)
+                .where(CatalogRelease.entry_id == entry.entry_id)
+                .order_by(CatalogRelease.sort_order, CatalogRelease.created_at)
+            )
+        ).all()
+    )
+    if public:
+        releases = [release for release in releases if release.status == "published"]
+    release_views = [
+        await catalog_release_view(state, index, release, public=public, roots=roots)
+        for release in releases
+    ]
+    available = any(
+        asset["availability"] == "available"
+        for release in release_views
+        for asset in release["assets"]
+    )
+    return {
+        "entry_id": entry.entry_id,
+        "slug": entry.slug,
+        "title": entry.title,
+        "content_type": entry.content_type,
+        "summary": entry.summary,
+        "description": entry.description,
+        "cover_resource_id": entry.cover_resource_id,
+        "status": entry.status,
+        "revision": entry.revision,
+        "sort_order": entry.sort_order,
+        "availability": "available" if available else "unavailable",
+        "tags": await _entry_tags(state, entry.entry_id),
+        "relations": await _entry_relations(state, entry.entry_id, public=public),
+        "created_at": entry.created_at,
+        "updated_at": entry.updated_at,
+        "published_at": entry.published_at,
+        "releases": release_views,
+    }
+
+
+async def published_catalog_page(
+    state: AsyncSession,
+    index: AsyncSession,
+    *,
+    page: int,
+    page_size: int,
+    content_type: str | None = None,
+    tag: str | None = None,
+) -> dict:
+    stmt = select(CatalogEntry).where(CatalogEntry.status == "published")
+    if content_type:
+        stmt = stmt.where(CatalogEntry.content_type == content_type)
+    if tag:
+        stmt = (
+            stmt.join(
+                CatalogTagAssignment,
+                (CatalogTagAssignment.target_type == "entry")
+                & (CatalogTagAssignment.target_id == CatalogEntry.entry_id),
+            )
+            .join(CatalogTag, CatalogTag.tag_id == CatalogTagAssignment.tag_id)
+            .where(CatalogTag.slug == tag)
+        )
+    entries = list(
+        (
+            await state.scalars(
+                stmt.order_by(CatalogEntry.sort_order, CatalogEntry.created_at)
+            )
+        ).unique().all()
+    )
+    views = [await catalog_entry_view(state, index, entry, public=True) for entry in entries]
+    views = [entry for entry in views if entry["availability"] == "available"]
+    total = len(views)
+    start = (page - 1) * page_size
+    items = views[start : start + page_size]
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+    }

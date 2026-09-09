@@ -3,8 +3,14 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, select
 
 from ..catalog_schemas import CatalogEntryDetail, CatalogEntryListOutput
-from ..models import CatalogEntry
+from ..models import CatalogAsset, CatalogEntry, CatalogRelease
 from .admin.catalog import _build_entry_detail, _entry_to_summary
+from ..services.catalog_views import (
+    catalog_asset_view,
+    catalog_entry_view,
+    catalog_release_view,
+    published_catalog_page,
+)
 
 router = APIRouter()
 
@@ -52,6 +58,92 @@ async def public_catalog_list(
             total=total,
             total_pages=max(1, (total + page_size - 1) // page_size),
         )
+
+
+@router.get("/api/catalog/entries")
+async def catalog_entries(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=24, ge=1, le=100),
+    content_type: str | None = None,
+    tag: str | None = None,
+):
+    from ..main import IndexSession, StateSession
+
+    async with StateSession() as state, IndexSession() as index:
+        return await published_catalog_page(
+            state,
+            index,
+            page=page,
+            page_size=page_size,
+            content_type=content_type,
+            tag=tag,
+        )
+
+
+@router.get("/api/catalog/entries/{entry_id}")
+async def catalog_entry(entry_id: str):
+    from ..main import IndexSession, StateSession
+
+    async with StateSession() as state, IndexSession() as index:
+        entry = await state.get(CatalogEntry, entry_id)
+        if entry is None or entry.status != "published":
+            raise _not_found()
+        result = await catalog_entry_view(state, index, entry, public=True)
+        if result["availability"] != "available":
+            raise _not_found()
+        return result
+
+
+@router.get("/api/catalog/releases/{release_id}")
+async def catalog_release(release_id: str):
+    from ..main import IndexSession, StateSession
+
+    async with StateSession() as state, IndexSession() as index:
+        release = await state.get(CatalogRelease, release_id)
+        if release is None or release.status != "published":
+            raise HTTPException(404, {"code": "CATALOG_RELEASE_NOT_FOUND", "message": "Catalog release not found"})
+        entry = await state.get(CatalogEntry, release.entry_id)
+        if entry is None or entry.status != "published":
+            raise HTTPException(404, {"code": "CATALOG_RELEASE_NOT_FOUND", "message": "Catalog release not found"})
+        result = await catalog_release_view(state, index, release, public=True)
+        if not any(asset["availability"] == "available" for asset in result["assets"]):
+            raise HTTPException(404, {"code": "CATALOG_RELEASE_NOT_FOUND", "message": "Catalog release not found"})
+        return result
+
+
+@router.get("/api/catalog/assets/{asset_id}")
+async def catalog_asset(asset_id: str):
+    from ..main import IndexSession, StateSession
+
+    async with StateSession() as state, IndexSession() as index:
+        asset = await state.get(CatalogAsset, asset_id)
+        if asset is None or asset.status != "active":
+            raise HTTPException(404, {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"})
+        release = await state.get(CatalogRelease, asset.release_id)
+        entry = await state.get(CatalogEntry, release.entry_id) if release is not None else None
+        if release is None or release.status != "published" or entry is None or entry.status != "published":
+            raise HTTPException(404, {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"})
+        result = await catalog_asset_view(
+            state, index, asset, content_type=entry.content_type, public=True
+        )
+        if result["availability"] != "available":
+            raise HTTPException(404, {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"})
+        return result
+
+
+@router.get("/api/catalog/tags")
+async def catalog_tags():
+    from ..main import IndexSession, StateSession
+
+    async with StateSession() as state, IndexSession() as index:
+        page = await published_catalog_page(
+            state, index, page=1, page_size=10000
+        )
+        tags: dict[str, dict] = {}
+        for entry in page["items"]:
+            for tag in entry["tags"]:
+                tags[tag["tag_id"]] = tag
+        return {"items": sorted(tags.values(), key=lambda item: item["slug"])}
 
 
 @router.get("/api/catalog/{entry_id}", response_model=CatalogEntryDetail)
