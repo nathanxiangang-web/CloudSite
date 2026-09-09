@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import IndexBase, StateBase
@@ -614,3 +614,69 @@ class CatalogLocation(StateBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     __table_args__ = (UniqueConstraint("asset_id", "resource_id"),)
+
+
+
+class CatalogTag(StateBase):
+    __tablename__ = "catalog_tags"
+    tag_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(60), unique=True)
+    display_name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (CheckConstraint("slug = lower(slug)", name="ck_catalog_tags_slug_normalized"),)
+
+
+class CatalogEntryTag(StateBase):
+    __tablename__ = "catalog_entry_tags"
+    tag_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_tags.tag_id", ondelete="CASCADE"), primary_key=True
+    )
+    target_type: Mapped[str] = mapped_column(String(20), primary_key=True)
+    target_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        Index("ix_catalog_entry_tags_target", "target_type", "target_id"),
+    )
+
+
+class CatalogRelation(StateBase):
+    __tablename__ = "catalog_relations"
+    relation_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    from_entry_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_entries.entry_id", ondelete="CASCADE"), index=True
+    )
+    to_entry_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_entries.entry_id", ondelete="CASCADE"), index=True
+    )
+    relation_type: Mapped[str] = mapped_column(String(40), index=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("from_entry_id", "to_entry_id", "relation_type"),
+        CheckConstraint("from_entry_id != to_entry_id", name="ck_catalog_relations_no_self"),
+    )
+
+
+class CatalogRevision(StateBase):
+    __tablename__ = "catalog_revisions"
+    revision_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    target_type: Mapped[str] = mapped_column(String(20))
+    target_id: Mapped[str] = mapped_column(String(35))
+    action: Mapped[str] = mapped_column(String(40))
+    actor: Mapped[str] = mapped_column(String(100))
+    source: Mapped[str] = mapped_column(String(40), default="admin")
+    base_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resulting_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    before_json: Mapped[str] = mapped_column(Text, default="")
+    after_json: Mapped[str] = mapped_column(Text, default="")
+    diff_json: Mapped[str] = mapped_column(Text, default="")
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        Index("ix_catalog_revisions_target", "target_type", "target_id"),
+        Index("ix_catalog_revisions_action", "action"),
+        Index("ix_catalog_revisions_actor", "actor"),
+        Index("ix_catalog_revisions_created_at", "created_at"),
+    )

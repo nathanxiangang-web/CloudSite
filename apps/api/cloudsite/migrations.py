@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,8 +276,122 @@ async def state_v3_to_v4_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v4_to_v5_upgrade(conn: AsyncConnection) -> None:
+    """Schema v4 -> v5: Catalog metadata overlay (tags, entry-tag membership,
+    typed relations, append-only revision history), idempotent.
+
+    Adds catalog_tags, catalog_entry_tags, catalog_relations, and
+    catalog_revisions to state.db per docs/catalog-v1.1-contract.md sections
+    3.5-3.8. Enforces:
+    - normalized tag slug uniqueness (UNIQUE on catalog_tags.slug)
+    - unique entry-tag membership (UNIQUE (tag_id, target_type, target_id))
+    - typed relation uniqueness (UNIQUE (from_entry_id, to_entry_id, relation_type))
+    - no direct self-relation (CHECK from_entry_id != to_entry_id)
+    - append-only revision rows (SQLite triggers reject UPDATE/DELETE)
+
+    Revision rows store structured before/after snapshots, a reversible diff,
+    base/resulting revision numbers, summary, actor, source, and timestamps.
+    They never store credentials: catalog metadata contains no credential
+    fields, and the snapshot columns are restricted to catalog entity fields.
+    Foreign keys are declared only within state.db.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_tags("
+        "tag_id VARCHAR(35) PRIMARY KEY,"
+        "slug VARCHAR(60) NOT NULL UNIQUE,"
+        "display_name VARCHAR(100) NOT NULL,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "CHECK (slug = lower(slug)))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_tags_slug ON catalog_tags (slug)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_entry_tags("
+        "tag_id VARCHAR(35) NOT NULL REFERENCES catalog_tags(tag_id) ON DELETE CASCADE,"
+        "target_type VARCHAR(20) NOT NULL,"
+        "target_id VARCHAR(35) NOT NULL,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (tag_id, target_type, target_id))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_entry_tags_tag_id ON catalog_entry_tags (tag_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_entry_tags_target ON catalog_entry_tags (target_type, target_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_relations("
+        "relation_id VARCHAR(35) PRIMARY KEY,"
+        "from_entry_id VARCHAR(35) NOT NULL REFERENCES catalog_entries(entry_id) ON DELETE CASCADE,"
+        "to_entry_id VARCHAR(35) NOT NULL REFERENCES catalog_entries(entry_id) ON DELETE CASCADE,"
+        "relation_type VARCHAR(40) NOT NULL,"
+        "note TEXT DEFAULT '',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (from_entry_id, to_entry_id, relation_type),"
+        "CHECK (from_entry_id != to_entry_id))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_relations_from_entry_id ON catalog_relations (from_entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_relations_to_entry_id ON catalog_relations (to_entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_relations_relation_type ON catalog_relations (relation_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_revisions("
+        "revision_id VARCHAR(35) PRIMARY KEY,"
+        "target_type VARCHAR(20) NOT NULL,"
+        "target_id VARCHAR(35) NOT NULL,"
+        "action VARCHAR(40) NOT NULL,"
+        "actor VARCHAR(100) NOT NULL,"
+        "source VARCHAR(40) NOT NULL DEFAULT 'admin',"
+        "base_revision INTEGER,"
+        "resulting_revision INTEGER,"
+        "summary TEXT DEFAULT '',"
+        "before_json TEXT DEFAULT '',"
+        "after_json TEXT DEFAULT '',"
+        "diff_json TEXT DEFAULT '',"
+        "payload_json TEXT DEFAULT '{}',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_revisions_target ON catalog_revisions (target_type, target_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_revisions_action ON catalog_revisions (action)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_revisions_actor ON catalog_revisions (actor)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_revisions_created_at ON catalog_revisions (created_at)"
+    )
+    # Append-only enforcement: reject UPDATE and DELETE on revision rows.
+    # A later rollback is represented as a new revision row, never an edit.
+    await conn.exec_driver_sql(
+        "CREATE TRIGGER IF NOT EXISTS catalog_revisions_no_update "
+        "BEFORE UPDATE ON catalog_revisions "
+        "BEGIN "
+        "SELECT RAISE(ABORT, 'catalog_revisions is append-only: UPDATE is forbidden'); "
+        "END"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TRIGGER IF NOT EXISTS catalog_revisions_no_delete "
+        "BEFORE DELETE ON catalog_revisions "
+        "BEGIN "
+        "SELECT RAISE(ABORT, 'catalog_revisions is append-only: DELETE is forbidden'); "
+        "END"
+    )
+
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
     Migration(id="state_v3_to_v4", from_version=3, to_version=4, upgrade=state_v3_to_v4_upgrade),
+    Migration(id="state_v4_to_v5", from_version=4, to_version=5, upgrade=state_v4_to_v5_upgrade),
 ]
