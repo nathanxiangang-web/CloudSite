@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Bell, Boxes, ClipboardList, FolderKanban, Gauge, Globe2, LogOut, Settings, Share2, Users } from "lucide-react";
+import { Activity, Bell, Boxes, ClipboardList, FolderKanban, Gauge, Globe2, Library, LogOut, Settings, Share2, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -10,6 +10,7 @@ const items = [
   ["/admin", "概览", Gauge],
   ["/admin/index", "内容索引", Boxes],
   ["/admin/collections", "精选合集", FolderKanban],
+  ["/admin/catalog", "目录管理", Library],
   ["/admin/shares", "分享管理", Share2],
   ["/admin/submissions", "投稿审核", ClipboardList],
   ["/admin/notifications", "通知管理", Bell],

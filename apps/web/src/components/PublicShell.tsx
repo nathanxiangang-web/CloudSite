@@ -13,6 +13,7 @@ import { MobilePrimaryNavigation, useVisibleNavItems } from "./PublicNavigation"
 const TOPBAR_NAV = [
   ["/", "首页"],
   ["/resources/software", "资源库"],
+  ["/catalog", "目录"],
   ["/collections", "精选"],
   ["/resources/file", "最近更新"],
   ["/about", "使用指南"],
