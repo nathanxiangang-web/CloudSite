@@ -1,10 +1,8 @@
-"""C1 Catalog schema module: narrow request/response models and service contract errors.
+"""C1 Catalog request and response models for the HTTP boundary.
 
-Schemas and routers for the Catalog HTTP contract live in dedicated files so the
-C1 surface stays self-contained. Service-level exceptions are declared here so
-both the routers and the parallel-developed ``services/catalog.py`` share one
-error contract without duplicating business logic. The routers translate these
-errors to HTTP responses; business validation stays in the service module.
+Domain exceptions live in ``services/catalog.py``. Keeping them out of this
+module prevents the HTTP layer from catching a different class than the
+application layer raises.
 
 All identifiers use the reviewed C1 stable-ID contract: a 3-character prefix
 followed by 32 hex characters (35 characters total), matching the String(35)
@@ -16,29 +14,6 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-# ---- Service contract errors ----
-# Raised by services/catalog.py, translated to HTTP by the routers.
-
-class CatalogError(Exception):
-    """Base error for Catalog service failures."""
-
-
-class CatalogEntryNotFound(CatalogError):
-    """Raised when a catalog entry does not exist."""
-
-
-class CatalogRevisionConflict(CatalogError):
-    """Raised when expected_revision does not match the stored revision."""
-
-
-class CatalogLocationUnavailable(CatalogError):
-    """Raised when a bound asset is not available in the current publication scope."""
-
-
-class CatalogEntryNotPreviewable(CatalogError):
-    """Raised when an entry cannot be previewed in its current state."""
 
 
 # ---- Shared field patterns ----
@@ -58,6 +33,7 @@ class CatalogEntryCreateInput(BaseModel):
     summary: str = Field(default="", max_length=500)
     description: str = Field(default="", max_length=4000)
     content_type: str = Field(pattern=_CONTENT_TYPE_PATTERN)
+    slug: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 class CatalogEntryUpdateInput(BaseModel):
@@ -68,6 +44,12 @@ class CatalogEntryUpdateInput(BaseModel):
     summary: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=4000)
     content_type: str | None = Field(default=None, pattern=_CONTENT_TYPE_PATTERN)
+
+
+class CatalogEntryPublishInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
 
 
 class CatalogLocationBindInput(BaseModel):
@@ -83,10 +65,8 @@ class CatalogLocationBindInput(BaseModel):
 
     asset_id: str = Field(pattern=_ASSET_ID_PATTERN)
     resource_id: str = Field(pattern=_RESOURCE_ID_PATTERN)
-    root_mapping_id: int | None = Field(default=None, ge=1)
     label: str = Field(default="", max_length=100)
     is_primary: bool = False
-    sort_order: int = 0
 
 
 # ---- Response schemas ----
@@ -107,7 +87,7 @@ class CatalogEntrySummary(BaseModel):
     title: str
     summary: str
     content_type: str
-    status: Literal["draft", "published"]
+    status: Literal["draft", "published", "archived", "disabled"]
     revision: int
     created_at: datetime
     updated_at: datetime
