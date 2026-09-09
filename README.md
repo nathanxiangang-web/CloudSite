@@ -12,7 +12,7 @@ It turns selected AList directories into a clean resource website with user acco
 > Live site: [cloud.netioi.com](https://cloud.netioi.com/)
 
 <p align="center">
-  <img src="docs/assets/cloudsite-home.webp" alt="CloudSite home page" width="960">
+  <img src="docs/assets/cloudsite-home.webp" alt="CloudSite home page" width="80%">
 </p>
 
 ## Highlights
