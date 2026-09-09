@@ -128,6 +128,7 @@ Timestamps are timezone-aware UTC, matching the 1.0.0 `utcnow()` convention.
 | `description` | text | default `''` | long-form description, Markdown |
 | `cover_resource_id` | string(64) | nullable | optional reference to a 1.0.0 `resource_id` used as cover image |
 | `status` | string(20) | not null, default `'draft'` | one of `draft`, `published`, `archived`, `disabled` |
+| `revision` | integer | not null, default `1` | optimistic concurrency token; incremented by every accepted entry mutation |
 | `sort_order` | integer | default `0` | admin-controlled ordering |
 | `created_at` | datetime | not null | |
 | `updated_at` | datetime | not null | |
@@ -267,6 +268,11 @@ children (for entries: no published releases; for releases: no assets with
 active locations). A soft `archived` or `disabled` status is preferred for
 reversibility.
 
+Entry updates, status changes, and publish actions require the caller's
+`expected_revision`. A stale value returns `409 CATALOG_REVISION_CONFLICT`
+without applying a partial change. A successful mutation increments
+`catalog_entries.revision` in the same transaction as its revision-log row.
+
 ## 4. Minimal admin API surface
 
 All admin routes require an administrator session, matching the 1.0.0
@@ -296,9 +302,12 @@ All admin routes require an administrator session, matching the 1.0.0
 | `DELETE` | `/api/admin/catalog/relations/{relation_id}` | Delete a relation |
 | `GET` | `/api/admin/catalog/revisions` | List revisions (paginated, filterable by `target_type`, `target_id`) |
 
-`PATCH` on an entry, release, asset, location, or tag accepts a partial body
-and creates a `catalog_revisions` row. `DELETE` on an entry or release is
-rejected if published children exist and returns
+`PATCH` on an entry accepts `expected_revision`, applies the update only when
+it matches, increments the entry revision, and creates a `catalog_revisions`
+row. Other mutable Catalog objects create a revision row as well; extending
+optimistic tokens to every child object is deferred until a real concurrent
+editing need is measured. `DELETE` on an entry or release is rejected if
+published children exist and returns
 `CATALOG_DELETE_CONFLICT`.
 
 ### 4.2 Compatibility with existing admin routes
