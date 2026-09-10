@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -570,6 +570,68 @@ async def state_v8_to_v9_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+
+
+async def state_v9_to_v10_upgrade(conn: AsyncConnection) -> None:
+    """Schema v9 -> v10: A2 整理建议表 catalog_suggestions，幂等。
+
+    新增 catalog_suggestions 到 state.db，用于 A2 影子模式生成的候选草稿。
+    与正式 catalog 内容（entries/releases/assets）分表存储，apply 时才写入
+    正式内容。唯一约束 (source_file_id, file_fingerprint, parser_version,
+    suggestion_kind) 保证相同输入指纹 + 解析器版本幂等：重跑不重复生成草稿。
+    人工已确认的行（status IN ('applied','rejected')）在重跑时不会被覆盖，
+    生成器跳过已存在行而非 upsert。撤销产生新修订，不删除底层文件。
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_suggestions("
+        "suggestion_id VARCHAR(35) PRIMARY KEY,"
+        "source_file_id VARCHAR(64) NOT NULL,"
+        "file_fingerprint VARCHAR(64) NOT NULL,"
+        "parser_version VARCHAR(20) NOT NULL,"
+        "suggestion_kind VARCHAR(30) NOT NULL,"
+        "target_entry_id VARCHAR(35),"
+        "target_release_id VARCHAR(35),"
+        "target_asset_id VARCHAR(35),"
+        "suggested_fields_json TEXT DEFAULT '{}',"
+        "evidence_json TEXT DEFAULT '{}',"
+        "confidence FLOAT DEFAULT 0.0,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "reviewed_by VARCHAR(100) DEFAULT '',"
+        "reviewed_at DATETIME,"
+        "applied_at DATETIME,"
+        "applied_revision_id VARCHAR(35),"
+        "reject_reason TEXT DEFAULT '',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (source_file_id, file_fingerprint, parser_version, suggestion_kind),"
+        "CHECK (suggestion_kind IN ('new_entry', 'new_release', 'asset', 'candidate_duplicate', 'conflict')),"
+        "CHECK (status IN ('pending', 'reviewed', 'applied', 'rejected')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_source_file_id ON catalog_suggestions (source_file_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_file_fingerprint ON catalog_suggestions (file_fingerprint)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_suggestion_kind ON catalog_suggestions (suggestion_kind)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_status ON catalog_suggestions (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_target_entry_id ON catalog_suggestions (target_entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_target_release_id ON catalog_suggestions (target_release_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_target_asset_id ON catalog_suggestions (target_asset_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_suggestions_kind_status ON catalog_suggestions (suggestion_kind, status)"
+    )
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -579,4 +641,5 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v6_to_v7", from_version=6, to_version=7, upgrade=state_v6_to_v7_upgrade),
     Migration(id="state_v7_to_v8", from_version=7, to_version=8, upgrade=state_v7_to_v8_upgrade),
     Migration(id="state_v8_to_v9", from_version=8, to_version=9, upgrade=state_v8_to_v9_upgrade),
+    Migration(id="state_v9_to_v10", from_version=9, to_version=10, upgrade=state_v9_to_v10_upgrade),
 ]

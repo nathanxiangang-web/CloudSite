@@ -121,6 +121,7 @@ from .routers.admin.submissions import router as admin_submissions_router
 from .routers.admin.notifications import router as admin_notifications_router
 from .routers.admin.catalog import router as admin_catalog_router
 from .routers.admin.catalog_metadata import router as admin_catalog_metadata_router
+from .routers.admin.automation import router as admin_automation_router
 
 app.include_router(admin_auth_router)
 app.include_router(admin_setup_router)
@@ -140,6 +141,7 @@ app.include_router(admin_submissions_router)
 app.include_router(admin_notifications_router)
 app.include_router(admin_catalog_router)
 app.include_router(admin_catalog_metadata_router)
+app.include_router(admin_automation_router)
 
 # 公开 DTO 与服务函数 re-export：路由懒加载与测试直接引用。
 from .services.resources import (
