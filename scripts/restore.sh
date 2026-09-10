@@ -123,10 +123,16 @@ tar -xzf "$BACKUP" -C "$STAGE"
 DATA_PATH="$(resolve_data_path "$TARGET" "$STAGE/.env" "restore")"
 
 if [[ "$TARGET" == "$ROOT" ]]; then
-  running="$(docker compose -f "$ROOT/docker-compose.yml" ps --status running -q 2>/dev/null || true)"
-  if [[ -n "$running" ]]; then
-    echo "恢复失败：CloudSite 仍在运行。请先执行 docker compose down，再重试。" >&2
-    exit 1
+  if command -v docker >/dev/null 2>&1; then
+    if running="$(docker compose -f "$ROOT/docker-compose.yml" ps --status running -q 2>/dev/null)"; then
+      if [[ -n "$running" ]]; then
+        echo "恢复失败：CloudSite 仍在运行。请先执行 docker compose down，再重试。" >&2
+        exit 1
+      fi
+    else
+      echo "恢复失败：无法判断 CloudSite 运行状态（docker compose ps 异常）。" >&2
+      exit 1
+    fi
   fi
 fi
 

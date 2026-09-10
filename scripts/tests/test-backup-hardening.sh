@@ -189,6 +189,147 @@ else
   fail "leftover temp db after failure"
 fi
 
+# --- WAL 一致性：未运行时一致性备份保留已提交 WAL 行 ---
+WAL_PROJ="$WORK/wal-proj"
+mkdir -p "$WAL_PROJ/data" "$WAL_PROJ/scripts"
+cp "$ROOT/scripts/backup.sh" "$WAL_PROJ/scripts/backup.sh"
+cp "$ROOT/scripts/verify-backup.sh" "$WAL_PROJ/scripts/verify-backup.sh"
+printf "CLOUDSITE_SECRET_KEY=wal-fixture\n" > "$WAL_PROJ/.env"
+cat > "$WAL_PROJ/docker-compose.yml" <<'YML'
+services:
+  api:
+    image: fake/api
+YML
+python3 - "$WAL_PROJ/data/index.db" <<'PYWALIDX'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1]); c.execute("CREATE TABLE t(id)"); c.execute("INSERT INTO t VALUES(1)"); c.commit(); c.close()
+PYWALIDX
+python3 - "$WAL_PROJ/data/state.db" <<'PYWAL'
+import sqlite3, os, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute("PRAGMA journal_mode=WAL")
+c.execute("PRAGMA wal_autocheckpoint=0")
+c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+c.execute("INSERT INTO t VALUES (1)")
+c.commit()
+c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+c.execute("INSERT INTO t VALUES (2)")
+c.commit()
+os._exit(0)
+PYWAL
+WAL_OUT="$WORK/wal-backup.tar.gz"
+if (cd "$WAL_PROJ" && bash scripts/backup.sh "$WAL_OUT") >&2; then
+  if [[ -f "$WAL_OUT" ]]; then
+    mkdir -p "$WORK/wal-check"
+    tar -xzf "$WAL_OUT" -C "$WORK/wal-check"
+    wal_count="$(python3 - "$WORK/wal-check/data/state.db" <<'PYWC'
+import sqlite3, sys
+c = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+print(c.execute("SELECT COUNT(*) FROM t").fetchone()[0])
+c.close()
+PYWC
+)"
+    [[ "$wal_count" == "2" ]] && pass "offline backup preserves committed WAL rows" || fail "offline backup lost WAL rows (got $wal_count)"
+  else
+    fail "WAL backup archive not created"
+  fi
+else
+  fail "WAL backup script failed"
+fi
+
+# --- 验证器缺失明确失败 ---
+NOTOOL_PROJ="$WORK/notool-proj"
+mkdir -p "$NOTOOL_PROJ/data" "$NOTOOL_PROJ/scripts"
+cp "$ROOT/scripts/backup.sh" "$NOTOOL_PROJ/scripts/backup.sh"
+cp "$ROOT/scripts/verify-backup.sh" "$NOTOOL_PROJ/scripts/verify-backup.sh"
+printf "CLOUDSITE_SECRET_KEY=notool-fixture\n" > "$NOTOOL_PROJ/.env"
+cat > "$NOTOOL_PROJ/docker-compose.yml" <<'YML'
+services:
+  api:
+    image: fake/api
+YML
+python3 - "$NOTOOL_PROJ/data/state.db" "$NOTOOL_PROJ/data/index.db" <<'PYNT'
+import sqlite3, sys
+for p in sys.argv[1:]:
+    c = sqlite3.connect(p); c.execute("CREATE TABLE t(id)"); c.execute("INSERT INTO t VALUES(1)"); c.commit(); c.close()
+PYNT
+NOTOOL_OUT="$WORK/notool-backup.tar.gz"
+(cd "$NOTOOL_PROJ" && bash scripts/backup.sh "$NOTOOL_OUT") >&2
+SAFE_BIN="$WORK/safe-bin"
+mkdir -p "$SAFE_BIN"
+for cmd in tar mktemp rm cat bash; do
+  ln -sf "$(command -v "$cmd")" "$SAFE_BIN/$cmd"
+done
+if (PATH="$SAFE_BIN" bash "$ROOT/scripts/verify-backup.sh" "$NOTOOL_OUT") >&2; then
+  fail "verify should fail without any verifier"
+else
+  pass "verify fails without any verifier"
+fi
+
+# --- manifest 篡改检测 ---
+MAN_PROJ="$WORK/man-proj"
+mkdir -p "$MAN_PROJ/data" "$MAN_PROJ/scripts"
+cp "$ROOT/scripts/backup.sh" "$MAN_PROJ/scripts/backup.sh"
+cp "$ROOT/scripts/verify-backup.sh" "$MAN_PROJ/scripts/verify-backup.sh"
+printf "CLOUDSITE_SECRET_KEY=man-fixture\n" > "$MAN_PROJ/.env"
+cat > "$MAN_PROJ/docker-compose.yml" <<'YML'
+services:
+  api:
+    image: fake/api
+YML
+python3 - "$MAN_PROJ/data/state.db" "$MAN_PROJ/data/index.db" <<'PYMANF'
+import sqlite3, sys
+for p in sys.argv[1:]:
+    c = sqlite3.connect(p); c.execute("CREATE TABLE t(id)"); c.execute("INSERT INTO t VALUES(1)"); c.commit(); c.close()
+PYMANF
+MAN_OUT="$WORK/man-backup.tar.gz"
+(cd "$MAN_PROJ" && bash scripts/backup.sh "$MAN_OUT") >&2
+mkdir -p "$WORK/man-stage"
+tar -xzf "$MAN_OUT" -C "$WORK/man-stage"
+if [[ -f "$WORK/man-stage/manifest.json" ]]; then
+  pass "backup includes manifest"
+  python3 - "$WORK/man-stage/manifest.json" <<'PYTAMP'
+import json, sys
+p = sys.argv[1]
+m = json.load(open(p))
+for db in m.get("databases", {}):
+    m["databases"][db]["sha256"] = "0" * 64
+json.dump(m, open(p, "w"), indent=2, sort_keys=True)
+PYTAMP
+  tar -czf "$WORK/man-tampered.tar.gz" -C "$WORK/man-stage" .
+  if bash "$ROOT/scripts/verify-backup.sh" "$WORK/man-tampered.tar.gz" >&2; then
+    fail "tampered manifest checksum accepted"
+  else
+    pass "tampered manifest checksum rejected"
+  fi
+else
+  fail "backup missing manifest"
+fi
+
+# --- Docker 状态未知时备份失败 ---
+UNKNOWN_PROJ="$WORK/unknown-proj"
+mkdir -p "$UNKNOWN_PROJ/data" "$UNKNOWN_PROJ/scripts"
+cp "$ROOT/scripts/backup.sh" "$UNKNOWN_PROJ/scripts/backup.sh"
+cp "$ROOT/scripts/verify-backup.sh" "$UNKNOWN_PROJ/scripts/verify-backup.sh"
+printf "CLOUDSITE_SECRET_KEY=unknown-fixture\n" > "$UNKNOWN_PROJ/.env"
+python3 - "$UNKNOWN_PROJ/data/state.db" "$UNKNOWN_PROJ/data/index.db" <<'PYUN'
+import sqlite3, sys
+for p in sys.argv[1:]:
+    c = sqlite3.connect(p); c.execute("CREATE TABLE t(id)"); c.commit(); c.close()
+PYUN
+mkdir -p "$WORK/bad-docker-bin"
+cat > "$WORK/bad-docker-bin/docker" <<'BDOCKER'
+#!/usr/bin/env bash
+exit 42
+BDOCKER
+chmod +x "$WORK/bad-docker-bin/docker"
+if (cd "$UNKNOWN_PROJ" && PATH="$WORK/bad-docker-bin:$PATH" bash scripts/backup.sh "$WORK/unknown-out.tar.gz") >&2; then
+  fail "backup should fail on unknown docker state"
+else
+  pass "backup fails on unknown docker state"
+fi
+[[ ! -e "$WORK/unknown-out.tar.gz" ]] && pass "unknown state creates no archive" || fail "unknown state created archive"
+
 if [[ "$FAIL" == "0" ]]; then
   echo "ALL TESTS PASSED"
   exit 0

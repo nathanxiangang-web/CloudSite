@@ -319,6 +319,45 @@ else
   pass "restore refuses overwrite without --force"
 fi
 
+# --- 业务关系破坏检测：verify-backup.sh 拒绝孤儿资源关系 ---
+REL_STAGE="$WORK/rel-bad-stage"
+mkdir -p "$REL_STAGE/data"
+printf "CLOUDSITE_SECRET_KEY=rel-fixture\n" > "$REL_STAGE/.env"
+python3 - "$REL_STAGE/data/state.db" "$REL_STAGE/data/index.db" <<'PYREL'
+import sqlite3, sys
+state, index = sys.argv[1], sys.argv[2]
+c = sqlite3.connect(state)
+c.execute("CREATE TABLE system_settings (key TEXT PRIMARY KEY, value TEXT)")
+c.execute("INSERT INTO system_settings VALUES ('schema_version','3')")
+c.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)")
+c.execute("INSERT INTO users VALUES (1,'admin')")
+c.commit(); c.close()
+c = sqlite3.connect(index)
+c.execute("CREATE TABLE folders (id TEXT PRIMARY KEY, name TEXT, path TEXT)")
+c.execute("CREATE TABLE resources (id TEXT PRIMARY KEY, name TEXT, path TEXT, parent_id TEXT)")
+c.execute("INSERT INTO folders VALUES ('f1','software','/software')")
+c.execute("INSERT INTO resources VALUES ('r1','pkg.zip','/software/pkg.zip','nonexistent-folder')")
+c.commit(); c.close()
+PYREL
+tar -czf "$WORK/rel-bad.tar.gz" -C "$REL_STAGE" .
+if bash "$ROOT/scripts/verify-backup.sh" "$WORK/rel-bad.tar.gz" >/dev/null 2>&1; then
+  fail "verify accepted orphan resource relation"
+else
+  pass "verify rejects orphan resource relation"
+fi
+
+# --- 验证器缺失时 verify-backup.sh 明确失败（业务归档） ---
+SAFE_BIN2="$WORK/safe-bin2"
+mkdir -p "$SAFE_BIN2"
+for cmd in tar mktemp rm cat bash; do
+  ln -sf "$(command -v "$cmd")" "$SAFE_BIN2/$cmd"
+done
+if (PATH="$SAFE_BIN2" bash "$ROOT/scripts/verify-backup.sh" "$OUT") >/dev/null 2>&1; then
+  fail "verify should fail without verifier on business archive"
+else
+  pass "verify fails without verifier on business archive"
+fi
+
 if [[ "$FAIL" == "0" ]]; then
   echo "ALL TESTS PASSED"
   exit 0
