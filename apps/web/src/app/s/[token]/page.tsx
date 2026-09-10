@@ -8,7 +8,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { ResourceIcon } from "@/components/ResourceIcon";
-import { api, Collection, Folder, formatBytes, Resource, Share } from "@/lib/api";
+import { api, Collection, CollectionResourceItem, Folder, formatBytes, Resource, Share } from "@/lib/api";
 
 type SharePageSettings = { site_name: string; share_image_url: string };
 type ShareMeta = {
@@ -57,7 +57,7 @@ export default function SharePage() {
     if (!content.data) return [];
     const { share, target } = content.data;
     if (share.object_type === "resource") return [target as Resource];
-    if (share.object_type === "collection") return (target as Collection).items ?? [];
+    if (share.object_type === "collection") return ((target as Collection).items ?? []).filter((i): i is CollectionResourceItem => i.item_type === "resource");
     return (target as FolderShare).resources;
   }, [content.data]);
 

@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 13
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,6 +702,66 @@ async def state_v10_to_v11_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v11_to_v12_upgrade(conn: AsyncConnection) -> None:
+    """Schema v11 -> v12: D2 合集条目强类型引用，幂等。
+
+    为 collection_items 增加显式类型字段，使一条条目可引用原文件（resource）
+    或 catalog 条目（catalog_entry），不再把两类 ID 塞进同一无类型字段：
+    - item_type: 'resource' | 'catalog_entry'，默认 'resource' 保持旧文件引用兼容
+    - catalog_entry_id: 当 item_type='catalog_entry' 时指向 catalog_entries.entry_id
+      （跨表引用，不建 SQL 外键，与 catalog_locations.resource_id 同策略）
+    - note: 该条目在合集内的说明文本
+    保留 resource_id 列与现有 (collection_id, resource_id) 唯一约束，旧合集可读取。
+    新增 (collection_id, catalog_entry_id) 唯一索引去重 catalog 条目（NULL 不参与）。
+    """
+    item_cols = await conn.exec_driver_sql("PRAGMA table_info(collection_items)")
+    item_col_names = {row[1] for row in item_cols.fetchall()}
+    if "item_type" not in item_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE collection_items ADD COLUMN item_type VARCHAR(20) NOT NULL DEFAULT 'resource'"
+        )
+    if "catalog_entry_id" not in item_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE collection_items ADD COLUMN catalog_entry_id VARCHAR(35)"
+        )
+    if "note" not in item_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE collection_items ADD COLUMN note TEXT NOT NULL DEFAULT ''"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_collection_items_item_type ON collection_items (item_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_collection_items_catalog_entry_id ON collection_items (catalog_entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_collection_items_collection_catalog_entry "
+        "ON collection_items (collection_id, catalog_entry_id)"
+    )
+
+
+async def state_v12_to_v13_upgrade(conn: AsyncConnection) -> None:
+    """Schema v12 -> v13: D2 任务型专题扩展字段，幂等。
+
+    为 collections 增加专题编排字段（复用现有 Collection 表，不引入新表）：
+    - goal: 专题目标
+    - audience: 目标对象
+    - prerequisites: 准备条件
+    - item_intro: 条目说明（合集级总说明，区别于每条 CollectionItem.note）
+    旧合集保持可读：新列均有默认空串，向后兼容。
+    """
+    cols = await conn.exec_driver_sql("PRAGMA table_info(collections)")
+    col_names = {row[1] for row in cols.fetchall()}
+    for column, definition in (
+        ("goal", "TEXT NOT NULL DEFAULT ''"),
+        ("audience", "TEXT NOT NULL DEFAULT ''"),
+        ("prerequisites", "TEXT NOT NULL DEFAULT ''"),
+        ("item_intro", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        if column not in col_names:
+            await conn.exec_driver_sql(f"ALTER TABLE collections ADD COLUMN {column} {definition}")
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -713,5 +773,7 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v8_to_v9", from_version=8, to_version=9, upgrade=state_v8_to_v9_upgrade),
     Migration(id="state_v9_to_v10", from_version=9, to_version=10, upgrade=state_v9_to_v10_upgrade),
     Migration(id="state_v10_to_v11", from_version=10, to_version=11, upgrade=state_v10_to_v11_upgrade),
+    Migration(id="state_v11_to_v12", from_version=11, to_version=12, upgrade=state_v11_to_v12_upgrade),
+    Migration(id="state_v12_to_v13", from_version=12, to_version=13, upgrade=state_v12_to_v13_upgrade),
 ]
 

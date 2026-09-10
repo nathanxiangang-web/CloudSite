@@ -62,6 +62,26 @@ export type SearchResponse = {
   total_pages: number;
 };
 
+export type CollectionResourceItem = Resource & {
+  item_type: "resource";
+  note: string;
+};
+
+export type CollectionEntryItem = {
+  item_type: "catalog_entry";
+  catalog_entry_id: string;
+  id: string;
+  name: string;
+  title: string;
+  summary: string;
+  content_type: string;
+  cover_resource_id: string | null;
+  note: string;
+  sort_order: number;
+};
+
+export type CollectionItem = CollectionResourceItem | CollectionEntryItem;
+
 export type Collection = {
   id: number;
   name: string;
@@ -70,8 +90,12 @@ export type Collection = {
   status: "active" | "hidden";
   visible_on_home: boolean;
   sort_order: number;
+  goal: string;
+  audience: string;
+  prerequisites: string;
+  item_intro: string;
   item_count: number;
-  items?: Resource[];
+  items?: CollectionItem[];
   created_at: string;
   updated_at: string;
 };
