@@ -118,6 +118,45 @@ export const CATALOG_STATUS_LABELS: Record<CatalogStatus, string> = {
   disabled: "已停用",
 };
 
+export type CatalogSearchMatchType = "exact" | "prefix" | "title" | "metadata" | "fts";
+
+export type CatalogSearchItem = CatalogEntrySummary & {
+  match_type: CatalogSearchMatchType;
+  revision: number;
+  sort_order: number;
+  published_at: string | null;
+  releases: CatalogReleaseSummary[];
+};
+
+export type CatalogSearchResponse = {
+  query: string;
+  filters: { content_type: string | null; tag: string | null; platform: string | null };
+  items: CatalogSearchItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  suggestion: string | null;
+};
+
+export function buildCatalogSearchQuery(params: {
+  q: string;
+  page?: number;
+  page_size?: number;
+  content_type?: string;
+  tag?: string;
+  platform?: string;
+}): string {
+  const query = new URLSearchParams();
+  query.set("q", params.q);
+  if (params.page) query.set("page", String(params.page));
+  if (params.page_size) query.set("page_size", String(params.page_size));
+  if (params.content_type) query.set("type", params.content_type);
+  if (params.tag) query.set("tag", params.tag);
+  if (params.platform) query.set("platform", params.platform);
+  return `/api/catalog/search?${query.toString()}`;
+}
+
 export function buildCatalogEntriesQuery(params: {
   page?: number;
   page_size?: number;

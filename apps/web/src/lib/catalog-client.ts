@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { buildCatalogEntriesQuery } from "./catalog";
+import { buildCatalogEntriesQuery, buildCatalogSearchQuery } from "./catalog";
 import {
   adminCatalogEntryPath,
   adminCatalogEntryPublishPath,
@@ -17,6 +17,8 @@ import type {
   CatalogPage,
   CatalogReleaseDetail,
   CatalogReleaseSummary,
+  CatalogSearchItem,
+  CatalogSearchResponse,
   CatalogStatus,
   CatalogTag,
 } from "./catalog";
@@ -99,6 +101,17 @@ export async function fetchCatalogEntries(params: {
   tag?: string;
 } = {}): Promise<CatalogPage<CatalogEntrySummary>> {
   return api<CatalogPage<CatalogEntrySummary>>(buildCatalogEntriesQuery(params));
+}
+
+export async function fetchCatalogSearch(params: {
+  q: string;
+  page?: number;
+  page_size?: number;
+  content_type?: string;
+  tag?: string;
+  platform?: string;
+}): Promise<CatalogSearchResponse> {
+  return api<CatalogSearchResponse>(buildCatalogSearchQuery(params));
 }
 
 export async function fetchCatalogEntry(entryId: string): Promise<CatalogEntryDetail> {
@@ -215,6 +228,8 @@ export type {
   CatalogPage,
   CatalogReleaseDetail,
   CatalogReleaseSummary,
+  CatalogSearchItem,
+  CatalogSearchResponse,
   CatalogStatus,
   CatalogTag,
 };
