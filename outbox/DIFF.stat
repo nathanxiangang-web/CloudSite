@@ -1,0 +1,13 @@
+ apps/api/cloudsite/catalog_schemas.py              |  90 ++++
+ apps/api/cloudsite/migrations.py                   |  28 +-
+ apps/api/cloudsite/models.py                       |   2 +
+ apps/api/cloudsite/routers/admin/catalog.py        | 329 ++++++++++++++-
+ apps/api/cloudsite/routers/catalog.py              |  63 ++-
+ apps/api/cloudsite/services/catalog.py             | 470 +++++++++++++++++++++
+ apps/api/cloudsite/services/catalog_views.py       |   3 +
+ .../api/tests/test_catalog_release_asset_schema.py |  24 +-
+ .../app/admin/catalog/entries/[entryId]/page.tsx   |  38 +-
+ apps/web/src/app/catalog/[entryId]/page.tsx        | 112 ++---
+ apps/web/src/lib/catalog-client.ts                 |  11 +
+ apps/web/src/lib/catalog.ts                        |  32 ++
+ 12 files changed, 1127 insertions(+), 75 deletions(-)

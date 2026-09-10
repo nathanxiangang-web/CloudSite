@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -511,6 +511,31 @@ async def state_v6_to_v7_upgrade(conn: AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS ix_catalog_assets_package_type ON catalog_assets (package_type)"
     )
 
+
+async def state_v7_to_v8_upgrade(conn: AsyncConnection) -> None:
+    """Schema v7 -> v8: asset delivery metadata language and build_label, idempotent.
+
+    Adds explicit language and build_label columns to catalog_assets so callers
+    can distinguish language/locale and build provenance without parsing slugs
+    or names. language defaults to 'unknown' (never inferred); build_label
+    defaults to '' (free-form build provenance, e.g. CI run id or git sha).
+    Existing v7 rows keep every current column and get conservative defaults.
+    """
+    asset_cols = await conn.exec_driver_sql("PRAGMA table_info(catalog_assets)")
+    asset_col_names = {row[1] for row in asset_cols.fetchall()}
+    if "language" not in asset_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_assets ADD COLUMN language VARCHAR(20) NOT NULL DEFAULT 'unknown'"
+        )
+    if "build_label" not in asset_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_assets ADD COLUMN build_label VARCHAR(120) NOT NULL DEFAULT ''"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_assets_language ON catalog_assets (language)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -518,4 +543,5 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v4_to_v5", from_version=4, to_version=5, upgrade=state_v4_to_v5_upgrade),
     Migration(id="state_v5_to_v6", from_version=5, to_version=6, upgrade=state_v5_to_v6_upgrade),
     Migration(id="state_v6_to_v7", from_version=6, to_version=7, upgrade=state_v6_to_v7_upgrade),
+    Migration(id="state_v7_to_v8", from_version=7, to_version=8, upgrade=state_v7_to_v8_upgrade),
 ]

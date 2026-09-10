@@ -69,6 +69,9 @@ export type CatalogReleaseInput = {
   slug: string;
   title: string;
   release_notes?: string;
+  channel?: string;
+  release_date?: string | null;
+  is_recommended?: boolean;
   status?: CatalogStatus;
   sort_order?: number;
 };
@@ -78,6 +81,10 @@ export type CatalogAssetInput = {
   display_name: string;
   platform?: string;
   kind?: CatalogAssetKind;
+  architecture?: string;
+  package_type?: string;
+  language?: string;
+  build_label?: string;
   checksum?: string | null;
   checksum_algorithm?: string | null;
   size?: number | null;
@@ -91,6 +98,10 @@ export type CatalogLocationInput = {
   is_primary?: boolean;
   status?: "active" | "disabled";
 };
+
+export function catalogAssetDownloadPath(entryId: string, assetId: string): string {
+  return `/api/catalog/entries/${encodeURIComponent(entryId)}/assets/${encodeURIComponent(assetId)}/download`;
+}
 
 export async function fetchCatalogEntries(params: {
   page?: number;
