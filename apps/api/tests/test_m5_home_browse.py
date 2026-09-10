@@ -36,7 +36,7 @@ async def test_v15_to_v16_adds_popular_strategy_home_order_featured(tmp_path, mo
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 17
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 18
         settings_cols = await _columns(conn, "site_settings")
         assert "popular_strategy" in settings_cols
         assert str(settings_cols["popular_strategy"]["default"]).strip("'\"") == "recent"
@@ -58,7 +58,7 @@ async def test_v15_to_v16_idempotent(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 17
+        assert await get_state_schema_version(conn) == 18
         entry_cols = await _columns(conn, "catalog_entries")
         assert "featured" in entry_cols
 
@@ -85,7 +85,7 @@ async def test_old_v15_db_upgrades_to_v16(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 17
+        assert await get_state_schema_version(conn) == 18
         settings_cols = await _columns(conn, "site_settings")
         assert "popular_strategy" in settings_cols
 

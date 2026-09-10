@@ -52,7 +52,7 @@ async def test_health_is_public_and_returns_version():
         response = await client.get("/api/health")
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "healthy"
+    assert body["status"] == "alive"
     assert "version" in body
     assert "secret" not in body
     assert "password" not in body
