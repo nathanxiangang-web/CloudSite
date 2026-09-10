@@ -7,6 +7,7 @@ from ...crypto import decrypt_secret
 from ...indexer import normalize_path
 from ...models import AListConnection, ContentRootMapping
 from ...schemas import RootMappingInput
+from ..home import invalidate_home_cache
 from .alist import alist_http_exception
 
 router = APIRouter()
@@ -53,6 +54,7 @@ async def add_root_mapping(payload: RootMappingInput):
             await session.rollback()
             raise HTTPException(409, "该 AList 根目录已存在") from exc
         await session.refresh(row)
+        invalidate_home_cache()
         return {"id": row.id}
 
 
@@ -72,6 +74,7 @@ async def update_root_mapping(mapping_id: int, payload: RootMappingInput):
         except Exception as exc:
             await session.rollback()
             raise HTTPException(409, "该 AList 根目录已被其他映射使用") from exc
+        invalidate_home_cache()
         return {"ok": True}
 
 
@@ -85,4 +88,5 @@ async def delete_root_mapping(mapping_id: int):
             raise HTTPException(404, "映射不存在")
         await session.delete(row)
         await session.commit()
+        invalidate_home_cache()
         return {"ok": True}
