@@ -8,6 +8,7 @@ import { useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PublicShell } from "@/components/PublicShell";
+import { CatalogFollowButton } from "@/components/catalog/CatalogFollowButton";
 import {
   assetDimensionLabel,
   assetKindLabel,
@@ -44,6 +45,7 @@ export default function CatalogEntryPage() {
         {data.availability === "unavailable" && <span className="catalog-card-unavailable"><AlertTriangle size={13} />暂不可用</span>}
         <span className="catalog-detail-updated">更新于 {formatCatalogTimestamp(data.updated_at)}</span>
       </div>
+      <div className="catalog-detail-follow"><CatalogFollowButton entryId={data.entry_id} /></div>
     </header>
 
     {data.summary && <p className="catalog-detail-summary">{data.summary}</p>}

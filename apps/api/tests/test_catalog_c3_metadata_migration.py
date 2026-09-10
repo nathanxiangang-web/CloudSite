@@ -74,7 +74,7 @@ async def test_empty_init_creates_c3_tables_and_triggers(tmp_path, monkeypatch):
 
     async with state_engine.connect() as conn:
         assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
-        assert CURRENT_SCHEMA_VERSION == 9
+        assert CURRENT_SCHEMA_VERSION == 10
         tables = await _table_names(conn)
         for table in C3_TABLES:
             assert table in tables, f"missing table {table}"

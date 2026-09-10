@@ -1078,6 +1078,12 @@ async def update_catalog_release(
             after=after,
             diff=diff,
         )
+    if before.get("status") != "published" and release.status == "published":
+        from .catalog_follow import notify_release_subscribers  # noqa: PLC0415
+
+        entry = await state.get(CatalogEntry, release.entry_id)
+        if entry is not None and entry.status == "published":
+            await notify_release_subscribers(state, release=release, entry=entry)
     return release
 
 
