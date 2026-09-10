@@ -1,5 +1,13 @@
 node_modules
 .next
+tests
 package-lock.json
 npm-debug.log*
 .env*
+.git
+.gitignore
+*.md
+Dockerfile
+.dockerignore
+tsconfig.tsbuildinfo
+next-env.d.ts

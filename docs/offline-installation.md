@@ -58,7 +58,7 @@ Both images must report the selected Linux architecture.
 ## Configure and start
 
 ```bash
-unzip cloudsite-v1.0.0-offline-deploy.zip -d CloudSite
+unzip cloudsite-v1.0.0-offline-deploy.zip
 cd CloudSite
 cp .env.example .env
 ```
@@ -75,6 +75,18 @@ curl -fsS http://127.0.0.1:3000/api/health
 ```
 
 The health response must report `healthy` and version `1.0.0`.
+
+## Verify the offline installation
+
+After starting the stack, confirm the deployment layout before accepting it:
+
+1. The extracted `CloudSite/` directory must contain `docker-compose.yml`, `docker-compose.offline.yml`, `.env.example`, `scripts/`, and `docs/`.
+2. Both imported images must match the target architecture (reported by `docker image inspect` in the Import step).
+3. `docker compose -f docker-compose.yml -f docker-compose.offline.yml config --images` must list `cloudsite-api:v1.0.0` and `cloudsite-web:v1.0.0` with `pull_policy: never`.
+4. `docker compose -f docker-compose.yml -f docker-compose.offline.yml ps` must show both services healthy.
+5. `curl -fsS http://127.0.0.1:3000/api/health` must return JSON with `"status":"healthy"` and `"version":"1.0.0"`.
+
+Do not run `docker build` during an offline installation; the release images are pre-built and imported as tarballs.
 
 ## Offline backup and rollback
 

@@ -7,7 +7,7 @@ ENV NODE_OPTIONS=--max-old-space-size=256
 ENV npm_config_jobs=1
 RUN npm install -g pnpm@10.15.1
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 FROM base AS build
 WORKDIR /app
