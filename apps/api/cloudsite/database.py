@@ -390,4 +390,24 @@ async def init_databases() -> None:
                 "INSERT INTO search_fts(object_id, object_type, name, extension, content_type, description, tags, breadcrumb_text) "
                 "SELECT id, 'resource', name, extension, content_type, '', '', path FROM resources WHERE status = 'active'"
             )
+        # D1: catalog 资源级检索投影表（与 search_fts 分离，避免影响旧 /api/search 契约）。
+        # catalog_search_fts 仅服务 /api/catalog/search；旧 search_fts 保持不变。
+        expected_catalog_fts_columns = [
+            "entry_id", "content_type", "title", "summary", "description",
+            "aliases", "tags", "platforms",
+        ]
+        catalog_fts_columns = await connection.exec_driver_sql("PRAGMA table_info(catalog_search_fts)")
+        if [row[1] for row in catalog_fts_columns.fetchall()] not in ([], expected_catalog_fts_columns):
+            await connection.exec_driver_sql("DROP TABLE catalog_search_fts")
+        await connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS catalog_search_fts USING fts5("
+            "entry_id UNINDEXED, content_type UNINDEXED, title, summary, description, "
+            "aliases, tags, platforms, tokenize='unicode61 remove_diacritics 2')"
+        )
+        await connection.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS catalog_search_projection_state("
+            "entry_id VARCHAR(35) PRIMARY KEY,"
+            "applied_revision INTEGER NOT NULL,"
+            "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        )
         await set_index_schema_version(connection, CURRENT_SCHEMA_VERSION)

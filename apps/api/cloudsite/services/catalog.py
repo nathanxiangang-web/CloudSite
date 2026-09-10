@@ -39,6 +39,7 @@ from ..models import (
     utcnow,
 )
 from .catalog_metadata import append_catalog_revision
+from .catalog_search_projection import enqueue_catalog_search_outbox
 
 ENTRY_ID_PREFIX = "ce_"
 RELEASE_ID_PREFIX = "cr_"
@@ -292,6 +293,7 @@ async def create_catalog_entry(
             "status": release.status,
         },
     )
+    await enqueue_catalog_search_outbox(state, entry_id=entry.entry_id, revision=entry.revision, action="upsert")
     return CreateCatalogEntryResult(entry=entry, release=release)
 
 
@@ -405,6 +407,8 @@ async def update_catalog_entry(
             after=after,
             diff=diff,
         )
+    if changed:
+        await enqueue_catalog_search_outbox(state, entry_id=entry.entry_id, revision=entry.revision, action="upsert")
     return entry
 
 
@@ -652,6 +656,11 @@ async def attach_catalog_location(
             "status": location.status,
         },
     )
+    _attach_release = await state.get(CatalogRelease, asset.release_id)
+    if _attach_release is not None:
+        _attach_entry = await state.get(CatalogEntry, _attach_release.entry_id)
+        if _attach_entry is not None:
+            await enqueue_catalog_search_outbox(state, entry_id=_attach_entry.entry_id, revision=_attach_entry.revision, action="upsert")
     return AttachCatalogLocationResult(location=location, resolution=resolution)
 
 
@@ -889,6 +898,7 @@ async def publish_catalog_entry(
             "revision": [before["revision"], after["revision"]],
         },
     )
+    await enqueue_catalog_search_outbox(state, entry_id=entry.entry_id, revision=entry.revision, action="upsert")
     return PublishCatalogEntryResult(entry=entry, published_at=published_at)
 
 

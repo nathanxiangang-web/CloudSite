@@ -724,3 +724,42 @@ class CatalogRevision(StateBase):
             name="ck_catalog_revisions_action",
         ),
     )
+
+
+class CatalogSearchOutbox(StateBase):
+    """ProjectionOutbox 行：catalog 写操作同事务入队，消费者异步投影到 index.db。
+
+    消费者按 created_at 升序处理未消费行（consumed_at IS NULL）。对每行：
+    - 若 entry 当前 revision > outbox.revision：说明已有更新的 outbox 行排队，
+      跳过本行（旧 revision 不覆盖新数据），仅标记 consumed。
+    - 否则按 action 投影：upsert 写 catalog_search_fts，delete 移除。
+    消费在同一 index 事务中更新 catalog_search_projection_state.applied_revision，
+    确认后回写 state.db outbox.consumed_at。崩溃重放幂等：applied_revision >=
+    outbox.revision 的行直接跳过。
+    """
+    __tablename__ = "catalog_search_outbox"
+    outbox_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    entry_id: Mapped[str] = mapped_column(String(35), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(20), default="upsert")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (
+        Index("ix_catalog_search_outbox_pending", "created_at", "outbox_id"),
+        CheckConstraint(
+            "action IN ('upsert', 'delete')",
+            name="ck_catalog_search_outbox_action",
+        ),
+    )
+
+
+class CatalogSearchProjectionState(IndexBase):
+    """index.db 端的投影水位：记录每个 entry 已投影到的 catalog revision。
+
+    与 catalog_search_fts 在同一 index 事务写入，保证 FTS 与水位原子推进。
+    消费者据此跳过已应用或更旧的 outbox 行，实现崩溃重放幂等与旧不覆盖新。
+    """
+    __tablename__ = "catalog_search_projection_state"
+    entry_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    applied_revision: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

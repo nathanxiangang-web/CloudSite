@@ -1,0 +1,16 @@
+ apps/api/cloudsite/database.py                     |  20 ++
+ apps/api/cloudsite/migrations.py                   |  39 ++-
+ apps/api/cloudsite/models.py                       |  39 +++
+ apps/api/cloudsite/routers/admin/search.py         |  18 +-
+ apps/api/cloudsite/services/catalog.py             |  10 +
+ apps/api/cloudsite/services/catalog_metadata.py    |  38 +++
+ apps/api/cloudsite/services/catalog_search.py      |  77 +++--
+ .../services/catalog_search_projection.py          | 347 +++++++++++++++++++++
+ .../tests/test_catalog_c3_metadata_migration.py    |   2 +-
+ .../api/tests/test_catalog_release_asset_schema.py |   2 +-
+ apps/api/tests/test_catalog_search_service.py      | 318 ++++++++++++-------
+ apps/web/src/app/catalog/page.tsx                  |  38 ++-
+ apps/web/src/app/search/page.tsx                   |  28 +-
+ apps/web/src/lib/catalog-client.ts                 |  17 +-
+ apps/web/src/lib/catalog.ts                        |  39 +++
+ 15 files changed, 880 insertions(+), 152 deletions(-)

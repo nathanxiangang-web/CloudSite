@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 
 
 @dataclass(frozen=True, slots=True)
@@ -536,6 +536,40 @@ async def state_v7_to_v8_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v8_to_v9_upgrade(conn: AsyncConnection) -> None:
+    """Schema v8 -> v9: Catalog search projection outbox, idempotent.
+
+    Adds catalog_search_outbox to state.db to back the D1 resource-level search
+    projection. Each row records an entry_id, the catalog revision that
+    triggered the projection, and an action (upsert/delete). Consumers process
+    pending rows (consumed_at IS NULL) in created_at order, project to
+    index.db catalog_search_fts in the same index transaction as the
+    applied_revision watermark, and only then mark consumed_at. Stale rows
+    whose entry has since advanced to a higher revision are skipped (old
+    revision never overwrites newer data); replay is idempotent because the
+    watermark comparison skips already-applied revisions.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_search_outbox("
+        "outbox_id VARCHAR(35) PRIMARY KEY,"
+        "entry_id VARCHAR(35) NOT NULL,"
+        "revision INTEGER NOT NULL,"
+        "action VARCHAR(20) NOT NULL DEFAULT 'upsert',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "consumed_at DATETIME,"
+        "CHECK (action IN ('upsert', 'delete')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_search_outbox_entry_id ON catalog_search_outbox (entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_search_outbox_pending ON catalog_search_outbox (created_at, outbox_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_search_outbox_consumed_at ON catalog_search_outbox (consumed_at)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -544,4 +578,5 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v5_to_v6", from_version=5, to_version=6, upgrade=state_v5_to_v6_upgrade),
     Migration(id="state_v6_to_v7", from_version=6, to_version=7, upgrade=state_v6_to_v7_upgrade),
     Migration(id="state_v7_to_v8", from_version=7, to_version=8, upgrade=state_v7_to_v8_upgrade),
+    Migration(id="state_v8_to_v9", from_version=8, to_version=9, upgrade=state_v8_to_v9_upgrade),
 ]

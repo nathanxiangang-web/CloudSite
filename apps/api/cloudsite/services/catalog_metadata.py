@@ -23,6 +23,7 @@ from ..models import (
     CatalogTag,
     CatalogTagAssignment,
 )
+from .catalog_search_projection import enqueue_catalog_search_outbox
 
 TAG_ID_PREFIX = "ct_"
 RELATION_ID_PREFIX = "cx_"
@@ -211,6 +212,21 @@ async def update_catalog_tag(
             before=before,
             after={"slug": row.slug, "display_name": row.display_name},
         )
+    if changed:
+        _affected = list(
+            (
+                await state.scalars(
+                    select(CatalogTagAssignment.target_id).where(
+                        CatalogTagAssignment.tag_id == tag_id,
+                        CatalogTagAssignment.target_type == "entry",
+                    )
+                )
+            ).all()
+        )
+        for _entry_id in _affected:
+            _entry = await state.get(CatalogEntry, _entry_id)
+            if _entry is not None:
+                await enqueue_catalog_search_outbox(state, entry_id=_entry_id, revision=_entry.revision, action="upsert")
     return row
 
 
@@ -224,6 +240,16 @@ async def delete_catalog_tag(
     if row is None:
         raise CatalogMetadataNotFound("tag", tag_id)
     snapshot = {"slug": row.slug, "display_name": row.display_name}
+    _affected = list(
+        (
+            await state.scalars(
+                select(CatalogTagAssignment.target_id).where(
+                    CatalogTagAssignment.tag_id == tag_id,
+                    CatalogTagAssignment.target_type == "entry",
+                )
+            )
+        ).all()
+    )
     await state.delete(row)
     await state.flush()
     await append_catalog_revision(
@@ -234,6 +260,10 @@ async def delete_catalog_tag(
         actor=actor,
         before=snapshot,
     )
+    for _entry_id in _affected:
+        _entry = await state.get(CatalogEntry, _entry_id)
+        if _entry is not None:
+            await enqueue_catalog_search_outbox(state, entry_id=_entry_id, revision=_entry.revision, action="upsert")
 
 
 async def assign_catalog_tag(
@@ -274,6 +304,10 @@ async def assign_catalog_tag(
         summary="catalog tag assigned",
         payload={"tag_id": tag_id},
     )
+    if target_type == "entry":
+        _entry = await state.get(CatalogEntry, target_id)
+        if _entry is not None:
+            await enqueue_catalog_search_outbox(state, entry_id=target_id, revision=_entry.revision, action="upsert")
     return row
 
 
@@ -305,6 +339,10 @@ async def remove_catalog_tag_assignment(
             summary="catalog tag removed",
             payload={"tag_id": tag_id},
         )
+    if removed and target_type == "entry":
+        _entry = await state.get(CatalogEntry, target_id)
+        if _entry is not None:
+            await enqueue_catalog_search_outbox(state, entry_id=target_id, revision=_entry.revision, action="upsert")
     return removed
 
 
