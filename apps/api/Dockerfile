@@ -13,6 +13,7 @@ ENV PIP_DEFAULT_TIMEOUT=300 \
     PIP_RETRIES=10 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
+COPY pyproject.toml ./
 COPY requirements.lock ./
 COPY cloudsite ./cloudsite
 RUN pip install --no-cache-dir --no-deps -r requirements.lock && \
