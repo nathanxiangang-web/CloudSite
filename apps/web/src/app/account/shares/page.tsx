@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Copy, ExternalLink, KeyRound, RefreshCw, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { api, Share } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { PublicShell } from "@/components/PublicShell";
 
 const statusLabel: Record<string, string> = {
@@ -16,7 +17,9 @@ const statusLabel: Record<string, string> = {
 
 export default function MySharesPage() {
   const client = useQueryClient();
-  const shares = useQuery({ queryKey: ["my-shares"], queryFn: () => api<{ items: Share[] }>("/api/my/shares") });
+  const auth = useAuth();
+  const userId = auth.data?.user?.id ?? null;
+  const shares = useQuery({ queryKey: ["my-shares", userId], queryFn: () => api<{ items: Share[] }>("/api/my/shares"), enabled: userId !== null });
   const action = useMutation({
     mutationFn: ({ token, body }: { token: string; body: object }) => api<Share>(`/api/my/shares/${token}`, { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: (share) => {

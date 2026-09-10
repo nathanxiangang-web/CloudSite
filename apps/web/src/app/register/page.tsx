@@ -7,6 +7,7 @@ import { FormEvent, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, PublicUser } from "@/lib/auth";
+import { clearUserScopedQueries } from "@/lib/user-query-keys";
 import { safeNext } from "@/lib/navigation";
 import { useSite } from "@/lib/site";
 
@@ -19,7 +20,7 @@ export default function RegisterPage() {
   const register = useMutation({
     mutationFn: () => api<PublicUser>("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password, password_confirm: passwordConfirm }) }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+      clearUserScopedQueries(queryClient); await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
       const next = safeNext(new URLSearchParams(window.location.search).get("next"));
       window.location.assign(next);
     },

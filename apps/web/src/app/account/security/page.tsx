@@ -8,6 +8,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { PublicShell } from "@/components/PublicShell";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, useAuth } from "@/lib/auth";
+import { clearUserScopedQueries } from "@/lib/user-query-keys";
 
 export default function AccountSecurityPage() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function AccountSecurityPage() {
   useEffect(() => { if (!auth.isLoading && !auth.data?.authenticated) router.replace("/login"); }, [auth.isLoading, auth.data?.authenticated, router]);
   const change = useMutation({
     mutationFn: () => api<{ ok: boolean }>("/api/auth/change-password", { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword, new_password_confirm: confirmPassword }) }),
-    onSuccess: async () => { setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY }); },
+    onSuccess: async () => { setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); clearUserScopedQueries(queryClient); await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY }); },
   });
   const submit = (event: FormEvent) => { event.preventDefault(); change.mutate(); };
   return <PublicShell><div className="page security-page">

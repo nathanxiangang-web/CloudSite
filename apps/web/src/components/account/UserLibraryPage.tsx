@@ -32,7 +32,8 @@ export function UserLibraryPage({ kind }: { kind: Kind }) {
   const queryClient = useQueryClient();
   const current = config[kind];
   const Icon = current.Icon;
-  const key = ["user-library", kind];
+  const userId = auth.data?.user?.id ?? null;
+  const key = ["user-library", userId, kind];
   const query = useQuery({ queryKey: key, queryFn: () => api<ListResponse>(`/api/me/${kind}`), enabled: Boolean(auth.data?.authenticated) });
 
   useEffect(() => {

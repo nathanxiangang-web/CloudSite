@@ -6,6 +6,7 @@ import Link from "next/link";
 import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { publishedResultHref } from "@/lib/submission-review";
 
 type Submission = {
@@ -33,7 +34,9 @@ function formatTime(value: string | null) {
 }
 
 export default function MySubmissionsPage() {
-  const query = useQuery({ queryKey: ["my-submissions"], queryFn: () => api<{ items: Submission[] }>("/api/submissions/mine") });
+  const auth = useAuth();
+  const userId = auth.data?.user?.id ?? null;
+  const query = useQuery({ queryKey: ["my-submissions", userId], queryFn: () => api<{ items: Submission[] }>("/api/submissions/mine"), enabled: userId !== null });
   const items = query.data?.items ?? [];
 
   return <PublicShell><div className="page account-library-page">

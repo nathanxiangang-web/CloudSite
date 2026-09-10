@@ -971,3 +971,17 @@ class SetupWizardState(StateBase):
     wizard_completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     started_at: Mapped[str] = mapped_column(String(40), default="")
     completed_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+class HealthCheckState(StateBase):
+    """M6 健康检查组件状态：每组件一行（component 唯一）。
+
+    component 为 database/alist/storage，status 为 healthy/degraded/unhealthy。
+    /api/ready 就绪探针检查后更新对应行；last_error 记录最近一次错误信息。
+    """
+
+    __tablename__ = "health_check_state"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    component: Mapped[str] = mapped_column(String(40), unique=True)
+    status: Mapped[str] = mapped_column(String(20))
+    last_check_at: Mapped[str] = mapped_column(String(40))
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

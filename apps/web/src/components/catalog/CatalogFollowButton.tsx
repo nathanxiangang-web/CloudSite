@@ -11,13 +11,14 @@ import {
   updateCatalogSubscription,
 } from "@/lib/catalog-client";
 
-const FOLLOW_STATUS_KEY = (entryId: string) => ["catalog-follow-status", entryId] as const;
+const FOLLOW_STATUS_KEY = (userId: number | null, entryId: string) => ["catalog-follow-status", userId, entryId] as const;
 
 export function CatalogFollowButton({ entryId }: { entryId: string }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
+  const userId = auth.data?.user?.id ?? null;
   const status = useQuery({
-    queryKey: FOLLOW_STATUS_KEY(entryId),
+    queryKey: FOLLOW_STATUS_KEY(userId, entryId),
     queryFn: () => fetchCatalogFollowStatus(entryId),
     enabled: Boolean(auth.data?.authenticated),
   });
@@ -25,21 +26,21 @@ export function CatalogFollowButton({ entryId }: { entryId: string }) {
   const follow = useMutation({
     mutationFn: () => followCatalogEntry(entryId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: FOLLOW_STATUS_KEY(entryId) });
+      await queryClient.invalidateQueries({ queryKey: FOLLOW_STATUS_KEY(userId, entryId) });
       await queryClient.invalidateQueries({ queryKey: ["my-catalog-follows"] });
     },
   });
   const unfollow = useMutation({
     mutationFn: () => unfollowCatalogEntry(entryId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: FOLLOW_STATUS_KEY(entryId) });
+      await queryClient.invalidateQueries({ queryKey: FOLLOW_STATUS_KEY(userId, entryId) });
       await queryClient.invalidateQueries({ queryKey: ["my-catalog-follows"] });
     },
   });
   const toggleNotify = useMutation({
     mutationFn: (enabled: boolean) => updateCatalogSubscription(entryId, enabled),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: FOLLOW_STATUS_KEY(entryId) });
+      await queryClient.invalidateQueries({ queryKey: FOLLOW_STATUS_KEY(userId, entryId) });
       await queryClient.invalidateQueries({ queryKey: ["my-catalog-follows"] });
     },
   });

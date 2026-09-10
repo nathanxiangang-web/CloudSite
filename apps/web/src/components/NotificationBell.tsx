@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Pin, Info, CheckCircle2, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { getLastReadAt, setLastReadAt } from "@/lib/notification-read-state";
 import { useHydrated } from "./useHydrated";
 
 type Notification = {
@@ -21,21 +23,12 @@ type Notification = {
   updated_at: string;
 };
 
-const LAST_READ_KEY = "cloudsite:notifications-last-read-at";
-
 const lastReadListeners = new Set<() => void>();
 function subscribeLastRead(callback: () => void) {
   lastReadListeners.add(callback);
   return () => { lastReadListeners.delete(callback); };
 }
-function getLastReadSnapshot(): string {
-  if (typeof window === "undefined") return "";
-  return localStorage.getItem(LAST_READ_KEY) ?? "";
-}
-function setLastRead(value: string) {
-  if (typeof window !== "undefined") {
-    try { localStorage.setItem(LAST_READ_KEY, value); } catch {}
-  }
+function notifyLastReadListeners() {
   lastReadListeners.forEach((l) => l());
 }
 
@@ -61,14 +54,21 @@ function formatTime(value: string) {
 export function NotificationBell() {
   const client = useQueryClient();
   const hydrated = useHydrated();
+  const auth = useAuth();
+  const userId = auth.data?.user?.id ?? null;
   const [open, setOpen] = useState(false);
-  const lastReadAt = useSyncExternalStore(subscribeLastRead, getLastReadSnapshot, () => "");
+  const lastReadAt = useSyncExternalStore(
+    subscribeLastRead,
+    () => getLastReadAt(userId),
+    () => "",
+  );
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    setLastRead(new Date().toISOString());
-  }, [open]);
+    if (!open || userId === null) return;
+    setLastReadAt(userId, new Date().toISOString());
+    notifyLastReadListeners();
+  }, [open, userId]);
 
   useEffect(() => {
     if (!open) return;
@@ -80,18 +80,19 @@ export function NotificationBell() {
   }, [open]);
 
   const query = useQuery({
-    queryKey: ["notifications"],
+    queryKey: ["notifications", userId],
     queryFn: () => api<{ items: Notification[] }>("/api/notifications"),
+    enabled: userId !== null,
     staleTime: 60_000,
     retry: false,
   });
   const remove = useMutation({
     mutationFn: (id: number) => api<{ ok: boolean }>(`/api/notifications/${id}`, { method: "DELETE" }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["notifications", userId] }),
   });
 
   const items = query.data?.items ?? [];
-  const unreadCount = !hydrated ? 0 : lastReadAt
+  const unreadCount = !hydrated || userId === null ? 0 : lastReadAt
     ? items.filter((item) => new Date(item.published_at) > new Date(lastReadAt)).length
     : items.length;
 

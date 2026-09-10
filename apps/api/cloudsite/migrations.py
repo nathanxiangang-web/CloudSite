@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 17
+CURRENT_SCHEMA_VERSION = 18
 
 
 @dataclass(frozen=True, slots=True)
@@ -920,6 +920,30 @@ async def state_v16_to_v17_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v17_to_v18_upgrade(conn: AsyncConnection) -> None:
+    """Schema v17 -> v18: M6 健康检查分级状态表 + health_check_enabled 开关，幂等。
+
+    新增 health_check_state 表记录各组件（database/alist/storage）最近一次健康
+    检查状态（healthy/degraded/unhealthy），用于 /api/ready 就绪探针持久化。
+    为 system_settings 增加 health_check_enabled 列（默认 1），允许管理员关闭
+    就绪探针的组件检查（存活探针 /api/health 不受影响）。空库与已有 v17 库均可运行。
+    """
+    settings_cols = await conn.exec_driver_sql("PRAGMA table_info(system_settings)")
+    if "health_check_enabled" not in {row[1] for row in settings_cols.fetchall()}:
+        await conn.exec_driver_sql(
+            "ALTER TABLE system_settings ADD COLUMN health_check_enabled BOOLEAN NOT NULL DEFAULT 1"
+        )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS health_check_state("
+        "id INTEGER PRIMARY KEY,"
+        "component TEXT NOT NULL,"
+        "status TEXT NOT NULL,"
+        "last_check_at TEXT NOT NULL,"
+        "last_error TEXT,"
+        "UNIQUE(component))"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -937,5 +961,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v14_to_v15", from_version=14, to_version=15, upgrade=state_v14_to_v15_upgrade),
     Migration(id="state_v15_to_v16", from_version=15, to_version=16, upgrade=state_v15_to_v16_upgrade),
     Migration(id="state_v16_to_v17", from_version=16, to_version=17, upgrade=state_v16_to_v17_upgrade),
+    Migration(id="state_v17_to_v18", from_version=17, to_version=18, upgrade=state_v17_to_v18_upgrade),
 ]
 

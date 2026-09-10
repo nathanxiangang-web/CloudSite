@@ -8,6 +8,7 @@ import { FormEvent, Suspense, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, PublicUser } from "@/lib/auth";
+import { clearUserScopedQueries } from "@/lib/user-query-keys";
 import { safeNext } from "@/lib/navigation";
 
 function LoginContent() {
@@ -19,6 +20,7 @@ function LoginContent() {
   const login = useMutation({
     mutationFn: () => api<PublicUser>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
     onSuccess: async () => {
+      clearUserScopedQueries(queryClient);
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
       const next = safeNext(params.get("next"));
       window.location.assign(next);

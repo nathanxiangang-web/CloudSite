@@ -65,7 +65,7 @@ export default function ResourceDetailPage() {
       <h1>{item.name}</h1>
     </header>
     {params.get("preview_error") && <div className="preview-notice">当前资源暂时无法预览（{params.get("preview_error")}），你仍可直接下载文件。</div>}
-    {isSoftware ? <SoftwareOverview item={item} authenticated={Boolean(auth.data?.authenticated)} onShare={() => setShareOpen(true)} /> : <section className="detail-grid">
+    {isSoftware ? <SoftwareOverview item={item} authenticated={Boolean(auth.data?.authenticated)} userId={auth.data?.user?.id ?? null} onShare={() => setShareOpen(true)} /> : <section className="detail-grid">
       <PreviewRenderer item={item} />
       <aside className="detail-meta">
         <span className={`detail-icon type-${item.content_type}`}><Icon /></span>
@@ -74,7 +74,7 @@ export default function ResourceDetailPage() {
         <div className="detail-actions">
           {item.capabilities.can_download && <DownloadButton resourceId={item.id} className="button primary download-main"><><Download />下载</></DownloadButton>}
           <button type="button" onClick={() => setShareOpen(true)}><Share2 />分享</button>
-          {auth.data?.authenticated && <FavoriteButton resourceId={item.id} />}
+          {auth.data?.authenticated && auth.data.user && <FavoriteButton resourceId={item.id} userId={auth.data.user.id} />}
         </div>
       </aside>
     </section>}
@@ -84,9 +84,9 @@ export default function ResourceDetailPage() {
   </div></PublicShell>;
 }
 
-function FavoriteButton({ resourceId }: { resourceId: string }) {
+function FavoriteButton({ resourceId, userId }: { resourceId: string; userId: number }) {
   const queryClient = useQueryClient();
-  const key = ["favorite-status", resourceId];
+  const key = ["favorite-status", userId, resourceId];
   const status = useQuery({ queryKey: key, queryFn: () => api<{ favorited: boolean }>(`/api/me/favorites/${resourceId}`), retry: false });
   const mutation = useMutation({
     mutationFn: (favorited: boolean) => api(`/api/me/favorites/${resourceId}`, { method: favorited ? "DELETE" : "POST" }),
@@ -103,7 +103,7 @@ function FavoriteButton({ resourceId }: { resourceId: string }) {
   return <button type="button" className={`favorite-button${favorited ? " active" : ""}`} disabled={status.isLoading || mutation.isPending} onClick={() => mutation.mutate(favorited)}><Heart fill={favorited ? "currentColor" : "none"} />{favorited ? "已收藏" : "收藏"}</button>;
 }
 
-function SoftwareOverview({ item, authenticated, onShare }: { item: ResourceDetail; authenticated: boolean; onShare: () => void }) {
+function SoftwareOverview({ item, authenticated, userId, onShare }: { item: ResourceDetail; authenticated: boolean; userId: number | null; onShare: () => void }) {
   const ext = item.extension?.toUpperCase() || "文件";
   const SoftwareIcon = archiveExtensions.has(item.extension?.toLowerCase() || "") ? Archive : Package2;
   return <article className="software-info-card">
@@ -122,7 +122,7 @@ function SoftwareOverview({ item, authenticated, onShare }: { item: ResourceDeta
     <div className="software-info-actions">
       {item.capabilities.can_download && <DownloadButton resourceId={item.id} className="button primary"><><Download />下载</></DownloadButton>}
       <button type="button" onClick={onShare}><Share2 />分享</button>
-      {authenticated && <FavoriteButton resourceId={item.id} />}
+      {authenticated && userId !== null && <FavoriteButton resourceId={item.id} userId={userId} />}
     </div>
   </article>;
 }

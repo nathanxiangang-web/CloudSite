@@ -15,14 +15,15 @@ import {
 } from "@/lib/catalog-client";
 import { contentTypeLabel, formatCatalogTimestamp, channelLabel } from "@/lib/catalog";
 
-const FOLLOW_KEY = ["my-catalog-follows"] as const;
+const FOLLOW_KEY = (userId: number | null) => ["my-catalog-follows", userId] as const;
 
 export default function AccountFollowsPage() {
   const auth = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const userId = auth.data?.user?.id ?? null;
   const query = useQuery({
-    queryKey: FOLLOW_KEY,
+    queryKey: FOLLOW_KEY(userId),
     queryFn: () => fetchMyCatalogFollows({ page: 1, page_size: 100 }),
     enabled: Boolean(auth.data?.authenticated),
   });
@@ -33,12 +34,12 @@ export default function AccountFollowsPage() {
 
   const unfollow = useMutation({
     mutationFn: (entryId: string) => unfollowCatalogEntry(entryId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: FOLLOW_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-catalog-follows"] }),
   });
   const toggleNotify = useMutation({
     mutationFn: ({ entryId, enabled }: { entryId: string; enabled: boolean }) =>
       updateCatalogSubscription(entryId, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: FOLLOW_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-catalog-follows"] }),
   });
 
   return (
