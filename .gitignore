@@ -40,3 +40,4 @@ skills/
 *.bak.fix
 apps.bak.gallery./
 fix_paths.py
+outbox/
