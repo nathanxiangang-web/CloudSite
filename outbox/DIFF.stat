@@ -1,7 +1,0 @@
- apps/api/tests/test_catalog_admin_crud_route.py | 266 ++++++++++++++++++
- apps/api/tests/test_catalog_download_route.py   | 342 ++++++++++++++++++++++++
- apps/api/tests/test_presentation_route.py       | 191 +++++++++++++
- apps/web/tests/catalog-delivery.test.mts        | 159 +++++++++++
- outbox/RESULT.md                                |  57 ++++
- outbox/TESTS.md                                 |  29 ++
- 6 files changed, 1044 insertions(+)
