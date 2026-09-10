@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 14
+CURRENT_SCHEMA_VERSION = 15
 
 
 @dataclass(frozen=True, slots=True)
@@ -806,6 +806,47 @@ async def state_v13_to_v14_upgrade(conn: AsyncConnection) -> None:
             await conn.exec_driver_sql(f"ALTER TABLE collections ADD COLUMN {column} {definition}")
 
 
+async def state_v14_to_v15_upgrade(conn: AsyncConnection) -> None:
+    """Schema v14 -> v15: collection_items.resource_id 改 nullable，幂等。
+
+    D2 强类型引用允许 item_type='catalog_entry' 的条目 resource_id 为 NULL，
+    但旧表建表时 resource_id 是 NOT NULL。SQLite 不能 ALTER COLUMN 改约束，
+    需重建表。保留所有数据、索引与约束，仅放宽 resource_id 为 nullable。
+    """
+    cols = await conn.exec_driver_sql("PRAGMA table_info(collection_items)")
+    col_names = {row[1] for row in cols.fetchall()}
+    if "item_type" not in col_names:
+        return
+    resource_col = [row for row in await conn.exec_driver_sql("PRAGMA table_info(collection_items)") if row[1] == "resource_id"]
+    if not resource_col or resource_col[0][3] == 0:
+        return
+    await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    await conn.exec_driver_sql(
+        "CREATE TABLE collection_items_new("
+        "id INTEGER PRIMARY KEY,"
+        "collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,"
+        "resource_id VARCHAR(64),"
+        "item_type VARCHAR(20) NOT NULL DEFAULT 'resource',"
+        "catalog_entry_id VARCHAR(35),"
+        "note TEXT NOT NULL DEFAULT '',"
+        "sort_order INTEGER NOT NULL DEFAULT 0,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (collection_id, resource_id),"
+        "UNIQUE (collection_id, catalog_entry_id),"
+        "CHECK (item_type IN ('resource', 'catalog_entry')))"
+    )
+    await conn.exec_driver_sql(
+        "INSERT INTO collection_items_new(id, collection_id, resource_id, item_type, catalog_entry_id, note, sort_order, created_at) "
+        "SELECT id, collection_id, resource_id, item_type, catalog_entry_id, note, sort_order, created_at FROM collection_items"
+    )
+    await conn.exec_driver_sql("DROP TABLE collection_items")
+    await conn.exec_driver_sql("ALTER TABLE collection_items_new RENAME TO collection_items")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_collection_items_collection_id ON collection_items (collection_id)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_collection_items_resource_id ON collection_items (resource_id)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_collection_items_item_type ON collection_items (item_type)")
+    await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_collection_items_catalog_entry_id ON collection_items (catalog_entry_id)")
+    await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
 
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
@@ -821,5 +862,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v11_to_v12", from_version=11, to_version=12, upgrade=state_v11_to_v12_upgrade),
     Migration(id="state_v12_to_v13", from_version=12, to_version=13, upgrade=state_v12_to_v13_upgrade),
     Migration(id="state_v13_to_v14", from_version=13, to_version=14, upgrade=state_v13_to_v14_upgrade),
+    Migration(id="state_v14_to_v15", from_version=14, to_version=15, upgrade=state_v14_to_v15_upgrade),
 ]
 
