@@ -12,6 +12,7 @@ _TEST_SECRET = "test-only-secret-key-for-pytest-not-for-production-32chars"
 settings.secret_key = _TEST_SECRET
 settings.master_key = ""
 settings.allow_insecure_dev_key = True
+settings.seed_default_collections = False
 
 
 @pytest.fixture(autouse=True)

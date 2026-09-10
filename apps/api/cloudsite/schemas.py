@@ -61,6 +61,10 @@ class CollectionInput(BaseModel):
     status: str = Field(default="active", pattern=r"^(active|hidden)$")
     visible_on_home: bool = True
     sort_order: int = 0
+    goal: str = Field(default="", max_length=4000)
+    audience: str = Field(default="", max_length=2000)
+    prerequisites: str = Field(default="", max_length=4000)
+    item_intro: str = Field(default="", max_length=4000)
 
     @field_validator("cover")
     @classmethod
@@ -71,8 +75,26 @@ class CollectionInput(BaseModel):
         return resource_id
 
 
+class CollectionItemInput(BaseModel):
+    item_type: Literal["resource", "catalog_entry"] = "resource"
+    resource_id: str | None = Field(default=None, max_length=64)
+    catalog_entry_id: str | None = Field(default=None, max_length=35)
+    note: str = Field(default="", max_length=1000)
+
+    @field_validator("resource_id")
+    @classmethod
+    def _trim_resource_id(cls, value: str | None) -> str | None:
+        return value.strip() if value else None
+
+    @field_validator("catalog_entry_id")
+    @classmethod
+    def _trim_catalog_entry_id(cls, value: str | None) -> str | None:
+        return value.strip() if value else None
+
+
 class CollectionItemsInput(BaseModel):
     resource_ids: list[str] = Field(default_factory=list, max_length=200)
+    items: list[CollectionItemInput] | None = Field(default=None, max_length=200)
 
 
 class ShareInput(BaseModel):

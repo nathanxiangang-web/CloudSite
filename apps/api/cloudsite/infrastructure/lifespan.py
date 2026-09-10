@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
+from ..config import settings
 from ..models import SiteSettings
 from ..admin_auth import ensure_setup_compatible, get_setup_completed
 from .security import validate_production_secrets
@@ -22,6 +23,10 @@ async def lifespan(_: FastAPI):
     main.backup_stable_id_databases()
     await main.init_databases()
     main.validate_database_files()
+    if settings.seed_default_collections:
+        from cloudsite.services.collection_seeds import seed_default_collections
+        async with main.StateSession() as _seed_session:
+            await seed_default_collections(_seed_session)
     await main.recover_search_index_if_dirty()
     await main.recover_interrupted_sync_runs()
     await main.migrate_stable_resource_ids()

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # existing administrator sessions without rotating secrets. Default 1.
     admin_session_epoch: int = 1
 
+    # D2: 启动时幂等注入默认任务型专题种子（生产默认开启，测试在 conftest 关闭）。
+    seed_default_collections: bool = True
+
     model_config = SettingsConfigDict(env_prefix="CLOUDSITE_", env_file=".env", extra="ignore")
 
     @property

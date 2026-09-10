@@ -1,0 +1,15 @@
+ apps/api/cloudsite/config.py                       |  3 +
+ apps/api/cloudsite/infrastructure/lifespan.py      |  5 ++
+ apps/api/cloudsite/migrations.py                   | 64 ++++++++++++++++-
+ apps/api/cloudsite/models.py                       | 15 +++-
+ apps/api/cloudsite/routers/admin/collections.py    | 84 +++++++++++++++++++---
+ apps/api/cloudsite/schemas.py                      | 22 ++++++
+ apps/api/cloudsite/services/collections.py         | 56 +++++++++++++--
+ apps/api/tests/conftest.py                         |  1 +
+ .../tests/test_catalog_c3_metadata_migration.py    |  4 +-
+ .../api/tests/test_catalog_release_asset_schema.py |  2 +-
+ apps/web/src/app/admin/collections/page.tsx        | 73 ++++++++++++++-----
+ apps/web/src/app/collections/[id]/page.tsx         | 50 ++++++++++++-
+ apps/web/src/app/s/[token]/page.tsx                |  4 +-
+ apps/web/src/lib/api.ts                            | 26 ++++++-
+ 14 files changed, 362 insertions(+), 47 deletions(-)
