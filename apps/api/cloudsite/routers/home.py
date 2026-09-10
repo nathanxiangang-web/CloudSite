@@ -36,6 +36,48 @@ def invalidate_home_cache() -> None:
     _home_cache["fetched_at"] = 0.0
 
 
+async def _resolve_popular(index, state, scope_filter, strategy: str, limit: int) -> list:
+    """根据 popular_strategy 解析热门资源，不再用 size 排序。
+
+    - recent: 按 modified_at desc（最近活跃）
+    - featured: catalog_entries.featured=True 优先，不足按 modified_at 补足
+    - manual: 按 content_root_mappings.home_order 排序，同组内按 modified_at
+    """
+    base_query = select(Resource).where(Resource.status == "active", scope_filter)
+    if strategy == "featured":
+        featured_rows = list((await state.scalars(
+            select(CatalogEntry).where(CatalogEntry.featured.is_(True), CatalogEntry.status == "published")
+            .order_by(desc(CatalogEntry.published_at)).limit(limit * 2)
+        )).all())
+        featured_ids = [r.cover_resource_id for r in featured_rows if r.cover_resource_id]
+        if featured_ids:
+            featured_resources = list((await index.scalars(
+                select(Resource).where(Resource.id.in_(featured_ids), Resource.status == "active", scope_filter)
+                .order_by(desc(Resource.modified_at)).limit(limit)
+            )).all())
+            if len(featured_resources) < limit:
+                seen_ids = {r.id for r in featured_resources}
+                extra_query = base_query.where(Resource.id.notin_(seen_ids)).order_by(desc(Resource.modified_at)).limit(limit - len(featured_resources))
+                extra = list((await index.scalars(extra_query)).all())
+                return featured_resources + extra
+            return featured_resources
+        return list((await index.scalars(base_query.order_by(desc(Resource.modified_at)).limit(limit))).all())
+    if strategy == "manual":
+        manual_roots = list((await state.scalars(
+            select(ContentRootMapping).where(ContentRootMapping.enabled.is_(True))
+            .order_by(ContentRootMapping.home_order, ContentRootMapping.sort_order, ContentRootMapping.id)
+        )).all())
+        root_rank = {root.id: idx for idx, root in enumerate(manual_roots)}
+        candidate_limit = min(limit * max(len(manual_roots), 1), 200) if manual_roots else limit
+        candidates = list((await index.scalars(
+            base_query.order_by(desc(Resource.modified_at)).limit(candidate_limit)
+        )).all())
+        candidates.sort(key=lambda r: (root_rank.get(r.root_mapping_id, 999999), -((r.modified_at.timestamp() if r.modified_at else 0))))
+        return candidates[:limit]
+    return list((await index.scalars(base_query.order_by(desc(Resource.modified_at)).limit(limit))).all())
+
+
+
 @router.get("/api/home")
 async def home(request: Request):
     from ..main import StateSession, IndexSession, resource_dict, collection_dict
@@ -55,7 +97,9 @@ async def home(request: Request):
             if row[0] in counts:
                 counts[row[0]] = int(row[1] or 0)
         recent = list((await index.scalars(select(Resource).where(Resource.status == "active", scope_filter).order_by(desc(Resource.modified_at)).limit(site.recent_limit if site else 6))).all())
-        popular = list((await index.scalars(select(Resource).where(Resource.status == "active", scope_filter).order_by(desc(Resource.size), desc(Resource.modified_at)).limit(site.popular_limit if site else 6))).all())
+        popular_strategy = (site.popular_strategy if site else "recent") or "recent"
+        popular_limit = site.popular_limit if site else 6
+        popular = await _resolve_popular(index, state, scope_filter, popular_strategy, popular_limit)
         collections = list((await state.scalars(select(Collection).where(Collection.visible_on_home.is_(True), Collection.status == "active").order_by(Collection.sort_order, desc(Collection.updated_at)).limit(site.collection_limit if site else 4))).all())
         # 批量预计算每个 root 的 resource/folder count，避免 N+1 查询
         root_resource_counts = {
@@ -110,6 +154,11 @@ async def home(request: Request):
         # 推荐专题区块数据：已发布 catalog 条目，按 sort_order 与发布时间
         topic_entries = list((await state.scalars(select(CatalogEntry).where(CatalogEntry.status == "published").order_by(CatalogEntry.sort_order, desc(CatalogEntry.published_at)).limit(12))).all())
         topics = [{"entry_id": e.entry_id, "title": e.title, "summary": e.summary, "content_type": e.content_type, "slug": e.slug, "cover_resource_id": e.cover_resource_id} for e in topic_entries]
+        _type_display = {"software": "软件", "image": "图库", "video": "视频", "document": "教程", "file": "文件"}
+        type_entries = [
+            {"type": ct, "display_name": _type_display[ct], "count": counts.get(ct, 0), "url": f"/browse?type={ct}"}
+            for ct in ("software", "image", "video", "document", "file")
+        ]
         result = {
             "site": {"site_name": site.site_name, "home_title": site.home_title, "description": site.description},
             "content_roots": content_roots,
@@ -121,6 +170,8 @@ async def home(request: Request):
             "collections": [await collection_dict(state, index, row) for row in collections],
             "presentation": presentation_payload,
             "topics": topics,
+            "type_entries": type_entries,
+            "popular_strategy": popular_strategy,
         }
         _home_cache["data"] = result
         _home_cache["fetched_at"] = now

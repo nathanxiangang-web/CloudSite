@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 16
+CURRENT_SCHEMA_VERSION = 17
 
 
 @dataclass(frozen=True, slots=True)
@@ -884,6 +884,42 @@ async def state_v15_to_v16_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v16_to_v17_upgrade(conn: AsyncConnection) -> None:
+    """Schema v16 -> v17: M5 首页热门排序策略与全类型入口，幂等。
+
+    为三张表增加首页编排相关字段：
+    - site_settings.popular_strategy: 热门排序策略（recent/featured/manual），
+      默认 'recent' 保持旧行为按 modified_at 排序，不再用 size 排序。
+    - content_root_mappings.home_order: 首页排序权重，manual 策略下生效。
+    - catalog_entries.featured: 手动精选标记，featured 策略下优先展示。
+
+    所有新列均有默认值，旧 v16 行保持可读且语义向后兼容。
+    """
+    settings_cols = await conn.exec_driver_sql("PRAGMA table_info(site_settings)")
+    settings_col_names = {row[1] for row in settings_cols.fetchall()}
+    if "popular_strategy" not in settings_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE site_settings ADD COLUMN popular_strategy TEXT NOT NULL DEFAULT 'recent'"
+        )
+
+    root_cols = await conn.exec_driver_sql("PRAGMA table_info(content_root_mappings)")
+    root_col_names = {row[1] for row in root_cols.fetchall()}
+    if "home_order" not in root_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE content_root_mappings ADD COLUMN home_order INTEGER NOT NULL DEFAULT 0"
+        )
+
+    entry_cols = await conn.exec_driver_sql("PRAGMA table_info(catalog_entries)")
+    entry_col_names = {row[1] for row in entry_cols.fetchall()}
+    if "featured" not in entry_col_names:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_entries ADD COLUMN featured BOOLEAN NOT NULL DEFAULT 0"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_entries_featured ON catalog_entries (featured)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -900,5 +936,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v13_to_v14", from_version=13, to_version=14, upgrade=state_v13_to_v14_upgrade),
     Migration(id="state_v14_to_v15", from_version=14, to_version=15, upgrade=state_v14_to_v15_upgrade),
     Migration(id="state_v15_to_v16", from_version=15, to_version=16, upgrade=state_v15_to_v16_upgrade),
+    Migration(id="state_v16_to_v17", from_version=16, to_version=17, upgrade=state_v16_to_v17_upgrade),
 ]
 

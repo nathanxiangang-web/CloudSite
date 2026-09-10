@@ -26,6 +26,8 @@ type HomeData = {
     ordered_blocks: OrderedBlock[];
   };
   topics: TopicEntry[];
+  type_entries?: { type: string; display_name: string; count: number; url: string }[];
+  popular_strategy?: string;
 };
 
 const typeMeta = {
@@ -84,7 +86,7 @@ function CategoryGrid({ counts, title }: { counts: Record<string, number>; title
       {(Object.keys(typeMeta) as Array<keyof typeof typeMeta>).slice(0, 4).map((type) => {
         const meta = typeMeta[type];
         const Icon = meta.icon;
-        return <Link href={`/resources/${type}`} className="category-card" key={type}><span className={`category-icon type-${type}`}><Icon /></span><span><strong>{meta.label}</strong><small>{formatCount(counts[type] ?? 0)} {meta.unit}</small></span><ArrowRight size={18} /></Link>;
+        return <Link href={`/browse?type=${type}`} className="category-card" key={type}><span className={`category-icon type-${type}`}><Icon /></span><span><strong>{meta.label}</strong><small>{formatCount(counts[type] ?? 0)} {meta.unit}</small></span><ArrowRight size={18} /></Link>;
       })}
     </section>
   </>;
@@ -135,7 +137,7 @@ export async function HomeContent() {
       case "featured":
         return <div key={block.type}><FeaturedCollections collections={collections} limit={block.limit} title={title} /></div>;
       case "recent":
-        return <div key={block.type}><SectionTitle title={title} href="/resources/file" />
+        return <div key={block.type}><SectionTitle title={title} href="/browse" />
           <section className="recent-table">
             {recent.length ? recent.slice(0, block.limit).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}
           </section>
@@ -143,7 +145,7 @@ export async function HomeContent() {
       case "topic":
         return <div key={block.type}><FeaturedTopics topics={topics} limit={block.limit} title={title} /></div>;
       case "continue":
-        return <div key={block.type}><SectionTitle title={title} href="/resources/file" /><ContinueSection limit={block.limit} /></div>;
+        return <div key={block.type}><SectionTitle title={title} href="/browse" /><ContinueSection limit={block.limit} /></div>;
       default:
         return null;
     }
@@ -169,11 +171,11 @@ export async function HomeContent() {
         : <>
             <CategoryGrid counts={data.counts} title="资源分类" />
             <FeaturedCollections collections={collections} />
-            <SectionTitle title="最近更新" href="/resources/file" />
+            <SectionTitle title="最近更新" href="/browse" />
             <section className="recent-table">
               {recent.length ? recent.slice(0, 6).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}
             </section>
-            <SectionTitle title="热门资源" href="/resources/file" />
+            <SectionTitle title="热门资源" href="/browse" />
             <section className="popular-grid">
               {popular ? popular.map((item) => <PopularCard key={item.id} item={item} />) : <div className="empty">暂无热门资源。</div>}
             </section>

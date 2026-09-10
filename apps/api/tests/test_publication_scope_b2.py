@@ -190,7 +190,7 @@ async def test_migration_v15_to_v16_idempotent(tmp_path, monkeypatch):
     from cloudsite import database
     from cloudsite.migrations import CURRENT_SCHEMA_VERSION, get_state_schema_version
 
-    assert CURRENT_SCHEMA_VERSION == 16
+    assert CURRENT_SCHEMA_VERSION == 17
     state_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
     index_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'index.db'}")
     monkeypatch.setattr(database, "state_engine", state_engine)
@@ -198,7 +198,7 @@ async def test_migration_v15_to_v16_idempotent(tmp_path, monkeypatch):
     await database.init_databases()
     await database.init_databases()
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 16
+        assert await get_state_schema_version(conn) == 17
     await state_engine.dispose()
     await index_engine.dispose()
 
@@ -217,7 +217,7 @@ async def test_migration_v15_to_v16_old_db(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "index_engine", index_engine)
     await database.init_databases()
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 16
+        assert await get_state_schema_version(conn) == 17
         from sqlalchemy import text
         tables = (await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))).all()
         assert "setup_wizard_state" in {r[0] for r in tables}

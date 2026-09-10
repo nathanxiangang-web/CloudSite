@@ -30,7 +30,8 @@ This document is the compatibility baseline for CloudSite 1.0.0. Compatible addi
 | `POST` | `/api/auth/logout` | Sign out |
 | `GET` | `/api/auth/me` | Current user |
 | `POST` | `/api/auth/change-password` | Change password |
-| `GET` | `/api/home` | Home-page data |
+| `GET` | `/api/home` | Home-page data (popular_strategy, type_entries) |
+| `GET` | `/api/browse` | All-type browse with optional type filter |
 | `GET` | `/api/storage/info` | Storage display information |
 | `GET` | `/api/content-roots` | Published content roots |
 | `GET` | `/api/resources` | Paginated resource list |

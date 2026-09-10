@@ -46,6 +46,7 @@ class SiteSettings(StateBase):
     recent_limit: Mapped[int] = mapped_column(Integer, default=6)
     popular_limit: Mapped[int] = mapped_column(Integer, default=6)
     collection_limit: Mapped[int] = mapped_column(Integer, default=4)
+    popular_strategy: Mapped[str] = mapped_column(String(20), default="recent", server_default="recent")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -65,6 +66,7 @@ class ContentRootMapping(StateBase):
     alist_path: Mapped[str] = mapped_column(String(1000), unique=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    home_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -590,6 +592,7 @@ class CatalogEntry(StateBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     publicly_visible: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
+    featured: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
 
 
 class CatalogRelease(StateBase):

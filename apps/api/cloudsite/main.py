@@ -88,6 +88,7 @@ from .routers.notifications import router as notifications_router
 from .routers.catalog import router as catalog_router
 from .routers.catalog_follow import router as catalog_follow_router
 from .routers.sitemap import router as sitemap_router
+from .routers.browse import router as browse_router
 
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -106,6 +107,7 @@ app.include_router(notifications_router)
 app.include_router(catalog_router)
 app.include_router(catalog_follow_router)
 app.include_router(sitemap_router)
+app.include_router(browse_router)
 
 from .routers.admin.auth import router as admin_auth_router
 from .routers.admin.setup import router as admin_setup_router

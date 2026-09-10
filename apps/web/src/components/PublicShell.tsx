@@ -16,7 +16,7 @@ const TOPBAR_NAV = [
   ["/resources/software", "资源库"],
   ["/catalog", "目录"],
   ["/collections", "精选"],
-  ["/resources/file", "最近更新"],
+  ["/browse", "浏览"],
   ["/about", "使用指南"],
 ] as const;
 
@@ -51,7 +51,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
         {navItems.slice(0, 1).map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}><Icon size={18} />{label}</Link>)}
         <span className="nav-section-label">资源库</span>
         {navItems.slice(1).map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}><Icon size={18} />{label}</Link>)}
-        <Link href="/resources/file" className={pathname === "/resources/file" ? "active" : ""}><Clock3 size={18} />最近更新</Link>
+        <Link href="/browse" className={pathname === "/browse" ? "active" : ""}><Clock3 size={18} />浏览</Link>
       </nav>
       <StorageInfoCard />
     </aside>
