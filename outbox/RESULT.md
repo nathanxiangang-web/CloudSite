@@ -1,45 +1,35 @@
-# work02 D1 资源级检索 - 交付结果
+# work03 C4 资源关注、版本更新与通知 - 交付结果
 
 ## 修改文件列表
 
 ### 后端（apps/api）
-- `cloudsite/models.py`：新增 `CatalogSearchOutbox`（state.db 投影 outbox 表）与 `CatalogSearchProjectionState`（index.db 投影水位表）ORM 模型。
-- `cloudsite/migrations.py`：新增 `state_v7_to_v8_upgrade` 迁移（建 `catalog_search_outbox` 表 + 索引），`CURRENT_SCHEMA_VERSION` 提升至 8，注册到迁移链。
-- `cloudsite/database.py`：`init_databases` 中在 index.db 创建 `catalog_search_fts`（FTS5，与旧 `search_fts` 分离）与 `catalog_search_projection_state` 表。
-- `cloudsite/services/catalog_search_projection.py`（新增）：D1 投影核心。包含 `enqueue_catalog_search_outbox`（业务同事务入队）、`consume_catalog_search_outbox`（消费者：水位保护、旧 revision 跳过、upsert/delete 投影、确认回写）、`rebuild_catalog_search_index`（全量重建）、`catalog_search_fts_match`（FTS 召回）。
-- `cloudsite/services/catalog.py`：在 `create_catalog_entry`/`update_catalog_entry`/`publish_catalog_entry`/`attach_catalog_location` 末尾同事务 enqueue outbox。
-- `cloudsite/services/catalog_metadata.py`：在 tag 分配/移除/更新/删除后为受影响 entry enqueue outbox。
-- `cloudsite/services/catalog_search.py`：改造 `search_published_catalog` 为 FTS 查询——先消费 outbox，再 `catalog_search_fts` MATCH 召回，content_type/tag/platform 过滤，`catalog_entry_view` fail-closed 实时校验，无结果时返回 `suggestion` 文案。
-- `cloudsite/routers/admin/search.py`：新增 `POST /api/admin/catalog/search/rebuild` 全量重建端点。
-- `tests/test_catalog_search_service.py`：重写为 8 个测试覆盖 FTS 投影、fail-closed、outbox 幂等重放、旧不覆盖新、重建、空查询、无结果反馈、content_type 过滤。
-- `tests/test_catalog_c3_metadata_migration.py`、`tests/test_catalog_release_asset_schema.py`：版本断言更新为 8。
+- `cloudsite/models.py`：新增 `CatalogFavorite`、`CatalogSubscription`、`CatalogReleaseNotification` 三张 StateBase 表。
+- `cloudsite/migrations.py`：`CURRENT_SCHEMA_VERSION` 升至 10；新增 `state_v9_to_v10_upgrade` 幂等迁移并注册到 `STATE_MIGRATIONS`。
+- `cloudsite/services/catalog_follow.py`（新增）：C4 应用层——关注/取关/状态查询/退订/我的关注列表/发布通知触发与去重。
+- `cloudsite/services/catalog.py`：`update_catalog_release` 在 release 从非 published 变为 published 时调用 `notify_release_subscribers`。
+- `cloudsite/routers/catalog_follow.py`（新增）：`/api/me/catalog/favorites*` 路由，登录用户私有。
+- `cloudsite/main.py`：注册 `catalog_follow_router`。
+- `tests/test_catalog_follow_service.py`（新增）：C4 最小自测 9 例。
 
 ### 前端（apps/web）
-- `src/lib/catalog.ts`：新增 `CatalogSearchItem`/`CatalogSearchResponse` 类型与 `buildCatalogSearchQuery`。
-- `src/lib/catalog-client.ts`：新增 `fetchCatalogSearch`。
-- `src/app/search/page.tsx`：全局搜索页增加"资源条目"分区（条目卡命中 `/catalog/{entry_id}`，文件命中保持旧文件页），类型标识清晰；无结果时统一提示。
-- `src/app/catalog/page.tsx`：目录页增加搜索框接入 `/api/catalog/search`，有 query 时显示搜索结果，无 query 时保持原列表。
+- `src/app/account/page.tsx`：账号页新增"我的关注"入口，"我的收藏"改为"文件收藏"，二者并列。
+- `src/app/account/follows/page.tsx`（新增）：我的关注列表页，含条目最新发布版本摘要、退订开关、取关、与文件收藏互链。
+- `src/app/catalog/[entryId]/page.tsx`：详情页 header 加关注/取关按钮。
+- `src/components/catalog/CatalogFollowButton.tsx`（新增）：关注按钮组件，未登录引导登录。
+- `src/lib/catalog-client.ts`：追加关注 API 客户端函数与类型。
 
 ## 核心改动
 
-### ProjectionOutbox 模式（跨库一致性）
-- state.db `catalog_search_outbox`：业务写操作同事务入队（entry_id, revision, action）。
-- index.db `catalog_search_projection_state`：水位表（entry_id, applied_revision）。
-- 消费者（读路径同步触发）：按 created_at 升序处理 pending 行，在同一 index 事务更新 FTS + 水位，确认后回写 state `consumed_at`。
-- 崩溃重放幂等：`applied_revision >= outbox.revision` 的行跳过。
-- 旧 revision 不覆盖新数据：`entry.revision > outbox.revision` 的行跳过。
-
-### FTS 投影
-- 独立 `catalog_search_fts` 表（不修改旧 `search_fts`），字段：entry_id, content_type, title, summary, description, aliases（slug+release/asset slug/title）, tags, platforms（channel+platform+architecture+package_type）。
-- 投影仅含已发布语义快照，读时仍 `catalog_entry_view` fail-closed 实时校验 availability，权限过滤不依赖 FTS 删除。
-
-### 搜索 API
-- `GET /api/catalog/search`：支持 q、content_type(type)、tag、platform 筛选与别名匹配（slug/release.slug/asset.slug）；返回含 `match_type` 与无结果 `suggestion`。
-- 旧 `/api/search` 契约零改动。
+1. **数据模型**：`CatalogFavorite(user_id, entry_id)` 唯一约束——条目级关注，与 `UserFavorite`（文件级收藏）严格分离，文件收藏/历史/播放进度语义零改动。`CatalogSubscription(user_id, entry_id, notify_enabled)` 唯一约束——通知订阅开关，可独立退订而保留关注。`CatalogReleaseNotification(release_id, user_id)` 唯一约束——通知去重幂等记录。
+2. **迁移**：`state_v9_to_v10_upgrade` 幂等创建三张表与索引，FK 在 state.db 内声明，ondelete=CASCADE 随用户/条目/版本删除清理。空库、重复执行、v9 旧库升级均通过（沿用现有 migration 测试模式）。
+3. **关注 API**：`POST/DELETE/GET/PATCH /api/me/catalog/favorites/{entry_id}` + `GET /api/me/catalog/favorites`。关注时同步创建订阅（notify_enabled=True）；仅允许关注已发布条目，避免泄漏未发布；列表分页且仅返回仍为 published 的条目，含最新已发布 release 摘要。
+4. **更新通知**：`update_catalog_release` 在 status→published 时触发 `notify_release_subscribers`，向 notify_enabled=True 的订阅者推送 `Notification(source="catalog_release")`，按 `(release_id, user_id)` 唯一约束去重，重复发布不重复通知；普通字段更新（非 publish）不触发；退订用户不收到；在请求事务内完成，不引入新基础设施。
+5. **前端**：账号页"我的关注"与"文件收藏"并列、类型明确、可互链；详情页关注按钮未登录引导登录，已登录显示关注/取关与通知开关。
 
 ## 尚存风险
-1. **outbox 消费为读时同步**：首版未起后台消费者循环，搜索请求首次会承担消费开销。数据量大时可能增加首查询延迟。后续可加后台周期消费或 lifespan 触发。
-2. **release/asset/location 的 admin CRUD 路由后端未实现**：前端 `catalog-client.ts` 有调用但后端无对应路由，故 enqueue 仅覆盖已实现的后端写操作（entry create/update/publish、location attach、tag CRUD）。若后续补全 release/asset 路由，需在对应服务层补 enqueue。
-3. **FTS 召回上限 500**：`catalog_search_fts_match` limit=500，超大规模目录可能漏召回。首版目录规模可控，后续可加分页召回或 MMR。
-4. **重建端点无鉴权细化**：`/api/admin/catalog/search/rebuild` 依赖现有 admin 中间件边界，未额外校验权限粒度。
-5. **跨库无事务**：outbox 消费分两步 commit（index 先，state 后），若 index commit 后 state commit 前崩溃，会重复消费（水位保护使其幂等，无数据损坏，仅多一次空转）。
+
+- 通知去重依赖 `CatalogReleaseNotification` 的 `(release_id, user_id)` 唯一约束与发布前 SELECT 检查；并发同 release 发布理论上由唯一约束兜底（savepoint 隔离），但单进程后台场景下不会触发并发。
+- `notify_release_subscribers` 在 `update_catalog_release` 事务内同步执行，关注者量大时事务耗时增长；首版未做批量/异步，符合"不引入新基础设施、请求流程内完成"约束，但超大规模关注者需后续优化。
+- 我的关注列表对每个条目单独查询 release 列表以取最新摘要，N+1 查询；首版关注量预期不大，后续可优化为聚合查询。
+- 前端"我的关注"页与详情页关注按钮共享 query key 失效，但未与通知铃铛联动刷新（通知列表仍需手动刷新）。
+- 首版分享部分（资产选择后创建文件分享）按任务书要求不做。

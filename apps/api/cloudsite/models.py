@@ -763,3 +763,69 @@ class CatalogSearchProjectionState(IndexBase):
     entry_id: Mapped[str] = mapped_column(String(35), primary_key=True)
     applied_revision: Mapped[int] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CatalogFavorite(StateBase):
+    """C4 资源关注：用户关注一个 catalog 条目（整个软件/图库/视频条目）。
+
+    与 UserFavorite（文件级收藏）严格分离：本表指向 catalog_entries.entry_id，
+    不指向单个 resource_id。语义为"关注这个条目的更新动态"，出现在账号页
+    "我的关注"列表，并作为更新通知的受众来源。文件收藏/历史/播放进度语义
+    零改动，仍指向原文件，不自动提升为关注整个软件。
+    """
+
+    __tablename__ = "catalog_favorites"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    entry_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_entries.entry_id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("user_id", "entry_id"),
+        Index("ix_catalog_favorites_user_created_at", "user_id", "created_at"),
+    )
+
+
+class CatalogSubscription(StateBase):
+    """C4 更新通知订阅：记录用户对某条目更新通知的开关状态。
+
+    关注条目时同步创建本行且 notify_enabled=True；用户可独立退订
+    （notify_enabled=False）而保留关注。发布新 release 时仅向
+    notify_enabled=True 的订阅者推送通知。
+    """
+
+    __tablename__ = "catalog_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    entry_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_entries.entry_id", ondelete="CASCADE"), index=True
+    )
+    notify_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (
+        UniqueConstraint("user_id", "entry_id"),
+        Index("ix_catalog_subscriptions_entry_enabled", "entry_id", "notify_enabled"),
+    )
+
+
+class CatalogReleaseNotification(StateBase):
+    """C4 更新通知去重幂等记录：按 (release_id, user_id) 唯一。
+
+    发布 release 时对每位订阅者尝试插入本行；若已存在则跳过通知，
+    确保 release 重复发布（先 publish 再 unpublish 再 publish）不重复
+    通知同一用户。取关后保留本行，避免重新关注后对同一 release 重复通知。
+    """
+
+    __tablename__ = "catalog_release_notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    release_id: Mapped[str] = mapped_column(
+        ForeignKey("catalog_releases.release_id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    notification_id: Mapped[int | None] = mapped_column(
+        ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("release_id", "user_id"),)

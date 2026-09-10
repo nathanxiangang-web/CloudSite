@@ -1,16 +1,16 @@
- apps/api/cloudsite/database.py                     |  20 ++
- apps/api/cloudsite/migrations.py                   |  39 ++-
- apps/api/cloudsite/models.py                       |  39 +++
- apps/api/cloudsite/routers/admin/search.py         |  18 +-
- apps/api/cloudsite/services/catalog.py             |  10 +
- apps/api/cloudsite/services/catalog_metadata.py    |  38 +++
- apps/api/cloudsite/services/catalog_search.py      |  77 +++--
- .../services/catalog_search_projection.py          | 347 +++++++++++++++++++++
- .../tests/test_catalog_c3_metadata_migration.py    |   2 +-
- .../api/tests/test_catalog_release_asset_schema.py |   2 +-
- apps/api/tests/test_catalog_search_service.py      | 318 ++++++++++++-------
- apps/web/src/app/catalog/page.tsx                  |  38 ++-
- apps/web/src/app/search/page.tsx                   |  28 +-
- apps/web/src/lib/catalog-client.ts                 |  17 +-
- apps/web/src/lib/catalog.ts                        |  39 +++
- 15 files changed, 880 insertions(+), 152 deletions(-)
+ apps/api/cloudsite/main.py                         |   2 +
+ apps/api/cloudsite/migrations.py                   |  73 +++-
+ apps/api/cloudsite/models.py                       |  66 ++++
+ apps/api/cloudsite/routers/catalog_follow.py       | 115 +++++++
+ apps/api/cloudsite/services/catalog.py             |   6 +
+ apps/api/cloudsite/services/catalog_follow.py      | 373 +++++++++++++++++++++
+ apps/api/tests/test_catalog_follow_service.py      | 263 +++++++++++++++
+ apps/web/src/app/account/follows/page.tsx          | 110 ++++++
+ apps/web/src/app/account/page.tsx                  |   4 +-
+ apps/web/src/app/catalog/[entryId]/page.tsx        |   2 +
+ .../src/components/catalog/CatalogFollowButton.tsx |  99 ++++++
+ apps/web/src/lib/catalog-client.ts                 |  61 ++++
+ outbox/DIFF.stat                                   |   0
+ outbox/RESULT.md                                   |  45 +++
+ outbox/TESTS.md                                    |  24 ++
+ 15 files changed, 1240 insertions(+), 3 deletions(-)

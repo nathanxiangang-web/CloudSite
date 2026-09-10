@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -570,6 +570,75 @@ async def state_v8_to_v9_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v9_to_v10_upgrade(conn: AsyncConnection) -> None:
+    """Schema v9 -> v10: C4 资源关注与更新通知，幂等。
+
+    新增三张 state.db 表支撑 C4「关注条目 + 新版本通知」语义：
+    - catalog_favorites：用户对 catalog 条目的关注关系（entry_id + user_id 唯一），
+      与 user_favorites（文件级收藏）严格分离，指向 catalog_entries.entry_id。
+    - catalog_subscriptions：更新通知订阅开关，关注时默认 notify_enabled=1，
+      可独立退订（置 0）而保留关注。
+    - catalog_release_notifications：按 (release_id, user_id) 唯一的去重幂等记录，
+      确保 release 重复发布不重复通知同一用户。
+
+    所有外键仅在 state.db 内声明；ondelete=CASCADE 随用户/条目/版本删除清理。
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_favorites("
+        "id INTEGER PRIMARY KEY,"
+        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "entry_id VARCHAR(35) NOT NULL REFERENCES catalog_entries(entry_id) ON DELETE CASCADE,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (user_id, entry_id))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_favorites_user_id ON catalog_favorites (user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_favorites_entry_id ON catalog_favorites (entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_favorites_user_created_at ON catalog_favorites (user_id, created_at)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_subscriptions("
+        "id INTEGER PRIMARY KEY,"
+        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "entry_id VARCHAR(35) NOT NULL REFERENCES catalog_entries(entry_id) ON DELETE CASCADE,"
+        "notify_enabled BOOLEAN NOT NULL DEFAULT 1,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (user_id, entry_id))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_subscriptions_user_id ON catalog_subscriptions (user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_subscriptions_entry_id ON catalog_subscriptions (entry_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_subscriptions_entry_enabled ON catalog_subscriptions (entry_id, notify_enabled)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_release_notifications("
+        "id INTEGER PRIMARY KEY,"
+        "release_id VARCHAR(35) NOT NULL REFERENCES catalog_releases(release_id) ON DELETE CASCADE,"
+        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "notification_id INTEGER REFERENCES notifications(id) ON DELETE SET NULL,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (release_id, user_id))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_release_notifications_release_id ON catalog_release_notifications (release_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_release_notifications_user_id ON catalog_release_notifications (user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_release_notifications_notification_id ON catalog_release_notifications (notification_id)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -579,4 +648,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v6_to_v7", from_version=6, to_version=7, upgrade=state_v6_to_v7_upgrade),
     Migration(id="state_v7_to_v8", from_version=7, to_version=8, upgrade=state_v7_to_v8_upgrade),
     Migration(id="state_v8_to_v9", from_version=8, to_version=9, upgrade=state_v8_to_v9_upgrade),
+    Migration(id="state_v9_to_v10", from_version=9, to_version=10, upgrade=state_v9_to_v10_upgrade),
 ]
+

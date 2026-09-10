@@ -244,3 +244,64 @@ export type {
   CatalogStatus,
   CatalogTag,
 };
+
+// ---- C4 资源关注 ----
+
+export type CatalogFollowStatus = {
+  favorited: boolean;
+  notify_enabled: boolean;
+};
+
+export type CatalogFollowItem = {
+  entry_id: string;
+  title: string;
+  slug: string;
+  content_type: string;
+  summary: string;
+  favorited_at: string;
+  notify_enabled: boolean;
+  latest_release: {
+    release_id: string;
+    title: string;
+    slug: string;
+    channel: string;
+    published_at: string | null;
+    release_date: string | null;
+    is_recommended: boolean;
+  } | null;
+};
+
+export type CatalogFollowPage = {
+  items: CatalogFollowItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+};
+
+export async function fetchCatalogFollowStatus(entryId: string): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(`/api/me/catalog/favorites/${encodeURIComponent(entryId)}`);
+}
+
+export async function followCatalogEntry(entryId: string): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(`/api/me/catalog/favorites/${encodeURIComponent(entryId)}`, { method: "POST" });
+}
+
+export async function unfollowCatalogEntry(entryId: string): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(`/api/me/catalog/favorites/${encodeURIComponent(entryId)}`, { method: "DELETE" });
+}
+
+export async function updateCatalogSubscription(entryId: string, notifyEnabled: boolean): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(`/api/me/catalog/favorites/${encodeURIComponent(entryId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ notify_enabled: notifyEnabled }),
+  });
+}
+
+export async function fetchMyCatalogFollows(params: { page?: number; page_size?: number } = {}): Promise<CatalogFollowPage> {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.page_size) query.set("page_size", String(params.page_size));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return api<CatalogFollowPage>(`/api/me/catalog/favorites${suffix}`);
+}
