@@ -1,0 +1,5 @@
+ .../tests/test_catalog_search_projection_e2e.py    | 367 +++++++++++++++++++++
+ apps/api/tests/test_catalog_search_route.py        | 178 ++++++++++
+ apps/api/tests/test_collection_topic_e2e.py        | 217 ++++++++++++
+ apps/web/tests/catalog-search.test.mts             | 135 ++++++++
+ 4 files changed, 897 insertions(+)
