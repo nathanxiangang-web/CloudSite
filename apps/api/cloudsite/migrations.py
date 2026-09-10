@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,6 +702,49 @@ async def state_v10_to_v11_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+
+async def state_v11_to_v12_upgrade(conn: AsyncConnection) -> None:
+    """Schema v11 -> v12: B1 站点呈现配置表 site_presentation 与历史快照表
+    site_presentation_revisions，幂等。
+
+    site_presentation 为单例（id=1），保存当前生效的 preset/theme_tokens/
+    navigation/home_blocks 与 config_revision。home_blocks 受支持类型限制在
+    featured/recent/topic/category/continue，由应用层 pydantic schema 验证，
+    不直接执行用户代码。每次发布写一条 site_presentation_revisions 历史快照，
+    回退生成新 revision 而非覆盖历史，旧默认主题仍可恢复（enabled=False 即
+    回退到默认区块顺序）。两套预设（software/tutorial）由应用层常量定义，
+    切换无需改源码。
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS site_presentation("
+        "id INTEGER PRIMARY KEY,"
+        "enabled BOOLEAN NOT NULL DEFAULT 0,"
+        "preset VARCHAR(20) NOT NULL DEFAULT 'custom',"
+        "theme_tokens_json TEXT NOT NULL DEFAULT '{}',"
+        "navigation_json TEXT NOT NULL DEFAULT '[]',"
+        "home_blocks_json TEXT NOT NULL DEFAULT '[]',"
+        "config_revision INTEGER NOT NULL DEFAULT 1,"
+        "updated_by VARCHAR(100) NOT NULL DEFAULT '',"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "CHECK (preset IN ('software', 'tutorial', 'custom')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS site_presentation_revisions("
+        "revision_id INTEGER PRIMARY KEY,"
+        "revision INTEGER NOT NULL,"
+        "preset VARCHAR(20) NOT NULL DEFAULT 'custom',"
+        "theme_tokens_json TEXT NOT NULL DEFAULT '{}',"
+        "navigation_json TEXT NOT NULL DEFAULT '[]',"
+        "home_blocks_json TEXT NOT NULL DEFAULT '[]',"
+        "summary VARCHAR(200) NOT NULL DEFAULT '',"
+        "created_by VARCHAR(100) NOT NULL DEFAULT '',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_site_presentation_revisions_revision "
+        "ON site_presentation_revisions (revision)"
+    )
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -713,5 +756,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v8_to_v9", from_version=8, to_version=9, upgrade=state_v8_to_v9_upgrade),
     Migration(id="state_v9_to_v10", from_version=9, to_version=10, upgrade=state_v9_to_v10_upgrade),
     Migration(id="state_v10_to_v11", from_version=10, to_version=11, upgrade=state_v10_to_v11_upgrade),
+    Migration(id="state_v11_to_v12", from_version=11, to_version=12, upgrade=state_v11_to_v12_upgrade),
 ]
 

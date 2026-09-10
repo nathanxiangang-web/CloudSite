@@ -24,8 +24,8 @@ function getCollectionVisual(name: string, index: number) {
   return { icon: FolderKanban, tone: fallback.tone, cover: fallback.cover };
 }
 
-export function FeaturedCollections({ collections }: { collections: Collection[] }) {
-  const featuredCollections = collections.slice(0, 4);
+export function FeaturedCollections({ collections, limit = 4, title = "精选合集" }: { collections: Collection[]; limit?: number; title?: string }) {
+  const featuredCollections = collections.slice(0, limit);
 
   if (!featuredCollections.length) {
     return <div className="empty">还没有精选合集，管理员可在后台创建。</div>;
@@ -35,7 +35,7 @@ export function FeaturedCollections({ collections }: { collections: Collection[]
     <section className="featured-collections">
       <div className="collection-heading">
         <div>
-          <h2>精选合集</h2>
+          <h2>{title}</h2>
           <p>发现优质资源，探索更多精彩内容</p>
         </div>
         <Link href="/collections">查看全部 <ArrowRight aria-hidden="true" /></Link>

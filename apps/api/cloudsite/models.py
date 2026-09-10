@@ -885,3 +885,50 @@ class CatalogSuggestion(StateBase):
         ),
     )
 
+
+
+class SitePresentation(StateBase):
+    """B1 站点呈现配置：场景预设、主题变量、导航与首页区块顺序。
+
+    单例（id=1），保存当前生效的轻量版本化配置。preset 为预设标识
+    （software/tutorial/custom）；theme_tokens/navigation/home_blocks 以受控
+    JSON 文本存储，经 pydantic schema 验证后写入，不直接执行用户代码。
+    config_revision 单调递增，每次发布写一条 SitePresentationRevision 历史快照
+    用于回退。enabled=False 时首页回退到默认区块顺序，旧默认主题仍可恢复。
+    """
+
+    __tablename__ = "site_presentation"
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    preset: Mapped[str] = mapped_column(String(20), default="custom")
+    theme_tokens_json: Mapped[str] = mapped_column(Text, default="{}")
+    navigation_json: Mapped[str] = mapped_column(Text, default="[]")
+    home_blocks_json: Mapped[str] = mapped_column(Text, default="[]")
+    config_revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    updated_by: Mapped[str] = mapped_column(String(100), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (
+        CheckConstraint(
+            "preset IN ('software', 'tutorial', 'custom')",
+            name="ck_site_presentation_preset",
+        ),
+    )
+
+
+class SitePresentationRevision(StateBase):
+    """B1 站点呈现配置历史快照：每次发布保留上一配置，支持回退。
+
+    回退生成新 revision 并走同一发布流程，不覆盖历史；保留足够信息恢复
+    theme_tokens/navigation/home_blocks。撤销/回退不破坏既有身份。
+    """
+
+    __tablename__ = "site_presentation_revisions"
+    revision_id: Mapped[int] = mapped_column(primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, index=True)
+    preset: Mapped[str] = mapped_column(String(20), default="custom")
+    theme_tokens_json: Mapped[str] = mapped_column(Text, default="{}")
+    navigation_json: Mapped[str] = mapped_column(Text, default="[]")
+    home_blocks_json: Mapped[str] = mapped_column(Text, default="[]")
+    summary: Mapped[str] = mapped_column(String(200), default="")
+    created_by: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

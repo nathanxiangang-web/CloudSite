@@ -1,0 +1,18 @@
+ apps/api/cloudsite/main.py                         |   2 +
+ apps/api/cloudsite/migrations.py                   |  46 +++-
+ apps/api/cloudsite/models.py                       |  47 ++++
+ apps/api/cloudsite/routers/admin/presentation.py   | 247 +++++++++++++++++++++
+ apps/api/cloudsite/routers/home.py                 |  32 ++-
+ apps/api/cloudsite/services/presentation.py        | 138 ++++++++++++
+ apps/api/cloudsite/site.py                         |  22 +-
+ .../tests/test_catalog_c3_metadata_migration.py    |   2 +-
+ .../api/tests/test_catalog_release_asset_schema.py |   2 +-
+ apps/web/src/app/admin/presentation/page.tsx       | 219 ++++++++++++++++++
+ apps/web/src/components/AdminShell.tsx             |   3 +-
+ apps/web/src/components/ContinueSection.tsx        |  43 ++++
+ apps/web/src/components/FeaturedCollections.tsx    |   6 +-
+ apps/web/src/components/FeaturedTopics.tsx         |  31 +++
+ apps/web/src/components/HomeContent.tsx            | 127 ++++++++---
+ apps/web/src/components/PublicShell.tsx            |   8 +-
+ apps/web/src/lib/site.tsx                          |  23 ++
+ 17 files changed, 953 insertions(+), 45 deletions(-)
