@@ -4,8 +4,13 @@ import { Archive, ArrowRight, Clapperboard, Download, File, FileText, Image, Pan
 import { MobilePrimaryNavigation } from "./PublicNavigation";
 import { HomeSearch } from "./HomeSearch";
 import { FeaturedCollections } from "./FeaturedCollections";
+import { FeaturedTopics, TopicEntry } from "./FeaturedTopics";
+import { ContinueSection } from "./ContinueSection";
 import { HeroIllustration } from "./hero/HeroIllustration";
 import { Collection, formatBytes, Resource } from "@/lib/api";
+
+type BlockType = "featured" | "recent" | "topic" | "category" | "continue";
+type OrderedBlock = { type: BlockType; enabled: boolean; sort_order: number; limit: number; title: string };
 
 type HomeData = {
   site: { site_name: string; home_title: string; description: string; hero_subtitle: string };
@@ -13,6 +18,14 @@ type HomeData = {
   recent: Resource[];
   popular: Resource[];
   collections: Collection[];
+  presentation?: {
+    enabled: boolean;
+    preset: string;
+    theme_tokens: { accent_color: string; card_radius: number };
+    navigation: { label: string; href: string; sort_order: number }[];
+    ordered_blocks: OrderedBlock[];
+  };
+  topics: TopicEntry[];
 };
 
 const typeMeta = {
@@ -22,6 +35,14 @@ const typeMeta = {
   document: { label: "教程", unit: "篇教程", icon: FileText },
   file: { label: "文件", unit: "个文件", icon: File },
 } as const;
+
+const BLOCK_LABELS: Record<BlockType, string> = {
+  featured: "精选合集",
+  recent: "最近更新",
+  topic: "推荐专题",
+  category: "资源分类",
+  continue: "继续使用",
+};
 
 function formatCount(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
@@ -56,6 +77,36 @@ function PopularCard({ item }: { item: Resource }) {
   return <Link href={`/resource/${item.id}`} className="popular-card"><span className={`popular-icon type-${safeType}`}><Icon /></span><strong title={item.name}>{item.name}</strong><small>{formatBytes(item.size)}</small></Link>;
 }
 
+function CategoryGrid({ counts, title }: { counts: Record<string, number>; title: string }) {
+  return <>
+    <div className="section-title"><h2>{title}</h2></div>
+    <section className="category-grid">
+      {(Object.keys(typeMeta) as Array<keyof typeof typeMeta>).slice(0, 4).map((type) => {
+        const meta = typeMeta[type];
+        const Icon = meta.icon;
+        return <Link href={`/resources/${type}`} className="category-card" key={type}><span className={`category-icon type-${type}`}><Icon /></span><span><strong>{meta.label}</strong><small>{formatCount(counts[type] ?? 0)} {meta.unit}</small></span><ArrowRight size={18} /></Link>;
+      })}
+    </section>
+  </>;
+}
+
+function WhySection() {
+  return <section className="why">
+    <h2>为什么选择 CloudSite？</h2>
+    <p>让网盘资源管理和分享变得更简单、更高效</p>
+    <div>
+      {([
+        [Download, "直接下载", "下载请求送入 AList 原生下载链路", "CloudSite 负责校验与跳转", "blue"],
+        [Archive, "数据在网盘", "文件存储在您的网盘中", "CloudSite 只负责整理与展示", "green"],
+        [PanelsTopLeft, "可视化整理", "管理所选的目录结构", "清晰分类，快速找到需要的资源", "cyan"],
+        [ShieldCheck, "安全可靠", "不存储您的文件内容", "保障您的数据隐私与安全", "orange"],
+      ] as const).map(([Icon, title, line1, line2, tone]) => (
+        <article key={String(title)}><Icon className={`why-icon ${tone}`} /><span><strong>{String(title)}</strong><small>{String(line1)}<br />{String(line2)}</small></span></article>
+      ))}
+    </div>
+  </section>;
+}
+
 export async function HomeContent() {
   const apiBase = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
   const headerList = await headers();
@@ -68,9 +119,35 @@ export async function HomeContent() {
   const collections = data.collections ?? [];
   const popular = data.popular.length ? data.popular.slice(0, 6) : null;
   const recent = data.recent ?? [];
+  const topics = data.topics ?? [];
   const accent = "资源网站";
   const titleLead = site.home_title.endsWith(accent) ? site.home_title.slice(0, -accent.length) : site.home_title;
   const titleAccent = site.home_title.endsWith(accent) ? accent : "";
+
+  const presentation = data.presentation;
+  const useBlocks = presentation && presentation.enabled && presentation.ordered_blocks && presentation.ordered_blocks.length > 0;
+
+  function renderBlock(block: OrderedBlock) {
+    const title = block.title || BLOCK_LABELS[block.type];
+    switch (block.type) {
+      case "category":
+        return <CategoryGrid key={block.type} counts={data.counts} title={title} />;
+      case "featured":
+        return <div key={block.type}><FeaturedCollections collections={collections} limit={block.limit} title={title} /></div>;
+      case "recent":
+        return <div key={block.type}><SectionTitle title={title} href="/resources/file" />
+          <section className="recent-table">
+            {recent.length ? recent.slice(0, block.limit).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}
+          </section>
+        </div>;
+      case "topic":
+        return <div key={block.type}><FeaturedTopics topics={topics} limit={block.limit} title={title} /></div>;
+      case "continue":
+        return <div key={block.type}><SectionTitle title={title} href="/resources/file" /><ContinueSection limit={block.limit} /></div>;
+      default:
+        return null;
+    }
+  }
 
   return (
     <>
@@ -87,40 +164,22 @@ export async function HomeContent() {
 
       <MobilePrimaryNavigation />
 
-      <section className="category-grid">
-        {(Object.keys(typeMeta) as Array<keyof typeof typeMeta>).slice(0, 4).map((type) => {
-          const meta = typeMeta[type];
-          const Icon = meta.icon;
-          return <Link href={`/resources/${type}`} className="category-card" key={type}><span className={`category-icon type-${type}`}><Icon /></span><span><strong>{meta.label}</strong><small>{formatCount(data.counts[type] ?? 0)} {meta.unit}</small></span><ArrowRight size={18} /></Link>;
-        })}
-      </section>
+      {useBlocks
+        ? presentation!.ordered_blocks.map((block) => renderBlock(block))
+        : <>
+            <CategoryGrid counts={data.counts} title="资源分类" />
+            <FeaturedCollections collections={collections} />
+            <SectionTitle title="最近更新" href="/resources/file" />
+            <section className="recent-table">
+              {recent.length ? recent.slice(0, 6).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}
+            </section>
+            <SectionTitle title="热门资源" href="/resources/file" />
+            <section className="popular-grid">
+              {popular ? popular.map((item) => <PopularCard key={item.id} item={item} />) : <div className="empty">暂无热门资源。</div>}
+            </section>
+          </>}
 
-      <FeaturedCollections collections={collections} />
-
-      <SectionTitle title="最近更新" href="/resources/file" />
-      <section className="recent-table">
-        {recent.length ? recent.slice(0, 6).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}
-      </section>
-
-      <SectionTitle title="热门资源" href="/resources/file" />
-      <section className="popular-grid">
-        {popular ? popular.map((item) => <PopularCard key={item.id} item={item} />) : <div className="empty">暂无热门资源。</div>}
-      </section>
-
-      <section className="why">
-        <h2>为什么选择 CloudSite？</h2>
-        <p>让网盘资源管理和分享变得更简单、更高效</p>
-        <div>
-          {([
-            [Download, "直接下载", "下载请求送入 AList 原生下载链路", "CloudSite 负责校验与跳转", "blue"],
-            [Archive, "数据在网盘", "文件存储在您的网盘中", "CloudSite 只负责整理与展示", "green"],
-            [PanelsTopLeft, "可视化整理", "管理所选的目录结构", "清晰分类，快速找到需要的资源", "cyan"],
-            [ShieldCheck, "安全可靠", "不存储您的文件内容", "保障您的数据隐私与安全", "orange"],
-          ] as const).map(([Icon, title, line1, line2, tone]) => (
-            <article key={String(title)}><Icon className={`why-icon ${tone}`} /><span><strong>{String(title)}</strong><small>{String(line1)}<br />{String(line2)}</small></span></article>
-          ))}
-        </div>
-      </section>
+      <WhySection />
     </>
   );
 }

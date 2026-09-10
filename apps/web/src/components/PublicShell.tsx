@@ -9,6 +9,7 @@ import { AuthMenu } from "./AuthMenu";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./NotificationBell";
 import { MobilePrimaryNavigation, useVisibleNavItems } from "./PublicNavigation";
+import { useSite } from "@/lib/site";
 
 const TOPBAR_NAV = [
   ["/", "首页"],
@@ -31,11 +32,16 @@ function TopbarActions() {
 export function PublicShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const navItems = useVisibleNavItems();
+  const site = useSite();
+  const presentation = site.presentation;
+  const topbarNav = presentation && presentation.enabled && presentation.navigation.length
+    ? [...presentation.navigation].sort((a, b) => a.sort_order - b.sort_order)
+    : TOPBAR_NAV.map(([href, label]) => ({ href, label }));
   return <div className={`app-shell${pathname === "/" ? " home-shell" : ""}`}>
     <header className="public-topbar">
       <Brand />
       <nav className="topbar-nav" aria-label="主导航">
-        {TOPBAR_NAV.map(([href, label]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}>{label}</Link>)}
+        {topbarNav.map(({ href, label }) => <Link key={href} href={href} className={pathname === href ? "active" : ""}>{label}</Link>)}
       </nav>
       <TopbarActions />
       <AuthMenu />

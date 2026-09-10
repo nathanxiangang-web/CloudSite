@@ -9,8 +9,10 @@ from sqlalchemy import select, func
 
 from . import __version__
 from .database import StateSession, IndexSession
-from .models import ContentRootMapping, Resource, SiteSettings
+from .models import ContentRootMapping, Resource, SitePresentation, SiteSettings
 
+
+from .services.presentation import default_presentation, validate_config
 
 router = APIRouter(tags=["site"])
 
@@ -59,4 +61,22 @@ async def public_site():
             if r[0] in counts:
                 counts[r[0]] = int(r[1] or 0)
         result["content_counts"] = counts
+        # B1 站点呈现：导航组合与主题变量，供前台动态导航与主题
+        presentation_row = await state.get(SitePresentation, 1)
+        if presentation_row and presentation_row.enabled:
+            cfg = validate_config(presentation_row.preset, presentation_row.theme_tokens_json, presentation_row.navigation_json, presentation_row.home_blocks_json)
+            result["presentation"] = {
+                "enabled": True,
+                "preset": cfg.preset,
+                "theme_tokens": cfg.theme_tokens.model_dump(),
+                "navigation": [item.model_dump() for item in cfg.navigation],
+            }
+        else:
+            _default_cfg = default_presentation()
+            result["presentation"] = {
+                "enabled": False,
+                "preset": _default_cfg.preset,
+                "theme_tokens": _default_cfg.theme_tokens.model_dump(),
+                "navigation": [item.model_dump() for item in _default_cfg.navigation],
+            }
         return result

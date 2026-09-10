@@ -1,7 +1,7 @@
 """home 路由：首页、存储信息、内容根列表。"""
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from sqlalchemy import desc, func, select
 
 from ..alist import AListClient
@@ -9,13 +9,16 @@ from ..config import settings
 from ..crypto import decrypt_secret
 from ..models import (
     AListConnection,
+    CatalogEntry,
     Collection,
     ContentRootMapping,
     Folder,
     Resource,
+    SitePresentation,
     SiteSettings,
 )
 from ..schemas import ContentRootListOutput
+from ..services.presentation import default_presentation, ordered_blocks, validate_config
 
 router = APIRouter()
 
@@ -34,7 +37,7 @@ def invalidate_home_cache() -> None:
 
 
 @router.get("/api/home")
-async def home():
+async def home(request: Request):
     from ..main import StateSession, IndexSession, resource_dict, collection_dict
 
     now = time.time()
@@ -84,6 +87,29 @@ async def home():
         resource_count = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active", scope_filter)) or 0)
         folder_count = int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids) if enabled_ids else False)) or 0)
         total_size = int(await index.scalar(select(func.coalesce(func.sum(Resource.size), 0)).where(Resource.status == "active", scope_filter)) or 0)
+        # B1 站点呈现配置：enabled 时按 home_blocks 顺序渲染区块，否则回退默认
+        presentation_row = await state.get(SitePresentation, 1)
+        if presentation_row and presentation_row.enabled:
+            presentation_cfg = validate_config(presentation_row.preset, presentation_row.theme_tokens_json, presentation_row.navigation_json, presentation_row.home_blocks_json)
+            presentation_payload = {
+                "enabled": True,
+                "preset": presentation_cfg.preset,
+                "theme_tokens": presentation_cfg.theme_tokens.model_dump(),
+                "navigation": [item.model_dump() for item in presentation_cfg.navigation],
+                "ordered_blocks": [block.model_dump() for block in ordered_blocks(presentation_cfg)],
+            }
+        else:
+            _default_cfg = default_presentation()
+            presentation_payload = {
+                "enabled": False,
+                "preset": _default_cfg.preset,
+                "theme_tokens": _default_cfg.theme_tokens.model_dump(),
+                "navigation": [item.model_dump() for item in _default_cfg.navigation],
+                "ordered_blocks": [block.model_dump() for block in ordered_blocks(_default_cfg)],
+            }
+        # 推荐专题区块数据：已发布 catalog 条目，按 sort_order 与发布时间
+        topic_entries = list((await state.scalars(select(CatalogEntry).where(CatalogEntry.status == "published").order_by(CatalogEntry.sort_order, desc(CatalogEntry.published_at)).limit(12))).all())
+        topics = [{"entry_id": e.entry_id, "title": e.title, "summary": e.summary, "content_type": e.content_type, "slug": e.slug, "cover_resource_id": e.cover_resource_id} for e in topic_entries]
         result = {
             "site": {"site_name": site.site_name, "home_title": site.home_title, "description": site.description},
             "content_roots": content_roots,
@@ -93,6 +119,8 @@ async def home():
             "recent": [resource_dict(row) for row in recent],
             "popular": [resource_dict(row) for row in popular],
             "collections": [await collection_dict(state, index, row) for row in collections],
+            "presentation": presentation_payload,
+            "topics": topics,
         }
         _home_cache["data"] = result
         _home_cache["fetched_at"] = now
