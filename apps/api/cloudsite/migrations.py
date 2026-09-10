@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 15
+CURRENT_SCHEMA_VERSION = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -848,6 +848,42 @@ async def state_v14_to_v15_upgrade(conn: AsyncConnection) -> None:
     await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
 
 
+
+
+async def state_v15_to_v16_upgrade(conn: AsyncConnection) -> None:
+    """Schema v15 -> v16: B2 建站向导状态表 + CatalogEntry.publicly_visible，幂等。
+
+    新增 setup_wizard_state 单例表记录首次建站向导进度（connect/scope/preset/
+    samples/brand/preview/publish 七步）。为 catalog_entries 增加 publicly_visible
+    布尔字段，区分登录可见（默认 False）与公开可见（管理员显式公开），用于
+    sitemap.xml 与公开 DTO。空库与已有 v15 库均可运行。
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS setup_wizard_state("
+        "id INTEGER PRIMARY KEY,"
+        "current_step TEXT NOT NULL DEFAULT 'connect',"
+        "completed_steps_json TEXT NOT NULL DEFAULT '[]',"
+        "connect_done INTEGER NOT NULL DEFAULT 0,"
+        "scope_done INTEGER NOT NULL DEFAULT 0,"
+        "preset_done INTEGER NOT NULL DEFAULT 0,"
+        "samples_done INTEGER NOT NULL DEFAULT 0,"
+        "brand_done INTEGER NOT NULL DEFAULT 0,"
+        "preview_done INTEGER NOT NULL DEFAULT 0,"
+        "publish_done INTEGER NOT NULL DEFAULT 0,"
+        "wizard_completed INTEGER NOT NULL DEFAULT 0,"
+        "started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "completed_at TEXT)"
+    )
+    catalog_cols = await conn.exec_driver_sql("PRAGMA table_info(catalog_entries)")
+    if "publicly_visible" not in {row[1] for row in catalog_cols.fetchall()}:
+        await conn.exec_driver_sql(
+            "ALTER TABLE catalog_entries ADD COLUMN publicly_visible BOOLEAN NOT NULL DEFAULT 0"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_entries_publicly_visible ON catalog_entries (publicly_visible)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -863,5 +899,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v12_to_v13", from_version=12, to_version=13, upgrade=state_v12_to_v13_upgrade),
     Migration(id="state_v13_to_v14", from_version=13, to_version=14, upgrade=state_v13_to_v14_upgrade),
     Migration(id="state_v14_to_v15", from_version=14, to_version=15, upgrade=state_v14_to_v15_upgrade),
+    Migration(id="state_v15_to_v16", from_version=15, to_version=16, upgrade=state_v15_to_v16_upgrade),
 ]
 

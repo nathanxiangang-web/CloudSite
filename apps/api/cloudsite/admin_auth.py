@@ -12,6 +12,9 @@ PUBLIC_ADMIN_ENDPOINTS: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/admin/auth/logout"),
     ("GET", "/api/admin/setup/status"),
     ("POST", "/api/admin/setup/alist"),
+    ("GET", "/api/admin/setup/wizard"),
+    ("POST", "/api/admin/setup/wizard/step"),
+    ("POST", "/api/admin/setup/wizard/skip"),
 })
 
 

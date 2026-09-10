@@ -74,6 +74,7 @@ export default function AdminSetupPage() {
         {error && <p className="form-error">{error}</p>}
         <button className="primary login-submit" disabled={loading || !ready || !setupAvailable}><LogIn />{loading ? "正在初始化…" : "完成初始化"}</button>
       </form>
+      <Link href="/admin/setup/wizard">使用建站向导（推荐）</Link>
       <Link href="/">返回 CloudSite 前台</Link>
     </section>
   </main>;
