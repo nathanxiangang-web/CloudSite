@@ -128,3 +128,142 @@ async def test_main_resource_still_returned_for_enabled_root(monkeypatch):
     assert "breadcrumbs" in data and "capabilities" in data
     await state_engine.dispose()
     await index_engine.dispose()
+
+
+async def test_share_meta_returns_invalid_target_when_root_disabled(monkeypatch):
+    """旧分享元数据接口在目标根禁用后返回 status=invalid_target。"""
+    from sqlalchemy import update
+
+    from cloudsite.models import Share
+
+    state_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    index_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    state_factory = async_sessionmaker(state_engine, expire_on_commit=False)
+    index_factory = async_sessionmaker(index_engine, expire_on_commit=False)
+    async with state_engine.begin() as conn:
+        await conn.run_sync(StateBase.metadata.create_all)
+    async with index_engine.begin() as conn:
+        await conn.run_sync(IndexBase.metadata.create_all)
+    monkeypatch.setattr(main, "StateSession", state_factory)
+    monkeypatch.setattr(auth, "StateSession", state_factory)
+    monkeypatch.setattr(main, "IndexSession", index_factory)
+
+    async with state_factory() as state:
+        state.add(SiteSettings(id=1))
+        state.add(ContentRootMapping(id=1, content_type="software", display_name="root", alist_path="/root", enabled=True))
+        state.add(Share(
+            token="sharetesttoken01",
+            object_type="resource",
+            object_id="r_sharetarget00000000000000001",
+            title="test",
+            enabled=True,
+            access_mode="code",
+            code_hash="a" * 64,
+            code_version=1,
+        ))
+        await state.commit()
+
+    async with index_factory() as index:
+        index.add(Resource(
+            id="r_sharetarget00000000000000001",
+            name="share.zip",
+            path="/root/share.zip",
+            parent_id=None,
+            content_type="software",
+            root_mapping_id=1,
+            extension="zip",
+            mime_type="application/zip",
+            size=100,
+            thumbnail="",
+            status="active",
+        ))
+        await index.commit()
+
+    async with _client() as client:
+        meta = await client.get("/api/public/shares/sharetesttoken01")
+        assert meta.status_code == 200, meta.text
+        assert meta.json()["status"] != "invalid_target"
+
+        async with state_factory() as state:
+            await state.execute(
+                update(ContentRootMapping).where(ContentRootMapping.id == 1).values(enabled=False)
+            )
+            await state.commit()
+
+        meta2 = await client.get("/api/public/shares/sharetesttoken01")
+        assert meta2.status_code == 200, meta2.text
+        assert meta2.json()["status"] == "invalid_target"
+
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+async def test_old_share_endpoint_returns_target_invalid_when_root_disabled(monkeypatch):
+    """旧分享接口 /api/shares/{token} 在目标根禁用后返回 404 SHARE_TARGET_INVALID。"""
+    from sqlalchemy import update
+
+    from cloudsite.models import Share
+
+    state_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    index_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    state_factory = async_sessionmaker(state_engine, expire_on_commit=False)
+    index_factory = async_sessionmaker(index_engine, expire_on_commit=False)
+    async with state_engine.begin() as conn:
+        await conn.run_sync(StateBase.metadata.create_all)
+    async with index_engine.begin() as conn:
+        await conn.run_sync(IndexBase.metadata.create_all)
+    monkeypatch.setattr(main, "StateSession", state_factory)
+    monkeypatch.setattr(auth, "StateSession", state_factory)
+    monkeypatch.setattr(main, "IndexSession", index_factory)
+
+    async with state_factory() as state:
+        state.add(SiteSettings(id=1))
+        state.add(ContentRootMapping(id=1, content_type="software", display_name="root", alist_path="/root", enabled=True))
+        user = User(username="user", username_normalized="user", password_hash="x", status="active", created_at=utcnow(), updated_at=utcnow())
+        state.add(user)
+        state.add(Share(
+            token="sharetesttoken02",
+            object_type="resource",
+            object_id="r_sharetarget00000000000000002",
+            title="test",
+            enabled=True,
+            access_mode="code",
+            code_hash="b" * 64,
+            code_version=1,
+        ))
+        await state.flush()
+        _, token = await create_user_session(state, user.id, utcnow())
+        await state.commit()
+
+    async with index_factory() as index:
+        index.add(Resource(
+            id="r_sharetarget00000000000000002",
+            name="share.zip",
+            path="/root/share.zip",
+            parent_id=None,
+            content_type="software",
+            root_mapping_id=1,
+            extension="zip",
+            mime_type="application/zip",
+            size=100,
+            thumbnail="",
+            status="active",
+        ))
+        await index.commit()
+
+    async with _client() as client:
+        async with state_factory() as state:
+            await state.execute(
+                update(ContentRootMapping).where(ContentRootMapping.id == 1).values(enabled=False)
+            )
+            await state.commit()
+
+        resp = await client.get(
+            "/api/shares/sharetesttoken02",
+            cookies={USER_SESSION_COOKIE: token},
+        )
+        assert resp.status_code == 404, resp.text
+        assert resp.json()["detail"]["code"] == "SHARE_TARGET_INVALID"
+
+    await state_engine.dispose()
+    await index_engine.dispose()
