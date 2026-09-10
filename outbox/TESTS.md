@@ -1,18 +1,33 @@
-# work02 验证记录
+# work04 M3 验证记录
 
-## 后端
-命令：`cd apps/api && /home/nathan/CloudSite/.venv-workers/bin/python -m pytest -q`
-结果：**471 passed, 137 warnings in 79.90s**（全绿）
+## 目标测试（TASK.md 指定 + 新增）
+命令：
+```
+cd apps/api && /home/nathan/CloudSite/.venv-workers/bin/python -m pytest \
+  tests/test_collection_scope.py \
+  tests/test_resource_detail_sibling_scope.py \
+  tests/test_share_scope_and_home_cache.py -q
+```
+结果：**11 passed**
 
-相关子集快速验证：
-`python -m pytest -q tests/test_collection_input.py tests/test_collection_scope.py tests/test_schema_version.py tests/test_admin_route_matrix.py tests/test_admin_route_inventory.py`
-结果：19 passed
+## 全量回归
+命令：
+```
+cd apps/api && /home/nathan/CloudSite/.venv-workers/bin/python -m pytest -q
+```
+结果：**476 passed**（基线 471 + 新增 5）
 
-## 前端
-命令：`cd apps/web && corepack pnpm typecheck`
-结果：**tsc --noEmit 通过（无错误）**
+## 新增测试清单（test_share_scope_and_home_cache.py）
+1. test_legacy_share_disabled_root_resource_returns_invalid_target
+   — 旧分享接口对禁用根资源返回 SHARE_TARGET_INVALID
+2. test_legacy_share_folder_children_scoped_to_folder_root
+   — folder 分享 child 不跨根（同 parent_id 脏数据不混入）
+3. test_home_cache_excludes_disabled_root_after_invalidation
+   — 预热缓存后禁用根 + invalidate_home_cache 后不再展示禁用资源
+4. test_admin_root_mapping_update_invalidates_home_cache
+   — admin 修改 root-mapping 触发 invalidate_home_cache
+5. test_admin_root_mapping_delete_invalidates_home_cache
+   — admin 删除 root-mapping 触发 invalidate_home_cache
 
-## 资源限制遵守
-- 未并行跑多个重进程（后端全量与前端 typecheck 串行）。
-- 未执行 docker build，未起长驻服务。
-- 前端未跑 build（按任务书要求）。
+## 资源限制
+未执行 docker build，未起长驻服务。

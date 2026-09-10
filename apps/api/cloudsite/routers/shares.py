@@ -55,22 +55,18 @@ async def public_share(token: str):
         row = await state.get(Share, token)
         if not row or not row.enabled or share_is_expired(row):
             raise HTTPException(410, "分享不存在、已关闭或已过期")
+        if not await target_valid_for_share(state, index, row):
+            raise HTTPException(404, {"code": "SHARE_TARGET_INVALID", "message": "分享目标已不可用"})
         if row.object_type == "resource":
             target = await index.get(Resource, row.object_id)
-            if not target or target.status != "active":
-                raise HTTPException(404, "分享的资源不存在")
             payload = resource_dict(target)
         elif row.object_type == "folder":
             target = await index.get(Folder, row.object_id)
-            if not target or target.status != "active":
-                raise HTTPException(404, "分享的文件夹不存在")
-            child_folders = list((await index.scalars(select(Folder).where(Folder.parent_id == target.id, Folder.status == "active").order_by(Folder.name))).all())
-            child_resources = list((await index.scalars(select(Resource).where(Resource.parent_id == target.id, Resource.status == "active").order_by(Resource.name))).all())
+            child_folders = list((await index.scalars(select(Folder).where(Folder.parent_id == target.id, Folder.status == "active", Folder.root_mapping_id == target.root_mapping_id).order_by(Folder.name))).all())
+            child_resources = list((await index.scalars(select(Resource).where(Resource.parent_id == target.id, Resource.status == "active", Resource.root_mapping_id == target.root_mapping_id).order_by(Resource.name))).all())
             payload = {"folder": folder_dict(target), "folders": [folder_dict(item) for item in child_folders], "resources": [resource_dict(item) for item in child_resources]}
         else:
             target = await state.get(Collection, int(row.object_id)) if row.object_id.isdigit() else None
-            if not target:
-                raise HTTPException(404, "分享的合集不存在")
             payload = await collection_dict(state, index, target, include_items=True)
         row.access_count += 1
         row.last_accessed_at = utcnow()
