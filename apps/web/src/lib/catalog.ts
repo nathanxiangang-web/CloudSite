@@ -34,6 +34,10 @@ export type CatalogAssetSummary = {
   display_name: string;
   platform: string;
   kind: CatalogAssetKind;
+  architecture: string;
+  package_type: string;
+  language: string;
+  build_label: string;
   size: number | null;
   status: "active" | "disabled";
   availability: CatalogAvailability;
@@ -50,6 +54,9 @@ export type CatalogReleaseSummary = {
   release_id: string;
   slug: string;
   title: string;
+  channel: string;
+  is_recommended: boolean;
+  release_date: string | null;
   status: CatalogStatus;
   published_at: string | null;
 };
@@ -186,4 +193,29 @@ export function formatCatalogTimestamp(value: string | null | undefined): string
   } catch {
     return "未知";
   }
+}
+
+
+export const CATALOG_CHANNEL_LABELS: Record<string, string> = {
+  stable: "稳定",
+  beta: "测试",
+  historical: "历史",
+  unknown: "未知",
+};
+
+export function channelLabel(channel: string): string {
+  return CATALOG_CHANNEL_LABELS[channel] ?? channel ?? "未知";
+}
+
+export function releaseIsRecommended(release: { is_recommended?: boolean }): boolean {
+  return Boolean(release.is_recommended);
+}
+
+export function releaseIsHistorical(release: { channel?: string }): boolean {
+  return release.channel === "historical";
+}
+
+export function assetDimensionLabel(value: string | null | undefined, fallback = "通用"): string {
+  if (!value || value === "unknown") return fallback;
+  return value;
 }

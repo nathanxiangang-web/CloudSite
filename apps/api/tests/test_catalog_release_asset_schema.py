@@ -1,11 +1,11 @@
 """Focused tests for the C2 release and asset delivery metadata schema.
 
 Covers the persistence boundary only:
-- fresh initialization reaches schema v7 and creates the new release/asset
+- fresh initialization reaches schema v8 and creates the new release/asset
   columns with conservative defaults (channel='unknown', architecture='unknown',
   package_type='unknown', is_recommended=0)
 - a synthetic v1.2 (schema_version=6) state.db with existing C1 catalog rows
-  upgrades to v7, and C1 rows survive unchanged with conservative defaults
+  upgrades to v8, and C1 rows survive unchanged with conservative defaults
   (no inference from slugs or names)
 - repeated initialization is idempotent (no duplicate columns/indexes, version
   stable)
@@ -54,7 +54,7 @@ async def _index_names(conn, table: str) -> set[str]:
 
 
 async def test_fresh_init_creates_release_asset_metadata_columns(tmp_path, monkeypatch):
-    """Fresh databases reach schema v7 and the new columns exist with conservative defaults."""
+    """Fresh databases reach schema v8 and the new columns exist with conservative defaults."""
     state_engine, index_engine = _engines(tmp_path)
     monkeypatch.setattr(database, "state_engine", state_engine)
     monkeypatch.setattr(database, "index_engine", index_engine)
@@ -63,14 +63,14 @@ async def test_fresh_init_creates_release_asset_metadata_columns(tmp_path, monke
 
     async with state_engine.connect() as conn:
         assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
-        assert CURRENT_SCHEMA_VERSION == 7
+        assert CURRENT_SCHEMA_VERSION == 8
 
         release_cols = await _columns(conn, "catalog_releases")
         for col in ("channel", "release_date", "is_recommended"):
             assert col in release_cols, f"missing catalog_releases column {col}"
 
         asset_cols = await _columns(conn, "catalog_assets")
-        for col in ("architecture", "package_type"):
+        for col in ("architecture", "package_type", "language", "build_label"):
             assert col in asset_cols, f"missing catalog_assets column {col}"
 
         release_indexes = await _index_names(conn, "catalog_releases")
@@ -121,13 +121,15 @@ async def test_fresh_init_creates_release_asset_metadata_columns(tmp_path, monke
         asset_row = (
             await conn.execute(
                 text(
-                    "SELECT architecture, package_type "
+                    "SELECT architecture, package_type, language, build_label "
                     "FROM catalog_assets WHERE asset_id='ca_defaults'"
                 )
             )
         ).one()
         assert asset_row[0] == "unknown"
         assert asset_row[1] == "unknown"
+        assert asset_row[2] == "unknown"
+        assert asset_row[3] == ""
 
     async with index_engine.connect() as conn:
         assert await get_index_schema_version(conn) == CURRENT_SCHEMA_VERSION
@@ -138,7 +140,7 @@ async def test_fresh_init_creates_release_asset_metadata_columns(tmp_path, monke
 
 async def test_synthetic_v6_upgrades_to_v7_preserving_c1_rows(tmp_path, monkeypatch):
     """A synthetic v1.2 (schema_version=6) state.db with existing C1 catalog rows
-    upgrades to v7. C1 rows survive unchanged; new columns get conservative
+    upgrades to v8. C1 rows survive unchanged; new columns get conservative
     defaults with no inference from slugs or names."""
     state_engine, index_engine = _engines(tmp_path)
 
@@ -214,7 +216,7 @@ async def test_synthetic_v6_upgrades_to_v7_preserving_c1_rows(tmp_path, monkeypa
         asset_row = (
             await conn.execute(
                 text(
-                    "SELECT slug, display_name, architecture, package_type "
+                    "SELECT slug, display_name, architecture, package_type, language, build_label "
                     "FROM catalog_assets WHERE asset_id='ca_survive_c2'"
                 )
             )
@@ -223,14 +225,16 @@ async def test_synthetic_v6_upgrades_to_v7_preserving_c1_rows(tmp_path, monkeypa
         assert asset_row[1] == "LegacyInstaller.exe"
         assert asset_row[2] == "unknown"
         assert asset_row[3] == "unknown"
+        assert asset_row[4] == "unknown"
+        assert asset_row[5] == ""
 
     await state_engine.dispose()
     await index_engine.dispose()
 
 
-async def test_repeated_init_is_idempotent_v7(tmp_path, monkeypatch):
+async def test_repeated_init_is_idempotent_v8(tmp_path, monkeypatch):
     """Re-running initialization does not duplicate columns/indexes and keeps
-    version stable at v7."""
+    version stable at v8."""
     state_engine, index_engine = _engines(tmp_path)
     monkeypatch.setattr(database, "state_engine", state_engine)
     monkeypatch.setattr(database, "index_engine", index_engine)

@@ -620,6 +620,8 @@ class CatalogAsset(StateBase):
     kind: Mapped[str] = mapped_column(String(40), default="file")
     architecture: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown", index=True)
     package_type: Mapped[str] = mapped_column(String(40), default="unknown", server_default="unknown")
+    language: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown", index=True)
+    build_label: Mapped[str] = mapped_column(String(120), default="", server_default="")
     checksum: Mapped[str | None] = mapped_column(String(200), nullable=True)
     checksum_algorithm: Mapped[str | None] = mapped_column(String(20), nullable=True)
     size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

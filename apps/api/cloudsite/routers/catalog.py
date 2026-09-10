@@ -1,9 +1,19 @@
 """Authenticated-user reads for published Catalog entries."""
-from fastapi import APIRouter, HTTPException, Query
+import time
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 
 from ..catalog_schemas import CatalogEntryDetail, CatalogEntryListOutput
-from ..models import CatalogAsset, CatalogEntry, CatalogRelease
+from ..download import DownloadError, resolve_download_entry
+from ..download_rate_limit import (
+    check_download_rate,
+    get_effective_client_ip,
+    rate_limit_payload,
+)
+from ..models import AListConnection, CatalogAsset, CatalogEntry, CatalogRelease, Resource
+from ..services.downloads import _download_event
 from .admin.catalog import _build_entry_detail, _entry_to_summary
 from ..services.catalog_views import (
     catalog_asset_view,
@@ -190,3 +200,52 @@ async def public_catalog_detail(entry_id: str):
         if entry.status != "published":
             raise _not_found()
         return await _build_entry_detail(state, index, entry, published_only=True)
+
+
+# ---- C2 Asset download signing ----
+
+_NOT_FOUND_REASONS = {"entry_not_published", "asset_not_found", "asset_not_in_entry", "release_not_published"}
+
+
+@router.post("/api/catalog/entries/{entry_id}/assets/{asset_id}/download")
+async def catalog_asset_download(entry_id: str, asset_id: str, request: Request):
+    from ..main import IndexSession, StateSession
+
+    started = time.perf_counter()
+    service = _catalog_service()
+    async with StateSession() as state, IndexSession() as index:
+        try:
+            target = await service.resolve_asset_download_target(state, index, entry_id, asset_id)
+        except service.CatalogAssetNotDownloadable as exc:
+            if exc.reason in _NOT_FOUND_REASONS:
+                raise HTTPException(404, {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"}) from exc
+            raise HTTPException(
+                409,
+                {"code": "CATALOG_ASSET_NOT_DOWNLOADABLE", "message": "asset is not downloadable", "reason": exc.reason},
+            ) from exc
+        except service.CatalogError as exc:
+            raise _not_found() from exc
+
+        resource = await index.get(Resource, target.resource_id)
+        if resource is None or resource.status != "active":
+            await _download_event(state, target.resource_id, "failed", "DL-001", started, source="catalog")
+            raise HTTPException(409, {"code": "CATALOG_ASSET_NOT_DOWNLOADABLE", "message": "underlying resource unavailable", "reason": "resource_inactive"})
+
+        rate = await check_download_rate(get_effective_client_ip(request))
+        if not rate.allowed:
+            await _download_event(state, target.resource_id, "failed", "DOWNLOAD_RATE_LIMITED", started, source="catalog")
+            return JSONResponse(
+                rate_limit_payload(rate),
+                status_code=429,
+                headers={"Retry-After": str(rate.retry_after)},
+            )
+
+        connection = await state.get(AListConnection, 1)
+        try:
+            resolution = await resolve_download_entry(resource, connection)
+        except DownloadError as exc:
+            await _download_event(state, target.resource_id, "failed", exc.code, started, source="catalog")
+            raise HTTPException(502, {"code": exc.code, "message": "download resolution failed"}) from exc
+
+        await _download_event(state, target.resource_id, "success", None, started, source="catalog")
+        return RedirectResponse(resolution.url, status_code=302)

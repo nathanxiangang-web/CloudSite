@@ -9,7 +9,10 @@ import { AdminShell } from "@/components/AdminShell";
 import { api, formatBytes, SearchResponse } from "@/lib/api";
 import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
 import {
+  CATALOG_CHANNEL_LABELS,
+  channelLabel,
   contentTypeLabel,
+  releaseIsRecommended,
   statusLabel,
   type CatalogAssetKind,
   type CatalogStatus,
@@ -127,32 +130,41 @@ function ReleaseManager({ entryId }: { entryId: string }) {
   const releases = useQuery({ queryKey: ["admin-catalog-releases", entryId], queryFn: () => fetchAdminCatalogReleases(entryId) });
   const [newTitle, setNewTitle] = useState("");
   const [newSlug, setNewSlug] = useState("");
+  const [newChannel, setNewChannel] = useState("stable");
+  const [newDate, setNewDate] = useState("");
+  const [newRecommended, setNewRecommended] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<string | null>(null);
 
   const create = useMutation({
-    mutationFn: () => createAdminCatalogRelease(entryId, { slug: newSlug.trim() || "v1", title: newTitle.trim() || "默认版本", status: "draft" }),
-    onSuccess: (data) => { setNewTitle(""); setNewSlug(""); client.invalidateQueries({ queryKey: ["admin-catalog-releases", entryId] }); setSelectedRelease(data.release_id); },
+    mutationFn: () => createAdminCatalogRelease(entryId, { slug: newSlug.trim() || "v1", title: newTitle.trim() || "默认版本", channel: newChannel, release_date: newDate ? newDate : null, is_recommended: newRecommended, status: "draft" }),
+    onSuccess: (data) => { setNewTitle(""); setNewSlug(""); setNewChannel("stable"); setNewDate(""); setNewRecommended(false); client.invalidateQueries({ queryKey: ["admin-catalog-releases", entryId] }); setSelectedRelease(data.release_id); },
   });
   const remove = useMutation({ mutationFn: (releaseId: string) => deleteAdminCatalogRelease(releaseId), onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-releases", entryId] }); setSelectedRelease(null); } });
+  const toggleRecommend = useMutation({ mutationFn: (args: { releaseId: string; next: boolean }) => updateAdminCatalogRelease(args.releaseId, { is_recommended: args.next }), onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-releases", entryId] }); } });
 
   const submit = (event: FormEvent) => { event.preventDefault(); create.mutate(); };
   const items = releases.data?.items ?? [];
 
   return <section className="panel catalog-editor-section">
     <h2>版本（{items.length}）</h2>
-    <form className="inline-form" onSubmit={submit}>
+    <form className="catalog-release-create-form" onSubmit={submit}>
       <input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="版本标题，如 22.04.3" />
       <input value={newSlug} onChange={(event) => setNewSlug(event.target.value)} placeholder="slug，如 22.04.3" />
+      <select value={newChannel} onChange={(event) => setNewChannel(event.target.value)}>{Object.entries(CATALOG_CHANNEL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      <input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} placeholder="发布日期" />
+      <label className="inline-check"><input type="checkbox" checked={newRecommended} onChange={(event) => setNewRecommended(event.target.checked)} />推荐版本</label>
       <button className="primary" disabled={create.isPending}><Plus />新增版本</button>
     </form>
     {create.error && <p className="form-error">{create.error.message}</p>}
+    {toggleRecommend.error && <p className="form-error">{toggleRecommend.error.message}</p>}
 
     {releases.isLoading ? <div className="loading">正在加载版本…</div>
       : items.length ? <div className="catalog-release-list">{items.map((release) => <div className="catalog-release-row" key={release.release_id}>
         <button type="button" className={selectedRelease === release.release_id ? "selected" : ""} onClick={() => setSelectedRelease(release.release_id)}>
           <strong>{release.title}</strong>
-          <span>{statusLabel(release.status)} · {release.assets.length} 个资源</span>
+          <span>{channelLabel(release.channel)} · {statusLabel(release.status)} · {release.assets.length} 个资源{releaseIsRecommended(release) ? " · 推荐" : ""}</span>
         </button>
+        <button title={releaseIsRecommended(release) ? "取消推荐" : "设为推荐版本"} onClick={() => toggleRecommend.mutate({ releaseId: release.release_id, next: !releaseIsRecommended(release) })}><Star fill={releaseIsRecommended(release) ? "currentColor" : "none"} /></button>
         <ReleaseStatusSelect entryId={entryId} releaseId={release.release_id} current={release.status} />
         <button className="danger" onClick={() => window.confirm(`删除版本“${release.title}”？`) && remove.mutate(release.release_id)}><Trash2 /></button>
       </div>)}</div>
@@ -176,12 +188,16 @@ function AssetManager({ entryId, releaseId }: { entryId: string; releaseId: stri
   const assets = useQuery({ queryKey: ["admin-catalog-assets", releaseId], queryFn: () => fetchAdminCatalogAssets(releaseId) });
   const [displayName, setDisplayName] = useState("");
   const [platform, setPlatform] = useState("");
+  const [architecture, setArchitecture] = useState("unknown");
+  const [packageType, setPackageType] = useState("unknown");
+  const [language, setLanguage] = useState("unknown");
+  const [buildLabel, setBuildLabel] = useState("");
   const [kind, setKind] = useState<CatalogAssetKind>("file");
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
 
   const create = useMutation({
-    mutationFn: () => createAdminCatalogAsset(releaseId, { slug: displayName.trim().toLowerCase().replace(/\s+/g, "-") || `asset-${Date.now()}`, display_name: displayName.trim(), platform: platform.trim(), kind }),
-    onSuccess: (data) => { setDisplayName(""); setPlatform(""); client.invalidateQueries({ queryKey: ["admin-catalog-assets", releaseId] }); setSelectedAsset(data.asset_id); },
+    mutationFn: () => createAdminCatalogAsset(releaseId, { slug: displayName.trim().toLowerCase().replace(/\s+/g, "-") || `asset-${Date.now()}`, display_name: displayName.trim(), platform: platform.trim(), kind, architecture, package_type: packageType, language, build_label: buildLabel.trim() }),
+    onSuccess: (data) => { setDisplayName(""); setPlatform(""); setArchitecture("unknown"); setPackageType("unknown"); setLanguage("unknown"); setBuildLabel(""); client.invalidateQueries({ queryKey: ["admin-catalog-assets", releaseId] }); setSelectedAsset(data.asset_id); },
   });
   const remove = useMutation({ mutationFn: (assetId: string) => deleteAdminCatalogAsset(assetId), onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-assets", releaseId] }); setSelectedAsset(null); } });
 
@@ -189,9 +205,13 @@ function AssetManager({ entryId, releaseId }: { entryId: string; releaseId: stri
 
   return <div className="catalog-asset-manager">
     <h3>版本资源（{items.length}）</h3>
-    <form className="inline-form" onSubmit={(event) => { event.preventDefault(); if (displayName.trim()) create.mutate(); }}>
+    <form className="catalog-asset-create-form" onSubmit={(event) => { event.preventDefault(); if (displayName.trim()) create.mutate(); }}>
       <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="资源显示名，如 ubuntu-22.04.3-desktop-amd64.iso" required />
-      <input value={platform} onChange={(event) => setPlatform(event.target.value)} placeholder="平台，如 amd64（可选）" />
+      <input value={platform} onChange={(event) => setPlatform(event.target.value)} placeholder="平台，如 windows/linux（可选）" />
+      <input value={architecture} onChange={(event) => setArchitecture(event.target.value)} placeholder="架构，如 x64/arm64/unknown" />
+      <input value={packageType} onChange={(event) => setPackageType(event.target.value)} placeholder="包型，如 installer/portable/unknown" />
+      <input value={language} onChange={(event) => setLanguage(event.target.value)} placeholder="语言，如 zh/en/unknown" />
+      <input value={buildLabel} onChange={(event) => setBuildLabel(event.target.value)} placeholder="构建标签（可选）" />
       <select value={kind} onChange={(event) => setKind(event.target.value as CatalogAssetKind)}>{ASSET_KINDS.map((value) => <option key={value} value={value}>{value}</option>)}</select>
       <button className="primary" disabled={create.isPending}><Plus />新增资源</button>
     </form>
@@ -201,7 +221,7 @@ function AssetManager({ entryId, releaseId }: { entryId: string; releaseId: stri
       : items.length ? <div className="catalog-asset-list">{items.map((asset) => <div className="catalog-asset-row" key={asset.asset_id}>
         <button type="button" className={selectedAsset === asset.asset_id ? "selected" : ""} onClick={() => setSelectedAsset(asset.asset_id)}>
           <strong>{asset.display_name}</strong>
-          <span>{asset.platform || "通用"} · {asset.location_count} 个位置 · {asset.availability === "available" ? "可用" : "不可用"}</span>
+          <span>{asset.platform || "通用"} · {asset.architecture} · {asset.package_type} · {asset.location_count} 个位置 · {asset.availability === "available" ? "可用" : "不可用"}</span>
         </button>
         <button className="danger" onClick={() => window.confirm(`删除资源“${asset.display_name}”？`) && remove.mutate(asset.asset_id)}><Trash2 /></button>
       </div>)}</div>
