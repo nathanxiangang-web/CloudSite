@@ -13,8 +13,8 @@ async def test_021_fixture_upgrade_preserves_user_and_rolling_cycle(tmp_path, mo
         await connection.execute(
             text(
                 "INSERT INTO users "
-                "(id, username, username_normalized, password_hash, status, created_at, updated_at, created_by_admin) "
-                "VALUES (7, 'JC', 'jc', 'argon2-fixture', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)"
+                "(id, username, username_normalized, password_hash, status, role, created_at, updated_at, created_by_admin) "
+                "VALUES (7, 'JC', 'jc', 'argon2-fixture', 'active', 'viewer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)"
             )
         )
     async with index_engine.begin() as connection:

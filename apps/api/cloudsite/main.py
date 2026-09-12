@@ -89,6 +89,8 @@ from .routers.catalog import router as catalog_router
 from .routers.catalog_follow import router as catalog_follow_router
 from .routers.sitemap import router as sitemap_router
 from .routers.browse import router as browse_router
+from .routers.quality import router as quality_router
+from .routers.delivery import router as delivery_router
 
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -108,6 +110,8 @@ app.include_router(catalog_router)
 app.include_router(catalog_follow_router)
 app.include_router(sitemap_router)
 app.include_router(browse_router)
+app.include_router(quality_router)
+app.include_router(delivery_router)
 
 from .routers.admin.auth import router as admin_auth_router
 from .routers.admin.setup import router as admin_setup_router
@@ -130,6 +134,12 @@ from .routers.admin.catalog_metadata import router as admin_catalog_metadata_rou
 from .routers.admin.automation import router as admin_automation_router
 from .routers.admin.presentation import router as admin_presentation_router
 from .routers.admin.publication_scope import router as admin_publication_scope_router
+from .routers.admin.quality import router as admin_quality_router
+from .routers.admin.ai_completion import router as admin_ai_completion_router
+from .routers.admin.metrics import router as admin_metrics_router
+from .routers.admin.roles import router as admin_roles_router
+from .routers.admin.delivery import router as admin_delivery_router
+from .routers.admin.api_tokens import router as admin_api_tokens_router
 
 app.include_router(admin_auth_router)
 app.include_router(admin_setup_router)
@@ -152,6 +162,12 @@ app.include_router(admin_catalog_metadata_router)
 app.include_router(admin_automation_router)
 app.include_router(admin_presentation_router)
 app.include_router(admin_publication_scope_router)
+app.include_router(admin_quality_router)
+app.include_router(admin_ai_completion_router)
+app.include_router(admin_metrics_router)
+app.include_router(admin_roles_router)
+app.include_router(admin_delivery_router)
+app.include_router(admin_api_tokens_router)
 
 # 公开 DTO 与服务函数 re-export：路由懒加载与测试直接引用。
 from .services.resources import (

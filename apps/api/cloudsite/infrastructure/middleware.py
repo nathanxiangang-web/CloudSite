@@ -94,6 +94,7 @@ async def admin_session_middleware(request: Request, call_next):
             and not path.startswith("/api/public/shares/")
             and not path.startswith("/api/public/share-page")
             and not path.startswith("/api/public/catalog/")
+        and not path.startswith("/api/delivery/")
         )
         or path.startswith("/d/")
         or (path.startswith("/p/") and not path.startswith("/s/"))

@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 18
+CURRENT_SCHEMA_VERSION = 24
 
 
 @dataclass(frozen=True, slots=True)
@@ -944,6 +944,394 @@ async def state_v17_to_v18_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v18_to_v19_upgrade(conn: AsyncConnection) -> None:
+    """Schema v18 -> v19: A4 内容质量待办队列，幂等。
+
+    新增四张表：
+    - quality_todos: 质量待办项，带 (todo_type, target_type, target_id) WHERE status='open' 的唯一索引
+    - quality_detection_runs: 检测运行记录，预算控制与幂等
+    - search_query_logs: 搜索查询日志，无结果查询聚合
+    - content_feedback: 用户内容反馈，提交时自动创建 quality_todo
+    空库与已有 v18 库均可运行。
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS quality_todos("
+        "todo_id TEXT PRIMARY KEY,"
+        "todo_type TEXT NOT NULL,"
+        "target_type TEXT NOT NULL,"
+        "target_id TEXT NOT NULL,"
+        "severity TEXT NOT NULL DEFAULT 'medium',"
+        "title TEXT NOT NULL,"
+        "detail_json TEXT NOT NULL DEFAULT '{}',"
+        "status TEXT NOT NULL DEFAULT 'open',"
+        "source TEXT NOT NULL DEFAULT 'auto_detection',"
+        "detection_run_id TEXT,"
+        "dismissed_by TEXT NOT NULL DEFAULT '',"
+        "dismissed_at TEXT,"
+        "dismiss_reason TEXT NOT NULL DEFAULT '',"
+        "resolved_at TEXT,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL,"
+        "CHECK(todo_type IN ('missing_description','stale_location','old_version_review',"
+        "'source_conflict','suspected_duplicate','no_result_query')),"
+        "CHECK(status IN ('open','dismissed','resolved','wontfix')),"
+        "CHECK(severity IN ('low','medium','high')),"
+        "CHECK(source IN ('auto_detection','user_feedback')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_quality_todos_open_dedup "
+        "ON quality_todos(todo_type, target_type, target_id) WHERE status = 'open'"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_quality_todos_type_status "
+        "ON quality_todos(todo_type, status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_quality_todos_target_id ON quality_todos(target_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_quality_todos_run_id ON quality_todos(detection_run_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS quality_detection_runs("
+        "run_id TEXT PRIMARY KEY,"
+        "started_at TEXT NOT NULL,"
+        "completed_at TEXT,"
+        "items_found INTEGER NOT NULL DEFAULT 0,"
+        "items_deduplicated INTEGER NOT NULL DEFAULT 0,"
+        "budget_ms INTEGER NOT NULL DEFAULT 5000,"
+        "actual_ms INTEGER,"
+        "status TEXT NOT NULL DEFAULT 'running',"
+        "detail_json TEXT NOT NULL DEFAULT '{}',"
+        "CHECK(status IN ('running','completed','timeout')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS search_query_logs("
+        "log_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "query TEXT NOT NULL,"
+        "result_count INTEGER NOT NULL DEFAULT 0,"
+        "user_id INTEGER,"
+        "content_type_filter TEXT,"
+        "platform_filter TEXT,"
+        "created_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_search_query_logs_query ON search_query_logs(query)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_search_query_logs_user ON search_query_logs(user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS content_feedback("
+        "feedback_id TEXT PRIMARY KEY,"
+        "user_id INTEGER NOT NULL,"
+        "target_type TEXT NOT NULL,"
+        "target_id TEXT NOT NULL,"
+        "feedback_kind TEXT NOT NULL,"
+        "description TEXT NOT NULL,"
+        "status TEXT NOT NULL DEFAULT 'pending',"
+        "admin_note TEXT NOT NULL DEFAULT '',"
+        "reviewed_by TEXT NOT NULL DEFAULT '',"
+        "reviewed_at TEXT,"
+        "todo_id TEXT,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL,"
+        "CHECK(target_type IN ('entry','asset','location')),"
+        "CHECK(feedback_kind IN ('broken_link','wrong_info','missing_content','other')),"
+        "CHECK(status IN ('pending','reviewed','resolved')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_feedback_status ON content_feedback(status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_feedback_user ON content_feedback(user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_feedback_target ON content_feedback(target_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_feedback_todo ON content_feedback(todo_id)"
+    )
+
+
+async def state_v19_to_v20_upgrade(conn: AsyncConnection) -> None:
+    """Schema v19 -> v20: A3 可选 AI 内容补全，幂等。
+
+    新增三张表：
+    - ai_provider_configs: AI 提供方配置（provider类型、endpoint、model、预算、开关）
+    - ai_generation_drafts: AI 生成草稿（简介/标签/别名/用途，带幂等唯一索引）
+    - ai_budget_usage: 每日预算用量（按 config_id + date 唯一）
+    空库与已有 v19 库均可运行。
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS ai_provider_configs("
+        "config_id TEXT PRIMARY KEY,"
+        "provider_type TEXT NOT NULL,"
+        "display_name TEXT NOT NULL,"
+        "endpoint_url TEXT NOT NULL DEFAULT '',"
+        "api_key_encrypted TEXT NOT NULL DEFAULT '',"
+        "model_name TEXT NOT NULL DEFAULT '',"
+        "enabled BOOLEAN NOT NULL DEFAULT 0,"
+        "daily_budget_tokens INTEGER NOT NULL DEFAULT 100000,"
+        "daily_budget_requests INTEGER NOT NULL DEFAULT 100,"
+        "timeout_seconds INTEGER NOT NULL DEFAULT 30,"
+        "max_retries INTEGER NOT NULL DEFAULT 2,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL,"
+        "CHECK(provider_type IN ('local_ollama','openai_compatible','custom')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_ai_provider_configs_enabled ON ai_provider_configs(enabled)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS ai_generation_drafts("
+        "draft_id TEXT PRIMARY KEY,"
+        "target_type TEXT NOT NULL,"
+        "target_id TEXT NOT NULL,"
+        "field_type TEXT NOT NULL,"
+        "provider_type TEXT NOT NULL,"
+        "model_name TEXT NOT NULL DEFAULT '',"
+        "prompt_template_version TEXT NOT NULL DEFAULT '1.0.0',"
+        "source_pointers_json TEXT NOT NULL DEFAULT '[]',"
+        "generated_content TEXT NOT NULL DEFAULT '',"
+        "candidate_status TEXT NOT NULL DEFAULT 'pending',"
+        "input_material_hash TEXT NOT NULL,"
+        "config_id TEXT,"
+        "tokens_used INTEGER NOT NULL DEFAULT 0,"
+        "elapsed_ms INTEGER NOT NULL DEFAULT 0,"
+        "error_message TEXT NOT NULL DEFAULT '',"
+        "reviewed_by TEXT NOT NULL DEFAULT '',"
+        "reviewed_at TEXT,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL,"
+        "CHECK(target_type = 'entry'),"
+        "CHECK(field_type IN ('summary','tags','aliases','usage_note')),"
+        "CHECK(candidate_status IN ('pending','accepted','rejected','modified')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_ai_drafts_pending_dedup "
+        "ON ai_generation_drafts(target_type, target_id, field_type, input_material_hash) "
+        "WHERE candidate_status = 'pending'"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_ai_drafts_target_field "
+        "ON ai_generation_drafts(target_id, field_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_ai_drafts_status ON ai_generation_drafts(candidate_status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_ai_drafts_config ON ai_generation_drafts(config_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS ai_budget_usage("
+        "usage_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "config_id TEXT NOT NULL,"
+        "date TEXT NOT NULL,"
+        "tokens_used INTEGER NOT NULL DEFAULT 0,"
+        "requests_used INTEGER NOT NULL DEFAULT 0,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL,"
+        "UNIQUE(config_id, date))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_ai_budget_usage_config ON ai_budget_usage(config_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_ai_budget_usage_date ON ai_budget_usage(date)"
+    )
+
+
+async def state_v20_to_v21_upgrade(conn: AsyncConnection) -> None:
+    """G2 指标采集：metric_events、metric_baselines、metric_summaries。"""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS metric_events("
+        "id TEXT PRIMARY KEY,"
+        "event_type TEXT NOT NULL,"
+        "event_data TEXT,"
+        "user_id TEXT,"
+        "created_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_metric_events_type ON metric_events(event_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_metric_events_user ON metric_events(user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_metric_events_created ON metric_events(created_at)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS metric_baselines("
+        "id TEXT PRIMARY KEY,"
+        "label TEXT NOT NULL,"
+        "period_start TEXT NOT NULL,"
+        "period_end TEXT NOT NULL,"
+        "summary_json TEXT NOT NULL DEFAULT '{}',"
+        "created_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS metric_summaries("
+        "id TEXT PRIMARY KEY,"
+        "period_start TEXT NOT NULL,"
+        "period_end TEXT NOT NULL,"
+        "metric_type TEXT NOT NULL,"
+        "value REAL NOT NULL DEFAULT 0,"
+        "sample_count INTEGER NOT NULL DEFAULT 0,"
+        "created_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_metric_summaries_period_start ON metric_summaries(period_start)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_metric_summaries_period_end ON metric_summaries(period_end)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_metric_summaries_type ON metric_summaries(metric_type)"
+    )
+
+
+async def state_v21_to_v22_upgrade(conn: AsyncConnection) -> None:
+    """T1 团队角色：users.role + operation_logs.principal/actor_user_id。"""
+    user_cols = await conn.exec_driver_sql("PRAGMA table_info(users)")
+    if not any(row[1] == "role" for row in user_cols):
+        await conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_users_role ON users(role)"
+    )
+    op_cols = await conn.exec_driver_sql("PRAGMA table_info(operation_logs)")
+    if not any(row[1] == "principal" for row in op_cols):
+        await conn.exec_driver_sql(
+            "ALTER TABLE operation_logs ADD COLUMN principal TEXT NOT NULL DEFAULT ''"
+        )
+    if not any(row[1] == "actor_user_id" for row in op_cols):
+        await conn.exec_driver_sql(
+            "ALTER TABLE operation_logs ADD COLUMN actor_user_id INTEGER"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_operation_logs_actor ON operation_logs(actor_user_id)"
+    )
+
+
+async def state_v22_to_v23_upgrade(conn: AsyncConnection) -> None:
+    """T2 交付包：delivery_packages + delivery_package_items。"""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS delivery_packages("
+        "package_id TEXT PRIMARY KEY,"
+        "name TEXT NOT NULL,"
+        "project_note TEXT NOT NULL DEFAULT '',"
+        "revision INTEGER NOT NULL DEFAULT 1,"
+        "creator_user_id INTEGER,"
+        "access_token TEXT NOT NULL,"
+        "code_hash TEXT,"
+        "expires_at TEXT,"
+        "status TEXT NOT NULL DEFAULT 'draft',"
+        "published_at TEXT,"
+        "cancelled_at TEXT,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_delivery_packages_token ON delivery_packages(access_token)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_delivery_packages_status ON delivery_packages(status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_delivery_packages_creator ON delivery_packages(creator_user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS delivery_package_items("
+        "item_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "package_id TEXT NOT NULL,"
+        "asset_id TEXT,"
+        "resource_id TEXT,"
+        "display_name TEXT NOT NULL DEFAULT '',"
+        "bound_checksum TEXT,"
+        "bound_checksum_algorithm TEXT,"
+        "bound_size INTEGER,"
+        "sort_order INTEGER NOT NULL DEFAULT 0,"
+        "note TEXT NOT NULL DEFAULT '',"
+        "created_at TEXT NOT NULL,"
+        "UNIQUE(package_id, asset_id),"
+        "UNIQUE(package_id, resource_id),"
+        "FOREIGN KEY(package_id) REFERENCES delivery_packages(package_id) ON DELETE CASCADE)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_delivery_items_package ON delivery_package_items(package_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_delivery_items_asset ON delivery_package_items(asset_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_delivery_items_resource ON delivery_package_items(resource_id)"
+    )
+
+
+async def state_v23_to_v24_upgrade(conn: AsyncConnection) -> None:
+    """X2 开放生态：api_tokens + webhook_endpoints + webhook_deliveries。"""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS api_tokens("
+        "token_id TEXT PRIMARY KEY,"
+        "token_hash TEXT NOT NULL,"
+        "label TEXT NOT NULL DEFAULT '',"
+        "scopes TEXT NOT NULL DEFAULT '[]',"
+        "status TEXT NOT NULL DEFAULT 'active',"
+        "created_by TEXT NOT NULL DEFAULT '',"
+        "expires_at TEXT,"
+        "last_used_at TEXT,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_api_tokens_hash ON api_tokens(token_hash)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_api_tokens_status ON api_tokens(status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS webhook_endpoints("
+        "endpoint_id TEXT PRIMARY KEY,"
+        "url TEXT NOT NULL,"
+        "secret TEXT NOT NULL DEFAULT '',"
+        "event_types TEXT NOT NULL DEFAULT '[]',"
+        "status TEXT NOT NULL DEFAULT 'active',"
+        "max_retries INTEGER NOT NULL DEFAULT 3,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_webhook_endpoints_status ON webhook_endpoints(status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS webhook_deliveries("
+        "delivery_id TEXT PRIMARY KEY,"
+        "endpoint_id TEXT NOT NULL,"
+        "event_id TEXT NOT NULL,"
+        "event_type TEXT NOT NULL,"
+        "payload TEXT NOT NULL DEFAULT '{}',"
+        "status TEXT NOT NULL DEFAULT 'pending',"
+        "attempts INTEGER NOT NULL DEFAULT 0,"
+        "response_code INTEGER,"
+        "response_body TEXT,"
+        "next_retry_at TEXT,"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL,"
+        "FOREIGN KEY(endpoint_id) REFERENCES webhook_endpoints(endpoint_id) ON DELETE CASCADE)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_webhook_deliveries_endpoint ON webhook_deliveries(endpoint_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_webhook_deliveries_event ON webhook_deliveries(event_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_webhook_deliveries_status ON webhook_deliveries(status)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -962,5 +1350,11 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v15_to_v16", from_version=15, to_version=16, upgrade=state_v15_to_v16_upgrade),
     Migration(id="state_v16_to_v17", from_version=16, to_version=17, upgrade=state_v16_to_v17_upgrade),
     Migration(id="state_v17_to_v18", from_version=17, to_version=18, upgrade=state_v17_to_v18_upgrade),
+    Migration(id="state_v18_to_v19", from_version=18, to_version=19, upgrade=state_v18_to_v19_upgrade),
+    Migration(id="state_v19_to_v20", from_version=19, to_version=20, upgrade=state_v19_to_v20_upgrade),
+    Migration(id="state_v20_to_v21", from_version=20, to_version=21, upgrade=state_v20_to_v21_upgrade),
+    Migration(id="state_v21_to_v22", from_version=21, to_version=22, upgrade=state_v21_to_v22_upgrade),
+    Migration(id="state_v22_to_v23", from_version=22, to_version=23, upgrade=state_v22_to_v23_upgrade),
+    Migration(id="state_v23_to_v24", from_version=23, to_version=24, upgrade=state_v23_to_v24_upgrade),
 ]
 

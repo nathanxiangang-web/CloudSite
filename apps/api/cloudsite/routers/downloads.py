@@ -54,6 +54,11 @@ async def download(resource_id: str, request: Request):
         try:
             resolution = await resolve_download_entry(resource, connection)
             await _download_event(state, resource_id, "success", None, started)
+            from ..services.metrics import EVENT_DOWNLOAD_REDIRECT, try_record
+            await try_record(state, EVENT_DOWNLOAD_REDIRECT, {
+                "resource_id": resource_id,
+                "elapsed_ms": round((time.perf_counter() - started) * 1000),
+            })
             if wants_json:
                 return {"url": resolution.url}
             return RedirectResponse(resolution.url, status_code=302)
