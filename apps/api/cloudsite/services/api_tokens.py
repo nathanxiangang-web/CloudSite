@@ -11,7 +11,7 @@ import hashlib
 import json
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,23 @@ from ..models import APIToken, utcnow
 TOKEN_ID_PREFIX = "at_"
 _TOKEN_HEX_LEN = 32
 _RAW_TOKEN_LEN = 48
+
+
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    """Normalize a datetime to aware UTC.
+
+    SQLite returns naive datetimes for ``DateTime(timezone=True)`` columns even
+    when aware UTC values were written, so a direct comparison against
+    ``utcnow()`` raises ``TypeError: can't compare offset-naive and
+    offset-aware datetimes``. Naive values are treated as UTC (consistent with
+    the ``utcnow()`` default and existing rows written from UTC) and aware
+    values are converted to UTC.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class APITokenError(Exception):
@@ -81,7 +98,7 @@ async def create_token(
         label=label,
         scopes=json.dumps(scopes or []),
         created_by=created_by,
-        expires_at=expires_at,
+        expires_at=_as_aware_utc(expires_at),
     )
     state.add(token)
     await state.flush()
@@ -102,7 +119,8 @@ async def verify_token(
         raise TokenInvalid()
     if token.status != "active":
         raise TokenInvalid("Token revoked")
-    if token.expires_at and token.expires_at < utcnow():
+    expires_at = _as_aware_utc(token.expires_at)
+    if expires_at is not None and expires_at < utcnow():
         raise TokenInvalid("Token expired")
     if required_scope:
         scopes = json.loads(token.scopes)
