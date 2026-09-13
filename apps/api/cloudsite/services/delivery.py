@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -308,8 +308,10 @@ async def verify_access(
         raise AccessDenied("Invalid token")
     if package.status != "published":
         raise AccessDenied("Package not available")
-    if package.expires_at and package.expires_at < utcnow():
-        raise AccessDenied("Package expired")
+    if package.expires_at:
+        expires_at = package.expires_at if package.expires_at.tzinfo else package.expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < utcnow():
+            raise AccessDenied("Package expired")
     if package.code_hash:
         if not access_code:
             raise AccessDenied("Access code required")

@@ -274,3 +274,67 @@ async def test_add_item_to_cancelled_fails(state_session):
         await state.commit()
         with pytest.raises(delivery.PackageStateInvalid):
             await delivery.add_item(state, pkg.package_id, display_name="X")
+
+
+async def test_verify_access_future_after_reload(state_session):
+    """A future-expiring published package remains viewable after commit and reload.
+
+    SQLite returns naive datetimes for DateTime(timezone=True) columns, so the
+    expires_at comparison in verify_access must normalize the loaded value to
+    UTC before comparing against the timezone-aware utcnow().
+    """
+    async with state_session() as state:
+        future = _now() + timedelta(hours=1)
+        pkg = await delivery.create_package(state, "Future", expires_at=future)
+        await delivery.publish_package(state, pkg.package_id)
+        await state.commit()
+        access_token = pkg.access_token
+
+    async with state_session() as state:
+        loaded = await state.get(DeliveryPackage, pkg.package_id)
+        assert loaded.expires_at is not None
+        assert loaded.expires_at.tzinfo is None
+        result = await delivery.verify_access(state, access_token)
+        assert result.package_id == pkg.package_id
+        assert result.status == "published"
+
+
+async def test_verify_access_expired_after_reload(state_session):
+    """An expired published package raises AccessDenied after commit and reload.
+
+    The naive expires_at loaded from SQLite must be normalized to UTC so the
+    comparison does not raise TypeError and the expired branch still fires.
+    """
+    async with state_session() as state:
+        past = _now() - timedelta(hours=1)
+        pkg = await delivery.create_package(state, "Expired", expires_at=past)
+        await delivery.publish_package(state, pkg.package_id)
+        await state.commit()
+        access_token = pkg.access_token
+
+    async with state_session() as state:
+        loaded = await state.get(DeliveryPackage, pkg.package_id)
+        assert loaded.expires_at is not None
+        assert loaded.expires_at.tzinfo is None
+        with pytest.raises(delivery.AccessDenied):
+            await delivery.verify_access(state, access_token)
+
+
+async def test_verify_access_future_with_code_after_reload(state_session):
+    """A future-expiring package with an access code still enforces the code
+    after reload from SQLite without raising TypeError on the expiry check.
+    """
+    async with state_session() as state:
+        future = _now() + timedelta(hours=1)
+        pkg = await delivery.create_package(state, "Coded", access_code="1234", expires_at=future)
+        await delivery.publish_package(state, pkg.package_id)
+        await state.commit()
+        access_token = pkg.access_token
+
+    async with state_session() as state:
+        with pytest.raises(delivery.AccessDenied):
+            await delivery.verify_access(state, access_token)
+        with pytest.raises(delivery.AccessDenied):
+            await delivery.verify_access(state, access_token, access_code="wrong")
+        result = await delivery.verify_access(state, access_token, access_code="1234")
+        assert result.package_id == pkg.package_id
