@@ -11,7 +11,8 @@ from ..download_rate_limit import (
     get_effective_client_ip,
     rate_limit_payload,
 )
-from ..models import AListConnection, Resource
+from ..models import Resource
+from ..services.connections import resolve_resource_connection
 from ..services.downloads import _download_event
 from ..shares.service import resource_in_publication_scope
 
@@ -50,7 +51,7 @@ async def download(resource_id: str, request: Request):
                 status_code=429,
                 headers={"Retry-After": str(rate.retry_after)},
             )
-        connection = await state.get(AListConnection, 1)
+        connection = await resolve_resource_connection(state, resource)
         try:
             resolution = await resolve_download_entry(resource, connection)
             await _download_event(state, resource_id, "success", None, started)
