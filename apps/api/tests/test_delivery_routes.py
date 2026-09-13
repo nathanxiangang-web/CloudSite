@@ -202,3 +202,81 @@ async def test_package_not_found(monkeypatch):
         assert resp.status_code == 404
     finally:
         await client.aclose()
+
+
+async def test_client_feedback_protected_with_code(monkeypatch):
+    client, _ = await _setup(monkeypatch)
+    try:
+        create_resp = await client.post("/api/admin/delivery-packages", json={
+            "name": "Protected Feedback",
+            "access_code": "secret123",
+        }, headers=ORIGIN, cookies=_admin_cookies())
+        package_id = create_resp.json()["package_id"]
+        await client.post(f"/api/admin/delivery-packages/{package_id}/publish", headers=ORIGIN, cookies=_admin_cookies())
+
+        from cloudsite.models import DeliveryPackage
+        from sqlalchemy import select
+        async with main.StateSession() as state:
+            pkg = (await state.execute(select(DeliveryPackage).where(DeliveryPackage.package_id == package_id))).scalar_one()
+            access_token = pkg.access_token
+
+        resp = await client.post(f"/api/delivery/{access_token}/feedback", json={
+            "kind": "confirmed",
+            "message": "Received with code",
+        }, params={"code": "secret123"}, headers=ORIGIN)
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+    finally:
+        await client.aclose()
+
+
+async def test_client_feedback_protected_without_code(monkeypatch):
+    client, _ = await _setup(monkeypatch)
+    try:
+        create_resp = await client.post("/api/admin/delivery-packages", json={
+            "name": "Protected Feedback No Code",
+            "access_code": "secret123",
+        }, headers=ORIGIN, cookies=_admin_cookies())
+        package_id = create_resp.json()["package_id"]
+        await client.post(f"/api/admin/delivery-packages/{package_id}/publish", headers=ORIGIN, cookies=_admin_cookies())
+
+        from cloudsite.models import DeliveryPackage
+        from sqlalchemy import select
+        async with main.StateSession() as state:
+            pkg = (await state.execute(select(DeliveryPackage).where(DeliveryPackage.package_id == package_id))).scalar_one()
+            access_token = pkg.access_token
+
+        resp = await client.post(f"/api/delivery/{access_token}/feedback", json={
+            "kind": "confirmed",
+            "message": "Missing code",
+        }, headers=ORIGIN)
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "ACCESS_DENIED"
+    finally:
+        await client.aclose()
+
+
+async def test_client_feedback_protected_wrong_code(monkeypatch):
+    client, _ = await _setup(monkeypatch)
+    try:
+        create_resp = await client.post("/api/admin/delivery-packages", json={
+            "name": "Protected Feedback Wrong Code",
+            "access_code": "secret123",
+        }, headers=ORIGIN, cookies=_admin_cookies())
+        package_id = create_resp.json()["package_id"]
+        await client.post(f"/api/admin/delivery-packages/{package_id}/publish", headers=ORIGIN, cookies=_admin_cookies())
+
+        from cloudsite.models import DeliveryPackage
+        from sqlalchemy import select
+        async with main.StateSession() as state:
+            pkg = (await state.execute(select(DeliveryPackage).where(DeliveryPackage.package_id == package_id))).scalar_one()
+            access_token = pkg.access_token
+
+        resp = await client.post(f"/api/delivery/{access_token}/feedback", json={
+            "kind": "confirmed",
+            "message": "Wrong code",
+        }, params={"code": "wrong-code"}, headers=ORIGIN)
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "ACCESS_DENIED"
+    finally:
+        await client.aclose()
