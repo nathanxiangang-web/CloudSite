@@ -89,8 +89,8 @@ async def search(
                         "match_type": classify_match(row.name, normalized),
                     })
                 items.append(payload)
-            from ..services.metrics import EVENT_SEARCH_PERFORMED, try_record
-            await try_record(state, EVENT_SEARCH_PERFORMED, {
+            from ..services.metrics import EVENT_SEARCH_PERFORMED, try_record_committed
+            await try_record_committed(state, EVENT_SEARCH_PERFORMED, {
                 "result_count": total,
                 "raw_query": normalized,
             })
