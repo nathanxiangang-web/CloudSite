@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from .config import settings
-from .migrations import CURRENT_SCHEMA_VERSION, STATE_MIGRATIONS, get_state_schema_version, run_migrations, set_index_schema_version, set_state_schema_version
+from .migrations import CURRENT_SCHEMA_VERSION, STATE_MIGRATIONS, get_state_schema_version, repair_content_root_mappings_legacy_unique, run_migrations, set_index_schema_version, set_state_schema_version
 
 
 class StateBase(DeclarativeBase):
@@ -185,10 +185,76 @@ async def _create_pre_migration_backup() -> bool:
     return True
 
 
+async def _create_pre_repair_backup() -> bool:
+    """Create a safe SQLite online backup before repairing an already-v25 state.db.
+
+    Only triggers when schema_version is already current but the legacy
+    single-column UNIQUE(alist_path) auto-index is still present. Uses the
+    SQLite online backup API (no WAL checkpoint required).
+    Returns True if a backup was created.
+    """
+    from datetime import datetime, timezone
+
+    state_path = settings.data_dir.resolve() / "state.db"
+    if not state_path.exists():
+        return False
+
+    try:
+        conn = sqlite3.connect(f"{state_path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            tables = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                )
+            }
+            if "system_settings" not in tables or "content_root_mappings" not in tables:
+                return False
+            row = conn.execute(
+                "SELECT value FROM system_settings WHERE key='schema_version'"
+            ).fetchone()
+            current_version = int(row[0]) if row else 0
+            if current_version < CURRENT_SCHEMA_VERSION:
+                return False
+            has_legacy = False
+            for (idx_name,) in conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='index' AND tbl_name='content_root_mappings' "
+                "AND sql IS NULL AND name LIKE 'sqlite_autoindex_%'"
+            ):
+                info = conn.execute(f"PRAGMA index_info('{idx_name}')").fetchall()
+                if len(info) == 1 and info[0][2] == "alist_path":
+                    has_legacy = True
+                    break
+            if not has_legacy:
+                return False
+        finally:
+            conn.close()
+    except (sqlite3.DatabaseError, ValueError):
+        return False
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup_dir = settings.data_dir / ".codex-backups" / "pre-repair" / stamp
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    src_db = sqlite3.connect(str(state_path))
+    try:
+        dst_db = sqlite3.connect(str(backup_dir / "state.db"))
+        try:
+            src_db.backup(dst_db)
+        finally:
+            dst_db.close()
+    finally:
+        src_db.close()
+
+    return True
+
+
 async def init_databases() -> None:
     from . import models  # noqa: F401
 
     await _create_pre_migration_backup()
+    await _create_pre_repair_backup()
 
     async with state_engine.begin() as connection:
         await connection.run_sync(StateBase.metadata.create_all)
@@ -335,6 +401,7 @@ async def init_databases() -> None:
         if current_state_version == 0:
             await set_state_schema_version(connection, 1)
         await run_migrations(connection, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version)
+        await repair_content_root_mappings_legacy_unique(connection)
     async with index_engine.begin() as connection:
         await connection.run_sync(IndexBase.metadata.create_all)
         for table, column, definition in (

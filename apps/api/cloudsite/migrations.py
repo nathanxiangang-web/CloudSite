@@ -1388,6 +1388,86 @@ async def state_v24_to_v25_upgrade(conn: AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS ix_provider_compat_result ON provider_compat_records(test_result)"
     )
 
+    await repair_content_root_mappings_legacy_unique(conn)
+
+
+async def detect_legacy_alist_path_auto_index(conn: AsyncConnection) -> str | None:
+    """Detect legacy single-column UNIQUE(alist_path) auto-index on content_root_mappings."""
+    indexes = await conn.exec_driver_sql(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='index' AND tbl_name='content_root_mappings' "
+        "AND sql IS NULL AND name LIKE 'sqlite_autoindex_%'"
+    )
+    for (idx_name,) in indexes.fetchall():
+        info = await conn.exec_driver_sql(f"PRAGMA index_info('{idx_name}')")
+        cols = info.fetchall()
+        if len(cols) == 1 and cols[0][2] == "alist_path":
+            return idx_name
+    return None
+
+
+async def repair_content_root_mappings_legacy_unique(conn: AsyncConnection) -> bool:
+    """Rebuild content_root_mappings to remove legacy single-column UNIQUE(alist_path).
+
+    SQLite forbids DROP INDEX on auto-indexes from column-level UNIQUE constraints.
+    We rebuild the table with the same columns and only composite
+    UNIQUE(connection_id, alist_path), copy all rows preserving IDs, drop the
+    old table, rename, and recreate helper indexes.
+
+    Idempotent: returns False when the legacy auto-index is absent.
+    Fails closed: any copy or schema error raises and rolls back the transaction.
+    """
+    legacy_index = await detect_legacy_alist_path_auto_index(conn)
+    if legacy_index is None:
+        return False
+
+    cols_info = await conn.exec_driver_sql("PRAGMA table_info(content_root_mappings)")
+    columns = cols_info.fetchall()
+
+    col_defs: list[str] = []
+    col_names: list[str] = []
+    for _cid, name, col_type, notnull, dflt, pk in columns:
+        col_names.append(name)
+        parts = [name]
+        if col_type:
+            parts.append(col_type)
+        if pk:
+            parts.append("PRIMARY KEY")
+        if notnull:
+            parts.append("NOT NULL")
+        if dflt is not None:
+            parts.append(f"DEFAULT {dflt}")
+        col_defs.append(" ".join(parts))
+
+    await conn.exec_driver_sql(
+        "CREATE TABLE content_root_mappings__repair ("
+        + ", ".join(col_defs)
+        + ", UNIQUE (connection_id, alist_path))"
+    )
+    await conn.exec_driver_sql(
+        f"INSERT INTO content_root_mappings__repair ({', '.join(col_names)}) "
+        f"SELECT {', '.join(col_names)} FROM content_root_mappings"
+    )
+    await conn.exec_driver_sql("DROP TABLE content_root_mappings")
+    await conn.exec_driver_sql(
+        "ALTER TABLE content_root_mappings__repair RENAME TO content_root_mappings"
+    )
+
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_root_mappings_connection_id "
+        "ON content_root_mappings(connection_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_root_mappings_content_type "
+        "ON content_root_mappings(content_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_content_root_mappings_conn_path "
+        "ON content_root_mappings(connection_id, alist_path)"
+    )
+
+    return True
+
 
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
