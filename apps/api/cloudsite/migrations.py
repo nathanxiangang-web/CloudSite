@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 24
+CURRENT_SCHEMA_VERSION = 25
 
 
 @dataclass(frozen=True, slots=True)
@@ -1332,6 +1332,63 @@ async def state_v23_to_v24_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v24_to_v25_upgrade(conn: AsyncConnection) -> None:
+    """X1: 多连接命名空间 + Provider 兼容记录。
+
+    - alist_connections 增加 name 列
+    - content_root_mappings 增加 connection_id 列（默认 1 = 默认连接）
+    - content_root_mappings.alist_path 唯一约束从全局放宽为 (connection_id, alist_path)
+    - 新增 provider_compat_records 表
+    """
+    alist_cols = await conn.exec_driver_sql("PRAGMA table_info(alist_connections)")
+    if "name" not in {row[1] for row in alist_cols.fetchall()}:
+        await conn.exec_driver_sql(
+            "ALTER TABLE alist_connections ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT '默认连接'"
+        )
+
+    root_cols = await conn.exec_driver_sql("PRAGMA table_info(content_root_mappings)")
+    if "connection_id" not in {row[1] for row in root_cols.fetchall()}:
+        await conn.exec_driver_sql(
+            "ALTER TABLE content_root_mappings ADD COLUMN connection_id INTEGER NOT NULL DEFAULT 1"
+        )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_root_mappings_connection_id ON content_root_mappings(connection_id)"
+    )
+
+    old_indexes = await conn.exec_driver_sql(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='content_root_mappings' "
+        "AND sql LIKE '%alist_path%' AND sql NOT LIKE '%connection_id%'"
+    )
+    for (idx_name,) in old_indexes.fetchall():
+        await conn.exec_driver_sql(f"DROP INDEX IF EXISTS {idx_name}")
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_content_root_mappings_conn_path "
+        "ON content_root_mappings(connection_id, alist_path)"
+    )
+
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS provider_compat_records("
+        "id VARCHAR(35) PRIMARY KEY,"
+        "provider_type VARCHAR(40) NOT NULL,"
+        "adapter_version VARCHAR(100) NOT NULL,"
+        "platform VARCHAR(100) NOT NULL,"
+        "platform_version VARCHAR(100) NOT NULL DEFAULT '',"
+        "test_result VARCHAR(20) NOT NULL DEFAULT 'pass',"
+        "tested_capabilities_json TEXT NOT NULL DEFAULT '',"
+        "notes TEXT NOT NULL DEFAULT '',"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_provider_compat_provider_type ON provider_compat_records(provider_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_provider_compat_platform ON provider_compat_records(platform)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_provider_compat_result ON provider_compat_records(test_result)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1356,5 +1413,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v21_to_v22", from_version=21, to_version=22, upgrade=state_v21_to_v22_upgrade),
     Migration(id="state_v22_to_v23", from_version=22, to_version=23, upgrade=state_v22_to_v23_upgrade),
     Migration(id="state_v23_to_v24", from_version=23, to_version=24, upgrade=state_v23_to_v24_upgrade),
+    Migration(id="state_v24_to_v25", from_version=24, to_version=25, upgrade=state_v24_to_v25_upgrade),
 ]
 

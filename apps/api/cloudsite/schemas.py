@@ -18,6 +18,7 @@ class RootMappingInput(BaseModel):
     alist_path: str = Field(min_length=1, max_length=1000)
     enabled: bool = True
     sort_order: int = 0
+    connection_id: int = 1
 
 
 class SiteInput(BaseModel):

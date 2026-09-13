@@ -34,3 +34,22 @@ class GenericAListProvider:
 
     async def get_metadata(self, path: str) -> dict[str, Any]:
         return await self._client.get_file_info(path)
+    async def stat(self, path: str) -> dict[str, Any]:
+        info = await self._client.get_file_info(path)
+        return {
+            "name": info.get("name", ""),
+            "size": info.get("size", 0),
+            "modified": info.get("modified"),
+            "is_dir": info.get("is_dir", False),
+        }
+
+    async def identity(self, path: str) -> dict[str, Any]:
+        info = await self._client.get_file_info(path)
+        return {
+            "path": path,
+            "name": info.get("name", ""),
+            "size": info.get("size", 0),
+            "modified": info.get("modified"),
+            "object_id": info.get("object_id", ""),
+            "content_hash": info.get("hash", ""),
+        }

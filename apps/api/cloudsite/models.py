@@ -12,7 +12,8 @@ def utcnow() -> datetime:
 
 class AListConnection(StateBase):
     __tablename__ = "alist_connections"
-    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), default="默认连接")
     base_url: Mapped[str] = mapped_column(String(500), default="")
     base_path: Mapped[str] = mapped_column(String(1000), default="/")
     username: Mapped[str] = mapped_column(String(200), default="")
@@ -61,14 +62,16 @@ class SystemSetting(StateBase):
 class ContentRootMapping(StateBase):
     __tablename__ = "content_root_mappings"
     id: Mapped[int] = mapped_column(primary_key=True)
+    connection_id: Mapped[int] = mapped_column(Integer, default=1, index=True)
     content_type: Mapped[str] = mapped_column(String(40), index=True)
     display_name: Mapped[str] = mapped_column(String(100))
-    alist_path: Mapped[str] = mapped_column(String(1000), unique=True)
+    alist_path: Mapped[str] = mapped_column(String(1000))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     home_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    __table_args__ = (UniqueConstraint("connection_id", "alist_path"),)
 
 
 class DownloadEvent(StateBase):
@@ -385,7 +388,7 @@ class Folder(IndexBase):
     __tablename__ = "folders"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(500), index=True)
-    path: Mapped[str] = mapped_column(String(1500), unique=True)
+    path: Mapped[str] = mapped_column(String(1500))
     parent_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     content_type: Mapped[str] = mapped_column(String(40), index=True)
     root_mapping_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
@@ -399,13 +402,14 @@ class Folder(IndexBase):
     missing_candidate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     missing_last_observed_cycle_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    __table_args__ = (UniqueConstraint("root_mapping_id", "path"),)
 
 
 class Resource(IndexBase):
     __tablename__ = "resources"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(500), index=True)
-    path: Mapped[str] = mapped_column(String(1500), unique=True)
+    path: Mapped[str] = mapped_column(String(1500))
     parent_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     content_type: Mapped[str] = mapped_column(String(40), index=True)
     root_mapping_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
@@ -421,6 +425,7 @@ class Resource(IndexBase):
     missing_candidate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     missing_last_observed_cycle_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    __table_args__ = (UniqueConstraint("root_mapping_id", "path"),)
 
 
 class ResourceIdentityCandidate(IndexBase):
@@ -1396,3 +1401,20 @@ class WebhookDelivery(StateBase):
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+class ProviderCompatRecord(StateBase):
+    """X1 Provider 兼容测试记录：每个平台/版本的适配器兼容性结果。
+
+    验收：所有支持平台有实际兼容记录。
+    """
+
+    __tablename__ = "provider_compat_records"
+    id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    provider_type: Mapped[str] = mapped_column(String(40), index=True)
+    adapter_version: Mapped[str] = mapped_column(String(100))
+    platform: Mapped[str] = mapped_column(String(100), index=True)
+    platform_version: Mapped[str] = mapped_column(String(100), default="")
+    test_result: Mapped[str] = mapped_column(String(20), default="pass", index=True)
+    tested_capabilities_json: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

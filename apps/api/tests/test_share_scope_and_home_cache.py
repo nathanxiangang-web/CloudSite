@@ -151,7 +151,7 @@ async def test_admin_root_mapping_update_invalidates_home_cache(monkeypatch):
     calls = []
     monkeypatch.setattr(content_roots, "invalidate_home_cache", lambda: calls.append(1))
 
-    async def _passthrough(path):
+    async def _passthrough(path, connection_id=1):
         return path
     monkeypatch.setattr(content_roots, "validate_root_mapping_path", _passthrough)
 

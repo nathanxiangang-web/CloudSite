@@ -153,8 +153,15 @@ class ScannedResource:
 
 async def load_client_and_roots() -> tuple[AListClient, list[ContentRootMapping]]:
     async with StateSession() as session:
-        connection = await session.get(AListConnection, 1)
-        if not connection or not connection.enabled:
+        connection = (
+            await session.scalars(
+                select(AListConnection)
+                .where(AListConnection.enabled.is_(True))
+                .order_by(AListConnection.id)
+                .limit(1)
+            )
+        ).first()
+        if not connection:
             raise RuntimeError("尚未保存可用的 AList 连接")
         if not connection.password_ciphertext:
             raise RuntimeError("AList 凭据未保存，无法执行后台同步")
@@ -162,7 +169,10 @@ async def load_client_and_roots() -> tuple[AListClient, list[ContentRootMapping]
             (
                 await session.scalars(
                     select(ContentRootMapping)
-                    .where(ContentRootMapping.enabled.is_(True))
+                    .where(
+                        ContentRootMapping.enabled.is_(True),
+                        ContentRootMapping.connection_id == connection.id,
+                    )
                     .order_by(ContentRootMapping.sort_order, ContentRootMapping.id)
                 )
             ).all()
@@ -174,6 +184,45 @@ async def load_client_and_roots() -> tuple[AListClient, list[ContentRootMapping]
             connection.username,
             decrypt_secret(connection.password_ciphertext),
         ), roots
+
+
+async def load_all_connections_and_roots() -> list[tuple[AListConnection, AListClient, list[ContentRootMapping]]]:
+    """加载所有已启用连接及其根映射，用于多连接同步。"""
+    result: list[tuple[AListConnection, AListClient, list[ContentRootMapping]]] = []
+    async with StateSession() as session:
+        connections = (
+            await session.scalars(
+                select(AListConnection)
+                .where(AListConnection.enabled.is_(True))
+                .order_by(AListConnection.id)
+            )
+        ).all()
+        for conn in connections:
+            if not conn.password_ciphertext:
+                continue
+            roots = list(
+                (
+                    await session.scalars(
+                        select(ContentRootMapping)
+                        .where(
+                            ContentRootMapping.enabled.is_(True),
+                            ContentRootMapping.connection_id == conn.id,
+                        )
+                        .order_by(ContentRootMapping.sort_order, ContentRootMapping.id)
+                    )
+                ).all()
+            )
+            if not roots:
+                continue
+            client = AListClient(
+                conn.base_url,
+                conn.username,
+                decrypt_secret(conn.password_ciphertext),
+            )
+            result.append((conn, client, roots))
+    if not result:
+        raise RuntimeError("没有可用的已启用连接及内容根映射")
+    return result
 
 
 async def _set_system_values(values: dict[str, str]) -> None:

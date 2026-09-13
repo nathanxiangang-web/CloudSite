@@ -19,15 +19,15 @@ async def get_root_mappings():
 
     async with StateSession() as session:
         rows = list((await session.scalars(select(ContentRootMapping).order_by(ContentRootMapping.sort_order))).all())
-        return {"items": [{"id": row.id, "content_type": row.content_type, "display_name": row.display_name, "alist_path": row.alist_path, "enabled": row.enabled, "sort_order": row.sort_order} for row in rows]}
+        return {"items": [{"id": row.id, "connection_id": row.connection_id, "content_type": row.content_type, "display_name": row.display_name, "alist_path": row.alist_path, "enabled": row.enabled, "sort_order": row.sort_order} for row in rows]}
 
 
-async def validate_root_mapping_path(path: str) -> str:
+async def validate_root_mapping_path(path: str, connection_id: int = 1) -> str:
     from ...main import StateSession
 
     normalized = normalize_path(path)
     async with StateSession() as session:
-        connection = await session.get(AListConnection, 1)
+        connection = await session.get(AListConnection, connection_id)
     if not connection or not connection.enabled or not connection.password_ciphertext:
         raise HTTPException(409, "请先保存可用的 AList 连接和凭据")
     try:
@@ -44,7 +44,7 @@ async def validate_root_mapping_path(path: str) -> str:
 async def add_root_mapping(payload: RootMappingInput):
     from ...main import StateSession
 
-    normalized_path = await validate_root_mapping_path(payload.alist_path)
+    normalized_path = await validate_root_mapping_path(payload.alist_path, payload.connection_id)
     async with StateSession() as session:
         row = ContentRootMapping(**{**payload.model_dump(), "alist_path": normalized_path})
         session.add(row)
@@ -62,7 +62,7 @@ async def add_root_mapping(payload: RootMappingInput):
 async def update_root_mapping(mapping_id: int, payload: RootMappingInput):
     from ...main import StateSession
 
-    normalized_path = await validate_root_mapping_path(payload.alist_path)
+    normalized_path = await validate_root_mapping_path(payload.alist_path, payload.connection_id)
     async with StateSession() as session:
         row = await session.get(ContentRootMapping, mapping_id)
         if not row:

@@ -368,6 +368,16 @@ async def init_databases() -> None:
             columns = await connection.exec_driver_sql(f"PRAGMA table_info({table})")
             if column not in {row[1] for row in columns.fetchall()}:
                 await connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        for tbl in ("folders", "resources"):
+            old_path_indexes = await connection.exec_driver_sql(
+                f"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='{tbl}' "
+                f"AND sql LIKE '%path%' AND sql NOT LIKE '%root_mapping_id%'"
+            )
+            for (idx_name,) in old_path_indexes.fetchall():
+                await connection.exec_driver_sql(f"DROP INDEX IF EXISTS {idx_name}")
+            await connection.exec_driver_sql(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{tbl}_root_path ON {tbl}(root_mapping_id, path)"
+            )
         expected_search_columns = [
             "object_id", "object_type", "name", "extension", "content_type",
             "description", "tags", "breadcrumb_text",
