@@ -91,6 +91,7 @@ from .routers.sitemap import router as sitemap_router
 from .routers.browse import router as browse_router
 from .routers.quality import router as quality_router
 from .routers.delivery import router as delivery_router
+from .routers.cloud_download import router as cloud_download_router
 
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -112,6 +113,7 @@ app.include_router(sitemap_router)
 app.include_router(browse_router)
 app.include_router(quality_router)
 app.include_router(delivery_router)
+app.include_router(cloud_download_router)
 
 from .routers.admin.auth import router as admin_auth_router
 from .routers.admin.setup import router as admin_setup_router
