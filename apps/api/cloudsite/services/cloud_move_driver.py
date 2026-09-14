@@ -28,7 +28,7 @@ CLI_TIMEOUT_SECONDS: float = 30.0
 PATH_MAX_LENGTH: int = 4096
 
 # Envelope code used by the CLI to signal "path not found" for stat.
-_NOT_FOUND_CODE: int = 404
+_NOT_FOUND_CODE: int = 3
 
 
 class CloudMoveError(Exception):
@@ -48,7 +48,7 @@ class CloudMoveError(Exception):
 class StatInfo:
     """File info from stat: the path and whether it is a regular file."""
 
-    path: str
+    file_id: str
     is_file: bool
 
 
@@ -75,7 +75,7 @@ def _validate_tree_path(path: str) -> str:
         raise CloudMoveError("CM-001", "Invalid path")
     if len(path) > PATH_MAX_LENGTH:
         raise CloudMoveError("CM-001", "Invalid path")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in path):
+    if any(ord(ch) < 32 or ord(ch) == 127 or ch == "\\" for ch in path):
         raise CloudMoveError("CM-001", "Invalid path")
 
     prefix = FIXED_FOLDER + "/"
@@ -114,7 +114,7 @@ def _build_mv_argv(source: str, destination: str) -> list[str]:
     return [CLI_BINARY, "--json", "mv", "--", source, destination]
 
 
-async def _run_cli(argv: list[str]) -> bytes:
+async def _run_cli(argv: list[str], *, stat: bool = False) -> bytes:
     """Run the CLI subprocess and return stdout bytes.
 
     Uses asyncio.create_subprocess_exec with an argv list; never shell=True.
@@ -143,7 +143,7 @@ async def _run_cli(argv: list[str]) -> bytes:
         await proc.wait()
         raise CloudMoveError("CM-003", "CLI timed out")
 
-    if proc.returncode != 0:
+    if proc.returncode != 0 and not (stat and proc.returncode == _NOT_FOUND_CODE):
         raise CloudMoveError("CM-004", "CLI failed")
     return stdout
 
@@ -168,7 +168,7 @@ def _parse_envelope(payload: bytes) -> dict[str, Any]:
     return envelope["data"]
 
 
-def _parse_stat_envelope(payload: bytes) -> StatInfo | None:
+def _parse_stat_envelope(payload: bytes, expected_path: str) -> StatInfo | None:
     """Parse the stat envelope from CLI stdout.
 
     Returns StatInfo when the path exists, None when the CLI reports a
@@ -185,11 +185,12 @@ def _parse_stat_envelope(payload: bytes) -> StatInfo | None:
         data = envelope.get("data")
         if not isinstance(data, dict):
             raise CloudMoveError("CM-005", "CLI returned malformed output")
-        path = data.get("path")
-        is_file = data.get("is_file")
-        if not isinstance(path, str) or not isinstance(is_file, bool):
+        name = data.get("name")
+        file_id = data.get("file_id")
+        is_dir = data.get("is_dir")
+        if name != _basename(expected_path) or not isinstance(file_id, str) or not file_id or not isinstance(is_dir, bool):
             raise CloudMoveError("CM-005", "CLI returned malformed output")
-        return StatInfo(path=path, is_file=is_file)
+        return StatInfo(file_id=file_id, is_file=not is_dir)
 
     if envelope.get("success") is False and envelope.get("code") == _NOT_FOUND_CODE:
         return None
@@ -204,13 +205,14 @@ def _parse_mkdir_result(data: dict[str, Any], expected: str) -> None:
         raise CloudMoveError("CM-005", "CLI returned malformed output")
 
 
-def _parse_mv_result(data: dict[str, Any], expected_src: str, expected_dst: str) -> None:
+def _parse_mv_result(data: dict[str, Any], expected_src: str, expected_dir: str, source_file_id: str) -> None:
     """Parse mv envelope data and verify source and destination match."""
     source = data.get("source")
-    destination = data.get("destination")
-    if not isinstance(source, str) or not isinstance(destination, str):
+    destination = data.get("destination_dir")
+    file_ids = data.get("file_ids")
+    if not isinstance(source, str) or not isinstance(destination, str) or not isinstance(file_ids, list):
         raise CloudMoveError("CM-005", "CLI returned malformed output")
-    if source != expected_src or destination != expected_dst:
+    if source != expected_src or destination != expected_dir or file_ids != [source_file_id]:
         raise CloudMoveError("CM-008", "Unexpected move result")
 
 
@@ -221,8 +223,8 @@ async def _stat(path: str) -> StatInfo | None:
     Raises CloudMoveError on CLI errors or malformed output.
     """
     argv = _build_stat_argv(path)
-    stdout = await _run_cli(argv)
-    return _parse_stat_envelope(stdout)
+    stdout = await _run_cli(argv, stat=True)
+    return _parse_stat_envelope(stdout, path)
 
 
 async def _mkdir(path: str) -> None:
@@ -233,12 +235,12 @@ async def _mkdir(path: str) -> None:
     _parse_mkdir_result(data, path)
 
 
-async def _mv(source: str, destination: str) -> None:
+async def _mv(source: str, destination_dir: str, source_file_id: str) -> None:
     """Move a file via the CLI and verify the returned paths match."""
-    argv = _build_mv_argv(source, destination)
+    argv = _build_mv_argv(source, destination_dir)
     stdout = await _run_cli(argv)
     data = _parse_envelope(stdout)
-    _parse_mv_result(data, source, destination)
+    _parse_mv_result(data, source, destination_dir, source_file_id)
 
 
 async def move_file(source: str, destination_dir: str) -> MoveResult:
@@ -270,7 +272,7 @@ async def move_file(source: str, destination_dir: str) -> MoveResult:
     if existing is not None:
         raise CloudMoveError("CM-007", "Destination already exists")
 
-    await _mv(sanitized_source, dest_file_path)
+    await _mv(sanitized_source, sanitized_dest, source_info.file_id)
 
     return MoveResult(
         source=sanitized_source,

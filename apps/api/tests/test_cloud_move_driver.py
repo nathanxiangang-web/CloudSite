@@ -41,11 +41,11 @@ def _envelope(data: dict) -> bytes:
 
 
 def _not_found_envelope() -> bytes:
-    return json.dumps({"success": False, "code": 404, "data": None}).encode("utf-8")
+    return json.dumps({"success": False, "code": 3, "data": None}).encode("utf-8")
 
 
 def _stat_envelope(path: str, is_file: bool) -> bytes:
-    return _envelope({"path": path, "is_file": is_file})
+    return _envelope({"name": path.rsplit("/", 1)[-1], "is_dir": not is_file, "file_id": "fid-1"})
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ def test_mkdir_argv_contract():
 
 def test_mv_argv_contract():
     src = drv.FIXED_FOLDER + "/a.zip"
-    dst = drv.FIXED_FOLDER + "/sub/a.zip"
+    dst = drv.FIXED_FOLDER + "/sub"
     argv = drv._build_mv_argv(src, dst)
     assert argv == [drv.CLI_BINARY, "--json", "mv", "--", src, dst]
 
@@ -167,8 +167,8 @@ async def test_move_file_success(fake_subprocess):
     calls, queue = fake_subprocess
     queue.append(_make_proc(stdout=_stat_envelope(_src(), is_file=True)))
     queue.append(_make_proc(stdout=_envelope({"path": _dest_dir()})))
-    queue.append(_make_proc(stdout=_not_found_envelope()))
-    queue.append(_make_proc(stdout=_envelope({"source": _src(), "destination": _dest_file()})))
+    queue.append(_make_proc(stdout=_not_found_envelope(), returncode=3))
+    queue.append(_make_proc(stdout=_envelope({"source": _src(), "destination_dir": _dest_dir(), "file_ids": ["fid-1"]})))
 
     result = await drv.move_file(_src(), _dest_dir())
 
@@ -178,7 +178,28 @@ async def test_move_file_success(fake_subprocess):
     assert calls[0] == drv._build_stat_argv(_src())
     assert calls[1] == drv._build_mkdir_argv(_dest_dir())
     assert calls[2] == drv._build_stat_argv(_dest_file())
-    assert calls[3] == drv._build_mv_argv(_src(), _dest_file())
+    assert calls[3] == drv._build_mv_argv(_src(), _dest_dir())
+
+
+async def test_stat_rejects_mismatched_name(fake_subprocess):
+    _, queue = fake_subprocess
+    queue.append(_make_proc(stdout=_envelope({"name": "other.zip", "is_dir": False, "file_id": "fid-1"})))
+    with pytest.raises(drv.CloudMoveError) as exc:
+        await drv.move_file(_src(), _dest_dir())
+    assert exc.value.code == "CM-005"
+
+
+async def test_move_rejects_unexpected_file_id(fake_subprocess):
+    _, queue = fake_subprocess
+    queue.append(_make_proc(stdout=_stat_envelope(_src(), is_file=True)))
+    queue.append(_make_proc(stdout=_envelope({"path": _dest_dir()})))
+    queue.append(_make_proc(stdout=_not_found_envelope(), returncode=3))
+    queue.append(_make_proc(stdout=_envelope({
+        "source": _src(), "destination_dir": _dest_dir(), "file_ids": ["different"],
+    })))
+    with pytest.raises(drv.CloudMoveError) as exc:
+        await drv.move_file(_src(), _dest_dir())
+    assert exc.value.code == "CM-008"
 
 
 async def test_move_file_rejects_invalid_source_before_cli(fake_subprocess):
@@ -217,7 +238,7 @@ async def test_move_file_rejects_root_destination(fake_subprocess):
 
 async def test_move_file_source_not_found(fake_subprocess):
     calls, queue = fake_subprocess
-    queue.append(_make_proc(stdout=_not_found_envelope()))
+    queue.append(_make_proc(stdout=_not_found_envelope(), returncode=3))
     with pytest.raises(drv.CloudMoveError) as exc:
         await drv.move_file(_src(), _dest_dir())
     assert exc.value.code == "CM-006"
@@ -289,7 +310,7 @@ async def test_move_file_mv_malformed_json(fake_subprocess):
     _, queue = fake_subprocess
     queue.append(_make_proc(stdout=_stat_envelope(_src(), is_file=True)))
     queue.append(_make_proc(stdout=_envelope({"path": _dest_dir()})))
-    queue.append(_make_proc(stdout=_not_found_envelope()))
+    queue.append(_make_proc(stdout=_not_found_envelope(), returncode=3))
     queue.append(_make_proc(stdout=b"not json"))
     with pytest.raises(drv.CloudMoveError) as exc:
         await drv.move_file(_src(), _dest_dir())
@@ -306,7 +327,7 @@ async def test_move_file_stat_missing_data_key(fake_subprocess):
 
 async def test_move_file_stat_bad_is_file_type(fake_subprocess):
     _, queue = fake_subprocess
-    queue.append(_make_proc(stdout=_envelope({"path": _src(), "is_file": "yes"})))
+    queue.append(_make_proc(stdout=_envelope({"name": "file.zip", "file_id": "fid-1", "is_dir": "yes"})))
     with pytest.raises(drv.CloudMoveError) as exc:
         await drv.move_file(_src(), _dest_dir())
     assert exc.value.code == "CM-005"
@@ -327,8 +348,8 @@ async def test_move_file_mv_destination_mismatch(fake_subprocess):
     _, queue = fake_subprocess
     queue.append(_make_proc(stdout=_stat_envelope(_src(), is_file=True)))
     queue.append(_make_proc(stdout=_envelope({"path": _dest_dir()})))
-    queue.append(_make_proc(stdout=_not_found_envelope()))
-    queue.append(_make_proc(stdout=_envelope({"source": _src(), "destination": "/wrong"})))
+    queue.append(_make_proc(stdout=_not_found_envelope(), returncode=3))
+    queue.append(_make_proc(stdout=_envelope({"source": _src(), "destination_dir": "/wrong", "file_ids": ["fid-1"]})))
     with pytest.raises(drv.CloudMoveError) as exc:
         await drv.move_file(_src(), _dest_dir())
     assert exc.value.code == "CM-008"
@@ -338,8 +359,8 @@ async def test_move_file_mv_source_mismatch(fake_subprocess):
     _, queue = fake_subprocess
     queue.append(_make_proc(stdout=_stat_envelope(_src(), is_file=True)))
     queue.append(_make_proc(stdout=_envelope({"path": _dest_dir()})))
-    queue.append(_make_proc(stdout=_not_found_envelope()))
-    queue.append(_make_proc(stdout=_envelope({"source": "/wrong", "destination": _dest_file()})))
+    queue.append(_make_proc(stdout=_not_found_envelope(), returncode=3))
+    queue.append(_make_proc(stdout=_envelope({"source": "/wrong", "destination_dir": _dest_dir(), "file_ids": ["fid-1"]})))
     with pytest.raises(drv.CloudMoveError) as exc:
         await drv.move_file(_src(), _dest_dir())
     assert exc.value.code == "CM-008"
@@ -368,7 +389,7 @@ async def test_move_file_nonzero_exit_on_mv(fake_subprocess):
     _, queue = fake_subprocess
     queue.append(_make_proc(stdout=_stat_envelope(_src(), is_file=True)))
     queue.append(_make_proc(stdout=_envelope({"path": _dest_dir()})))
-    queue.append(_make_proc(stdout=_not_found_envelope()))
+    queue.append(_make_proc(stdout=_not_found_envelope(), returncode=3))
     queue.append(_make_proc(stdout=b"", returncode=1))
     with pytest.raises(drv.CloudMoveError) as exc:
         await drv.move_file(_src(), _dest_dir())
