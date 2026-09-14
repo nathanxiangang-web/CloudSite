@@ -175,6 +175,16 @@ async def test_move_destination_at_root_allowed() -> None:
     assert len(client.move_calls) == 1
 
 
+async def test_move_with_root_mapping_at_slash() -> None:
+    client = _MockClient({
+        "/src": [{"name": "file.txt", "is_dir": False}],
+        "/dst": [],
+    })
+    result = await move_file_within_root(client, "/", "/src/file.txt", "/dst")
+    assert result.destination == "/dst/file.txt"
+    assert len(client.move_calls) == 1
+
+
 async def test_move_empty_source_rejected() -> None:
     client = _MockClient()
     with pytest.raises(AListError):
@@ -182,16 +192,16 @@ async def test_move_empty_source_rejected() -> None:
     assert client.move_calls == []
 
 
-async def test_move_normalizes_backslash_and_double_slash() -> None:
-    client = _MockClient(
-        {
-            "/root/src": [{"name": "file.txt", "is_dir": False}],
-            "/root/dst": [],
-        }
-    )
-    result = await move_file_within_root(
-        client, "/root/", "/root//src\\file.txt", "/root/dst/"
-    )
-    assert result.source == "/root/src/file.txt"
-    assert result.destination == "/root/dst/file.txt"
-    assert len(client.move_calls) == 1
+@pytest.mark.parametrize("root,source,destination", [
+    ("/root/", "/root/src/file.txt", "/root/dst"),
+    ("/root", "/root//src/file.txt", "/root/dst"),
+    ("/root", "/root/src\\file.txt", "/root/dst"),
+    ("/root", "root/src/file.txt", "/root/dst"),
+    ("/root", "/root/src/file.txt", "/root/dst/"),
+    ("/root", "/root/src/file.txt", "/root/dst\x00evil"),
+])
+async def test_move_rejects_ambiguous_paths(root, source, destination) -> None:
+    client = _MockClient()
+    with pytest.raises(AListError):
+        await move_file_within_root(client, root, source, destination)
+    assert client.move_calls == []

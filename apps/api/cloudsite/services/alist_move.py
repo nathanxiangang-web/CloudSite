@@ -22,9 +22,20 @@ class MoveResult:
     result: dict[str, Any]
 
 
-def _normalize_segments(path: str) -> list[str]:
-    cleaned = str(path or "").strip().replace("\\", "/")
-    parts = [part for part in cleaned.split("/") if part]
+def _normalize_segments(path: str, *, allow_root: bool = False) -> list[str]:
+    if path == "/" and allow_root:
+        return []
+    if (
+        not isinstance(path, str)
+        or not path.startswith("/")
+        or path == "/"
+        or path.endswith("/")
+        or "//" in path
+        or "\\" in path
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in path)
+    ):
+        raise AListError("invalid absolute path", "AL-005", status_code=400)
+    parts = path[1:].split("/")
     if any(part in {".", ".."} for part in parts):
         raise AListError("path contains illegal . or .. segment", "AL-005", status_code=400)
     return parts
@@ -37,7 +48,7 @@ def _join(parts: list[str]) -> str:
 def _validate_under_root(
     path: str, root_parts: list[str], *, allow_root: bool
 ) -> list[str]:
-    parts = _normalize_segments(path)
+    parts = _normalize_segments(path, allow_root=allow_root)
     if parts[: len(root_parts)] != root_parts:
         raise AListError("path is not under the content root", "AL-005", status_code=400)
     if not allow_root and len(parts) <= len(root_parts):
@@ -66,9 +77,7 @@ async def move_file_within_root(
     via client._authenticated_request('POST', '/api/fs/move', ...); response
     code verification is performed by AListClient._request per existing behavior.
     """
-    root_parts = _normalize_segments(root)
-    if not root_parts:
-        raise AListError("content root path is empty", "AL-005", status_code=400)
+    root_parts = _normalize_segments(root, allow_root=True)
 
     source_parts = _validate_under_root(source_path, root_parts, allow_root=False)
     destination_parts = _validate_under_root(
