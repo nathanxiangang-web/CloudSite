@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, Search, Upload } from "lucide-react";
+import { CloudDownload, Search, Upload } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "./Brand";
@@ -10,22 +10,23 @@ import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./NotificationBell";
 import { MobilePrimaryNavigation, useVisibleNavItems } from "./PublicNavigation";
 import { useSite } from "@/lib/site";
+import { CLOUD_DOWNLOAD_HREF, CLOUD_DOWNLOAD_LABEL, mapLegacyBrowseToCloudDownload } from "@/lib/navigation";
 
 const TOPBAR_NAV = [
-  ["/", "首页"],
-  ["/resources/software", "资源库"],
-  ["/catalog", "目录"],
-  ["/collections", "精选"],
-  ["/browse", "浏览"],
-  ["/about", "使用指南"],
+  ["/", "\u9996\u9875"],
+  ["/resources/software", "\u8d44\u6e90\u5e93"],
+  ["/catalog", "\u76ee\u5f55"],
+  ["/collections", "\u7cbe\u9009"],
+  [CLOUD_DOWNLOAD_HREF, CLOUD_DOWNLOAD_LABEL],
+  ["/about", "\u4f7f\u7528\u6307\u5357"],
 ] as const;
 
 function TopbarActions() {
   return <div className="topbar-actions">
     <ThemeToggle />
     <NotificationBell />
-    <Link href="/search" className="topbar-icon" title="全局搜索" aria-label="全局搜索"><Search /></Link>
-    <Link href="/submit" className="topbar-icon" title="资源投稿" aria-label="资源投稿"><Upload /></Link>
+    <Link href="/search" className="topbar-icon" title="\u5168\u5c40\u641c\u7d22" aria-label="\u5168\u5c40\u641c\u7d22"><Search /></Link>
+    <Link href="/submit" className="topbar-icon" title="\u8d44\u6e90\u6295\u7a3f" aria-label="\u8d44\u6e90\u6295\u7a3f"><Upload /></Link>
   </div>;
 }
 
@@ -35,12 +36,12 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const site = useSite();
   const presentation = site.presentation;
   const topbarNav = presentation && presentation.enabled && presentation.navigation.length
-    ? [...presentation.navigation].sort((a, b) => a.sort_order - b.sort_order)
+    ? [...presentation.navigation].sort((a, b) => a.sort_order - b.sort_order).map((item) => mapLegacyBrowseToCloudDownload(item))
     : TOPBAR_NAV.map(([href, label]) => ({ href, label }));
   return <div className={`app-shell${pathname === "/" ? " home-shell" : ""}`}>
     <header className="public-topbar">
       <Brand />
-      <nav className="topbar-nav" aria-label="主导航">
+      <nav className="topbar-nav" aria-label="\u4e3b\u5bfc\u822a">
         {topbarNav.map(({ href, label }) => <Link key={href} href={href} className={pathname === href ? "active" : ""}>{label}</Link>)}
       </nav>
       <TopbarActions />
@@ -49,9 +50,9 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
     <aside className="sidebar">
       <nav>
         {navItems.slice(0, 1).map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}><Icon size={18} />{label}</Link>)}
-        <span className="nav-section-label">资源库</span>
+        <span className="nav-section-label">{"\u8d44\u6e90\u5e93"}</span>
         {navItems.slice(1).map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}><Icon size={18} />{label}</Link>)}
-        <Link href="/browse" className={pathname === "/browse" ? "active" : ""}><Clock3 size={18} />浏览</Link>
+        <Link href={CLOUD_DOWNLOAD_HREF} className={pathname === CLOUD_DOWNLOAD_HREF ? "active" : ""}><CloudDownload size={18} />{CLOUD_DOWNLOAD_LABEL}</Link>
       </nav>
       <StorageInfoCard />
     </aside>
