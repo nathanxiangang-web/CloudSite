@@ -1418,3 +1418,23 @@ class ProviderCompatRecord(StateBase):
     tested_capabilities_json: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CloudDownloadTask(StateBase):
+    """CloudSite 115 cloud download submission state.
+
+    Persisted schema is intentionally minimal: only the owning user, an
+    optional driver hash, lifecycle status, and a short display name are
+    stored. Submitted URLs and credentials are never persisted in this
+    table. driver_hash is not unique because multiple users may submit
+    the same driver hash.
+    """
+
+    __tablename__ = "cloud_download_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    driver_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

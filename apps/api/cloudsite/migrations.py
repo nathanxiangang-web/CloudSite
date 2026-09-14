@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 25
+CURRENT_SCHEMA_VERSION = 26
 
 
 @dataclass(frozen=True, slots=True)
@@ -1469,6 +1469,36 @@ async def repair_content_root_mappings_legacy_unique(conn: AsyncConnection) -> b
     return True
 
 
+async def state_v25_to_v26_upgrade(conn: AsyncConnection) -> None:
+    """CloudSite 115 cloud download submission state.
+
+    Adds cloud_download_tasks for per-user cloud download submissions.
+    Only owner, driver hash, status, and display metadata are stored;
+    submitted URLs and credentials are never persisted in this table.
+    driver_hash is intentionally non-unique because multiple users may
+    submit the same driver hash.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS cloud_download_tasks("
+        "id INTEGER PRIMARY KEY,"
+        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "driver_hash VARCHAR(128),"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "display_name VARCHAR(255) NOT NULL DEFAULT '',"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_cloud_download_tasks_user_id ON cloud_download_tasks(user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_cloud_download_tasks_driver_hash ON cloud_download_tasks(driver_hash)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_cloud_download_tasks_status ON cloud_download_tasks(status)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1494,5 +1524,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v22_to_v23", from_version=22, to_version=23, upgrade=state_v22_to_v23_upgrade),
     Migration(id="state_v23_to_v24", from_version=23, to_version=24, upgrade=state_v23_to_v24_upgrade),
     Migration(id="state_v24_to_v25", from_version=24, to_version=25, upgrade=state_v24_to_v25_upgrade),
+    Migration(id="state_v25_to_v26", from_version=25, to_version=26, upgrade=state_v25_to_v26_upgrade),
 ]
 

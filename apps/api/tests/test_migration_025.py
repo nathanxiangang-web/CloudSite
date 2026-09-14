@@ -18,7 +18,7 @@ async def test_fresh_init_reaches_v25(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 25
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 26
 
         alist_cols = await conn.exec_driver_sql("PRAGMA table_info(alist_connections)")
         assert "name" in {row[1] for row in alist_cols.fetchall()}
@@ -44,7 +44,7 @@ async def test_v24_to_v25_idempotent(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 25
+        assert await get_state_schema_version(conn) == 26
 
     await state_engine.dispose()
     await index_engine.dispose()
@@ -61,7 +61,7 @@ async def test_old_v24_db_upgrades_to_v25(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 25
+        assert await get_state_schema_version(conn) == 26
         root_cols = await conn.exec_driver_sql("PRAGMA table_info(content_root_mappings)")
         assert "connection_id" in {row[1] for row in root_cols.fetchall()}
 
