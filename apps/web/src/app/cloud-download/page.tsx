@@ -10,15 +10,14 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 type CloudDownloadTask = {
-  id: string;
+  id: number;
   name: string;
   status: string;
   percent: number;
   created_at: string;
 };
 
-const TASKS_QUERY_KEY = ["cloud-download-tasks"] as const;
-const REFRESH_INTERVAL = 5000;
+const REFRESH_INTERVAL = 30000;
 
 const statusLabel: Record<string, string> = {
   pending: "\u5f85\u5904\u7406",
@@ -33,8 +32,13 @@ function formatTime(value: string) {
   return date.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-function isHttpUrl(value: string) {
-  return /^https?:\/\//i.test(value.trim());
+function isSupportedUrl(value: string) {
+  const candidate = value.trim();
+  return candidate.length <= 2048 && !/\s/.test(candidate) && (
+    /^https?:\/\/[^/]+/i.test(candidate) ||
+    /^magnet:\?\S+/i.test(candidate) ||
+    /^ed2k:\/\/\|[^|]+\|/i.test(candidate)
+  );
 }
 
 export default function CloudDownloadPage() {
@@ -43,9 +47,10 @@ export default function CloudDownloadPage() {
   const [url, setUrl] = useState("");
   const authenticated = Boolean(auth.data?.authenticated);
   const userId = auth.data?.user?.id ?? null;
+  const tasksQueryKey = ["cloud-download-tasks", userId] as const;
 
   const tasks = useQuery({
-    queryKey: TASKS_QUERY_KEY,
+    queryKey: tasksQueryKey,
     queryFn: () => api<{ items: CloudDownloadTask[] }>("/api/cloud-download/tasks"),
     enabled: authenticated && userId !== null,
     refetchInterval: authenticated ? REFRESH_INTERVAL : false,
@@ -58,18 +63,18 @@ export default function CloudDownloadPage() {
     }),
     onSuccess: () => {
       setUrl("");
-      queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: tasksQueryKey });
     },
   });
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (!authenticated || !url.trim() || !isHttpUrl(url)) return;
+    if (!authenticated || !url.trim() || !isSupportedUrl(url)) return;
     submit.mutate();
   };
 
   const items = tasks.data?.items ?? [];
-  const invalidUrl = url.trim().length > 0 && !isHttpUrl(url);
+  const invalidUrl = url.trim().length > 0 && !isSupportedUrl(url);
 
   return <PublicShell><div className="page cloud-download-page">
     <header className="submit-hero"><span><CloudDownload /></span><div><h1>{"\u4e91\u4e0b\u8f7d"}</h1><p>{"\u8f93\u5165\u8d44\u6e90\u94fe\u63a5\uff0c\u7cfb\u7edf\u4f1a\u5728\u540e\u53f0\u62c9\u53d6\u5e76\u7f13\u5b58\u5230\u4e91\u7aef\u3002\u53ef\u67e5\u770b\u5f53\u524d\u8d26\u53f7\u7684\u4e0b\u8f7d\u4efb\u52a1\u53ca\u5176\u8fdb\u5ea6\u3002"}</p></div></header>
@@ -77,8 +82,8 @@ export default function CloudDownloadPage() {
     {!authenticated ? <section className="panel cloud-download-auth"><h2><LogIn />{"\u9700\u8981\u767b\u5f55"}</h2><p>{"\u4e91\u4e0b\u8f7d\u9700\u8981\u767b\u5f55 CloudSite \u8d26\u53f7\u540e\u4f7f\u7528\u3002"}</p><Link className="button primary" href="/login">{"\u524d\u5f80\u767b\u5f55"}</Link></section> : <>
       <div className="submit-layout">
         <form className="submit-form cloud-download-form" onSubmit={onSubmit}>
-          <label className="wide">{"\u8d44\u6e90\u94fe\u63a5 *"}<input required maxLength={2000} inputMode="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." /></label>
-          {invalidUrl && <p className="form-error wide">{"\u94fe\u63a5\u53ea\u80fd\u4f7f\u7528 http:// \u6216 https://"}</p>}
+          <label className="wide">{"\u8d44\u6e90\u94fe\u63a5 *"}<input required maxLength={2048} value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://... / magnet:? / ed2k://" /></label>
+          {invalidUrl && <p className="form-error wide">{"\u652f\u6301 HTTP、HTTPS、magnet \u548c ed2k \u94fe\u63a5"}</p>}
           <div className="submit-actions wide"><button className="primary" disabled={!url.trim() || invalidUrl || submit.isPending} type="submit"><Send />{submit.isPending ? "\u6b63\u5728\u63d0\u4ea4\u2026" : "\u63d0\u4ea4\u4e0b\u8f7d"}</button></div>
           {submit.isSuccess && <p className="submit-message wide">{"\u4e0b\u8f7d\u4efb\u52a1\u5df2\u521b\u5efa\uff0c\u53ef\u5728\u4e0b\u65b9\u67e5\u770b\u8fdb\u5ea6\u3002"}</p>}
           {submit.error && <p className="form-error wide">{submit.error.message}</p>}
