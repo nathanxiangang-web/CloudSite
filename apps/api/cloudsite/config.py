@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     sync_mass_change_ratio: float = 0.10
     sync_max_item_attempts: int = 6
 
+    # Set exactly one existing CloudSite user ID before enabling automatic
+    # organization. Zero disables user-controlled organization actions.
+    organizer_user_id: int = 0
+    organizer_move_enabled: bool = False
+
     # Non-secret administrator session epoch. Later login/middleware code compares
     # AdminSession.epoch against this value and rejects sessions with an older epoch.
     # Increment during security upgrades or administrator rebind to invalidate all
