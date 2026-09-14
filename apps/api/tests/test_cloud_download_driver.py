@@ -34,7 +34,7 @@ def _make_proc(stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0):
 
 
 def _envelope(data: dict) -> bytes:
-    return json.dumps({"data": data}).encode("utf-8")
+    return json.dumps({"success": True, "code": 0, "data": data}).encode("utf-8")
 
 
 @pytest.fixture
@@ -117,6 +117,12 @@ def test_validate_url_rejects_oversized():
 def test_validate_url_rejects_non_string():
     with pytest.raises(drv.CloudDownloadError):
         drv.validate_url(None)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("bad", ["http://@/x", "http://host/x y", "https://u:p@host/x", "http://host:invalid/x"])
+def test_validate_url_rejects_malformed_http(bad):
+    with pytest.raises(drv.CloudDownloadError):
+        drv.validate_url(bad)
 
 
 def test_validate_url_accepts_max_length_boundary():
@@ -229,6 +235,26 @@ async def test_list_offline_tasks_empty(fake_subprocess):
 
 # --- malformed JSON -------------------------------------------------------
 
+@pytest.mark.parametrize("success,code", [(False, 0), (True, 1)])
+async def test_add_offline_task_rejects_failed_envelope(fake_subprocess, success, code):
+    _, queue = fake_subprocess
+    queue.append(_make_proc(stdout=json.dumps({
+        "success": success,
+        "code": code,
+        "data": {"hashes": ["h1"], "save_dir": drv.FIXED_FOLDER},
+    }).encode("utf-8")))
+    with pytest.raises(drv.CloudDownloadError) as exc:
+        await drv.add_offline_task("http://example.com/file.zip")
+    assert exc.value.code == "CD-005"
+
+
+async def test_add_offline_task_rejects_empty_hashes(fake_subprocess):
+    _, queue = fake_subprocess
+    queue.append(_make_proc(stdout=_envelope({"hashes": [], "save_dir": drv.FIXED_FOLDER})))
+    with pytest.raises(drv.CloudDownloadError) as exc:
+        await drv.add_offline_task("http://example.com/file.zip")
+    assert exc.value.code == "CD-005"
+
 async def test_add_offline_task_malformed_json(fake_subprocess):
     _, queue = fake_subprocess
     queue.append(_make_proc(stdout=b"not json at all"))
@@ -305,6 +331,9 @@ async def test_add_offline_task_timeout(monkeypatch):
             def kill(self):
                 pass
 
+            async def wait(self):
+                return -9
+
         return _HangProc()
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", _hang_exec)
@@ -325,6 +354,9 @@ async def test_list_offline_tasks_timeout(monkeypatch):
 
             def kill(self):
                 pass
+
+            async def wait(self):
+                return -9
 
         return _HangProc()
 

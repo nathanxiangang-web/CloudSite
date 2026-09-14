@@ -11,6 +11,7 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 # Fixed cloud-download destination folder: slash plus U+4E91 U+4E0B U+8F7D.
 # Kept as a Unicode literal in source per task spec.
@@ -29,8 +30,6 @@ URL_MAX_LENGTH: int = 2048
 _ACCEPTED_SCHEMES: frozenset[str] = frozenset({"http", "https", "magnet", "ed2k"})
 
 # Basic http/https form: require a non-empty host component after the scheme.
-_HTTP_URL_RE = re.compile(r"^(https?)://[^\s/]+")
-
 # magnet:?... form: require a non-empty query after the scheme marker.
 _MAGNET_URL_RE = re.compile(r"^magnet:\?[^\s]+$")
 
@@ -83,7 +82,7 @@ def validate_url(url: str) -> str:
         raise CloudDownloadError("CD-001", "Invalid URL")
     if len(url) > URL_MAX_LENGTH:
         raise CloudDownloadError("CD-001", "Invalid URL")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in url):
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in url):
         raise CloudDownloadError("CD-001", "Invalid URL")
 
     scheme_sep = url.find(":")
@@ -94,7 +93,18 @@ def validate_url(url: str) -> str:
         raise CloudDownloadError("CD-001", "Invalid URL")
 
     if scheme in ("http", "https"):
-        if not _HTTP_URL_RE.match(url):
+        try:
+            parsed = urlsplit(url)
+            valid = (
+                parsed.scheme.lower() == scheme
+                and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
+                and parsed.port != 0
+            )
+        except ValueError:
+            valid = False
+        if not valid:
             raise CloudDownloadError("CD-001", "Invalid URL")
     elif scheme == "magnet":
         if not _MAGNET_URL_RE.match(url):
@@ -142,6 +152,7 @@ async def _run_cli(argv: list[str]) -> bytes:
             proc.kill()
         except ProcessLookupError:
             pass
+        await proc.wait()
         raise CloudDownloadError("CD-003", "CLI timed out")
 
     if proc.returncode != 0:
@@ -159,7 +170,12 @@ def _parse_envelope(payload: bytes) -> dict[str, Any]:
         envelope = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise CloudDownloadError("CD-005", "CLI returned malformed output")
-    if not isinstance(envelope, dict) or not isinstance(envelope.get("data"), dict):
+    if (
+        not isinstance(envelope, dict)
+        or envelope.get("success") is not True
+        or envelope.get("code") != 0
+        or not isinstance(envelope.get("data"), dict)
+    ):
         raise CloudDownloadError("CD-005", "CLI returned malformed output")
     return envelope["data"]
 
@@ -167,7 +183,11 @@ def _parse_envelope(payload: bytes) -> dict[str, Any]:
 def _parse_add_result(data: dict[str, Any]) -> AddOfflineResult:
     """Parse the add offline task envelope data into AddOfflineResult."""
     raw_hashes = data.get("hashes")
-    if not isinstance(raw_hashes, list) or not all(isinstance(h, str) for h in raw_hashes):
+    if (
+        not isinstance(raw_hashes, list)
+        or not raw_hashes
+        or not all(isinstance(h, str) and h.strip() for h in raw_hashes)
+    ):
         raise CloudDownloadError("CD-005", "CLI returned malformed output")
     save_dir = data.get("save_dir")
     if not isinstance(save_dir, str):
