@@ -124,7 +124,7 @@ async def test_legacy_v24_column_unique_repaired(tmp_path, monkeypatch):
     state_engine, index_engine = await _init_with_engines(tmp_path, monkeypatch)
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 25
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 26
         legacy = await detect_legacy_alist_path_auto_index(conn)
         assert legacy is None, "legacy auto-index survived v24->v25 upgrade"
 
@@ -138,7 +138,7 @@ async def test_already_v25_with_legacy_auto_index_repaired(tmp_path, monkeypatch
     state_engine, index_engine = await _init_with_engines(tmp_path, monkeypatch)
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 25
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
         legacy = await detect_legacy_alist_path_auto_index(conn)
         assert legacy is None, "legacy auto-index survived already-v25 repair"
 
@@ -245,10 +245,10 @@ async def test_pre_repair_backup_created_for_already_v25(tmp_path, monkeypatch):
     _create_legacy_db(tmp_path / "state.db", LEGACY_V25_DDL)
     state_engine, index_engine = await _init_with_engines(tmp_path, monkeypatch)
 
-    backup_dir = tmp_path / ".codex-backups" / "pre-repair"
-    assert backup_dir.exists(), "pre-repair backup directory missing"
+    backup_dir = tmp_path / ".codex-backups" / "pre-migration"
+    assert backup_dir.exists(), "pre-migration backup directory missing"
     snapshots = list(backup_dir.iterdir())
-    assert len(snapshots) >= 1, "no pre-repair snapshot found"
+    assert len(snapshots) >= 1, "no pre-migration snapshot found"
     backup_path = snapshots[0] / "state.db"
     assert backup_path.exists(), "snapshot state.db missing"
 
@@ -268,7 +268,7 @@ async def test_pre_repair_backup_created_for_already_v25(tmp_path, monkeypatch):
 
 
 async def test_no_backup_when_no_legacy_auto_index(tmp_path, monkeypatch):
-    """No pre-repair backup when already-v25 DB has no legacy auto-index."""
+    """No pre-migration backup when already-v25 DB has no legacy auto-index."""
     state_engine, index_engine = await _init_with_engines(tmp_path, monkeypatch)
     await state_engine.dispose()
     await index_engine.dispose()
@@ -279,9 +279,9 @@ async def test_no_backup_when_no_legacy_auto_index(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "index_engine", index_engine2)
     await database.init_databases()
 
-    backup_dir = tmp_path / ".codex-backups" / "pre-repair"
+    backup_dir = tmp_path / ".codex-backups" / "pre-migration"
     assert not backup_dir.exists() or not list(backup_dir.iterdir()), (
-        "unexpected pre-repair backup for clean v25 DB"
+        "unexpected pre-migration backup for clean v25 DB"
     )
 
     await state_engine2.dispose()
