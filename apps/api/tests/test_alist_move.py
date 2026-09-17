@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from cloudsite.alist import AListError
-from cloudsite.services.alist_move import MoveResult, move_file_within_root
+from cloudsite.plugins.ai.services.alist_move import MoveResult, move_file_within_root
 
 
 class _MockClient:

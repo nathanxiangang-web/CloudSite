@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from cloudsite.database import StateBase
 from cloudsite.models import AIBudgetUsage, AIGenerationDraft, AIProviderConfig, CatalogEntry
-from cloudsite.services import ai_completion
+from cloudsite.plugins.ai.services import ai_completion
 
 
 @pytest.fixture

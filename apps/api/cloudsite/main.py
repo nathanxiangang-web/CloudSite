@@ -91,7 +91,6 @@ from .routers.sitemap import router as sitemap_router
 from .routers.browse import router as browse_router
 from .routers.quality import router as quality_router
 from .routers.delivery import router as delivery_router
-from .routers.cloud_download import router as cloud_download_router
 
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -113,7 +112,6 @@ app.include_router(sitemap_router)
 app.include_router(browse_router)
 app.include_router(quality_router)
 app.include_router(delivery_router)
-app.include_router(cloud_download_router)
 
 from .routers.admin.auth import router as admin_auth_router
 from .routers.admin.setup import router as admin_setup_router
@@ -137,13 +135,13 @@ from .routers.admin.automation import router as admin_automation_router
 from .routers.admin.presentation import router as admin_presentation_router
 from .routers.admin.publication_scope import router as admin_publication_scope_router
 from .routers.admin.quality import router as admin_quality_router
-from .routers.admin.ai_completion import router as admin_ai_completion_router
 from .routers.admin.metrics import router as admin_metrics_router
 from .routers.admin.roles import router as admin_roles_router
 from .routers.admin.delivery import router as admin_delivery_router
 from .routers.admin.api_tokens import router as admin_api_tokens_router
 from .routers.admin.connections import router as admin_connections_router
 from .routers.admin.parser_candidates import router as admin_parser_candidates_router
+from .plugins import PluginRegistry
 
 app.include_router(admin_auth_router)
 app.include_router(admin_setup_router)
@@ -167,13 +165,19 @@ app.include_router(admin_automation_router)
 app.include_router(admin_presentation_router)
 app.include_router(admin_publication_scope_router)
 app.include_router(admin_quality_router)
-app.include_router(admin_ai_completion_router)
 app.include_router(admin_metrics_router)
 app.include_router(admin_roles_router)
 app.include_router(admin_delivery_router)
 app.include_router(admin_api_tokens_router)
 app.include_router(admin_connections_router)
 app.include_router(admin_parser_candidates_router)
+
+# --- Plugin system ---
+_registry = PluginRegistry()
+_registry.load_enabled()
+for _router in _registry.get_routers():
+    app.include_router(_router)
+
 
 # 公开 DTO 与服务函数 re-export：路由懒加载与测试直接引用。
 from .services.resources import (

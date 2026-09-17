@@ -15,7 +15,7 @@ from fastapi import HTTPException
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import CloudDownloadTask, utcnow
+from cloudsite.models import CloudDownloadTask, utcnow
 from .cloud_download_driver import (
     AddOfflineResult,
     CloudDownloadError,

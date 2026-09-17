@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ...ai_schemas import (
+from cloudsite.plugins.ai.schemas import (
     BudgetUsageOutput,
     CreateProviderConfigInput,
     DraftListOutput,
@@ -25,7 +25,7 @@ router = APIRouter()
 
 
 def _service():
-    from ...services import ai_completion  # noqa: PLC0415
+    from cloudsite.plugins.ai.services import ai_completion  # noqa: PLC0415
 
     return ai_completion
 
@@ -90,7 +90,7 @@ def _draft_to_response(s) -> DraftOutput:
 
 @router.post("/api/admin/ai/configs", response_model=ProviderConfigOutput, status_code=201)
 async def create_config(body: CreateProviderConfigInput):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -113,7 +113,7 @@ async def create_config(body: CreateProviderConfigInput):
 
 @router.get("/api/admin/ai/configs", response_model=ProviderConfigListOutput)
 async def list_configs(enabled_only: bool = Query(default=False)):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -123,7 +123,7 @@ async def list_configs(enabled_only: bool = Query(default=False)):
 
 @router.get("/api/admin/ai/configs/{config_id}", response_model=ProviderConfigOutput)
 async def get_config(config_id: str):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -136,7 +136,7 @@ async def get_config(config_id: str):
 
 @router.patch("/api/admin/ai/configs/{config_id}", response_model=ProviderConfigOutput)
 async def update_config(config_id: str, body: UpdateProviderConfigInput):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -153,7 +153,7 @@ async def update_config(config_id: str, body: UpdateProviderConfigInput):
 
 @router.delete("/api/admin/ai/configs/{config_id}", status_code=204)
 async def delete_config(config_id: str):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -166,7 +166,7 @@ async def delete_config(config_id: str):
 
 @router.get("/api/admin/ai/configs/{config_id}/budget", response_model=BudgetUsageOutput)
 async def get_budget(config_id: str):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -182,7 +182,7 @@ async def get_budget(config_id: str):
 
 @router.post("/api/admin/ai/drafts/generate", response_model=GenerationResultOutput)
 async def generate_draft(body: GenerateDraftInput):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -217,7 +217,7 @@ async def list_drafts(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -241,7 +241,7 @@ async def list_drafts(
 
 @router.get("/api/admin/ai/drafts/{draft_id}", response_model=DraftOutput)
 async def get_draft(draft_id: str):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -254,7 +254,7 @@ async def get_draft(draft_id: str):
 
 @router.post("/api/admin/ai/drafts/{draft_id}/accept", response_model=DraftOutput)
 async def accept_draft(draft_id: str):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -268,7 +268,7 @@ async def accept_draft(draft_id: str):
 
 @router.post("/api/admin/ai/drafts/{draft_id}/reject", response_model=DraftOutput)
 async def reject_draft(draft_id: str, body: RejectDraftInput):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:
@@ -282,7 +282,7 @@ async def reject_draft(draft_id: str, body: RejectDraftInput):
 
 @router.post("/api/admin/ai/drafts/{draft_id}/modify", response_model=DraftOutput)
 async def modify_draft(draft_id: str, body: ModifyDraftInput):
-    from ...main import StateSession
+    from cloudsite.main import StateSession
 
     service = _service()
     async with StateSession() as state:

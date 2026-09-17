@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from cloudsite.services import cloud_move_driver as drv
+from cloudsite.plugins.ai.services import cloud_move_driver as drv
 
 
 def _make_proc(stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0):

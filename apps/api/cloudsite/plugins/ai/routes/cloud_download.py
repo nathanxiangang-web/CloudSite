@@ -7,16 +7,16 @@ a future AI submission path under an explicit user identity.
 """
 from fastapi import APIRouter, Request
 
-from ..auth import require_user, validate_request_origin
-from ..schemas import CloudDownloadTaskInput
-from ..services.cloud_download import list_user_cloud_download_tasks, submit_cloud_download
+from cloudsite.auth import require_user, validate_request_origin
+from cloudsite.schemas import CloudDownloadTaskInput
+from cloudsite.plugins.ai.services.cloud_download import list_user_cloud_download_tasks, submit_cloud_download
 
 router = APIRouter()
 
 
 @router.post("/api/cloud-download/tasks")
 async def create_cloud_download_task(payload: CloudDownloadTaskInput, request: Request):
-    from ..main import StateSession
+    from cloudsite.main import StateSession
 
     validate_request_origin(request)
     async with StateSession() as state:
@@ -28,7 +28,7 @@ async def create_cloud_download_task(payload: CloudDownloadTaskInput, request: R
 
 @router.get("/api/cloud-download/tasks")
 async def list_cloud_download_tasks(request: Request):
-    from ..main import StateSession
+    from cloudsite.main import StateSession
 
     async with StateSession() as state:
         _, user = await require_user(state, request)

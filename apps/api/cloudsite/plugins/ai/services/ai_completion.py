@@ -20,7 +20,7 @@ from typing import Any
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import (
+from cloudsite.models import (
     AIBudgetUsage,
     AIGenerationDraft,
     AIProviderConfig,

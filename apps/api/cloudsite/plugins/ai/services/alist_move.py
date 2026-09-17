@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..alist import AListClient, AListError
+from cloudsite.alist import AListClient, AListError
 
 
 @dataclass(frozen=True, slots=True)

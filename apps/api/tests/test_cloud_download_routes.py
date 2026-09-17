@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from cloudsite import auth, main
 from cloudsite.database import StateBase
 from cloudsite.models import SiteSettings, SystemSetting, User, utcnow
-from cloudsite.services import cloud_download as cd_service
-from cloudsite.services.cloud_download_driver import AddOfflineResult, CloudDownloadError, OfflineTask
+from cloudsite.plugins.ai.services import cloud_download as cd_service
+from cloudsite.plugins.ai.services.cloud_download_driver import AddOfflineResult, CloudDownloadError, OfflineTask
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
 ORIGIN = {"Origin": "http://testserver"}
