@@ -1,6 +1,6 @@
-"""24-hour login Set-Cookie contract tests.
+"""7-day login Set-Cookie contract tests.
 
-These tests lock the 24-hour login lifetime at the real HTTP Set-Cookie
+These tests lock the 7-day login lifetime at the real HTTP Set-Cookie
 boundary for both normal users and administrators. They exercise the real
 cookie-setting helpers and the real administrator login response path, and
 they drive HTTPS secure-cookie detection through the repository's existing
@@ -21,7 +21,7 @@ from cloudsite.sessions import USER_SESSION_COOKIE, set_user_session_cookie
 
 USER_COOKIE = USER_SESSION_COOKIE
 ADMIN_COOKIE = "cloudsite_session"
-EXPECTED_MAX_AGE = "86400"
+EXPECTED_MAX_AGE = "604800"
 ORIGIN = {"Origin": "http://testserver"}
 
 
@@ -79,7 +79,7 @@ def find_cookie(headers: httpx.Headers, cookie_name: str) -> dict[str, str | boo
     raise AssertionError(f"{cookie_name} not in set-cookie: {headers.get_list('set-cookie')}")
 
 
-def assert_24h_cookie_attrs(attrs: dict[str, str | bool], *, secure: bool) -> None:
+def assert_7d_cookie_attrs(attrs: dict[str, str | bool], *, secure: bool) -> None:
     assert attrs.get("max-age") == EXPECTED_MAX_AGE, attrs
     assert attrs.get("httponly") is True, attrs
     assert attrs.get("samesite") == "lax", attrs
@@ -100,7 +100,7 @@ def test_normal_user_cookie_helper_http_attributes():
     raw = response.headers["set-cookie"]
     name, attrs = parse_cookie(raw)
     assert name == USER_COOKIE
-    assert_24h_cookie_attrs(attrs, secure=False)
+    assert_7d_cookie_attrs(attrs, secure=False)
 
 
 def test_normal_user_cookie_helper_https_via_trusted_proxy_sets_secure(monkeypatch):
@@ -112,7 +112,7 @@ def test_normal_user_cookie_helper_https_via_trusted_proxy_sets_secure(monkeypat
     raw = response.headers["set-cookie"]
     name, attrs = parse_cookie(raw)
     assert name == USER_COOKIE
-    assert_24h_cookie_attrs(attrs, secure=True)
+    assert_7d_cookie_attrs(attrs, secure=True)
 
 
 def test_normal_user_cookie_helper_untrusted_peer_cannot_spoof_secure(monkeypatch):
@@ -123,7 +123,7 @@ def test_normal_user_cookie_helper_untrusted_peer_cannot_spoof_secure(monkeypatc
     set_user_session_cookie(request, response, "session-token")
     raw = response.headers["set-cookie"]
     _, attrs = parse_cookie(raw)
-    assert_24h_cookie_attrs(attrs, secure=False)
+    assert_7d_cookie_attrs(attrs, secure=False)
 
 
 # --- Normal-user login response path (real /api/auth/login) ---
@@ -146,7 +146,7 @@ async def user_auth_client(monkeypatch):
     await engine.dispose()
 
 
-async def test_normal_user_login_response_sets_24h_cookie_attributes(monkeypatch):
+async def test_normal_user_login_response_sets_7d_cookie_attributes(monkeypatch):
     async with user_auth_client(monkeypatch) as client:
         await client.post(
             "/api/auth/register",
@@ -161,7 +161,7 @@ async def test_normal_user_login_response_sets_24h_cookie_attributes(monkeypatch
         )
         assert response.status_code == 200
         attrs = find_cookie(response.headers, USER_COOKIE)
-        assert_24h_cookie_attrs(attrs, secure=False)
+        assert_7d_cookie_attrs(attrs, secure=False)
 
 
 # --- Administrator login response path (real route, minimal mocks) ---
@@ -206,7 +206,7 @@ async def admin_login_client(monkeypatch, *, https: bool):
     await engine.dispose()
 
 
-async def test_admin_login_response_sets_24h_cookie_attributes(monkeypatch):
+async def test_admin_login_response_sets_7d_cookie_attributes(monkeypatch):
     async with admin_login_client(monkeypatch, https=False) as client:
         response = await client.post(
             "/api/admin/auth/login",
@@ -214,7 +214,7 @@ async def test_admin_login_response_sets_24h_cookie_attributes(monkeypatch):
         )
         assert response.status_code == 200
         attrs = find_cookie(response.headers, ADMIN_COOKIE)
-        assert_24h_cookie_attrs(attrs, secure=False)
+        assert_7d_cookie_attrs(attrs, secure=False)
 
 
 async def test_admin_login_response_https_via_trusted_proxy_sets_secure(monkeypatch):
@@ -225,4 +225,4 @@ async def test_admin_login_response_https_via_trusted_proxy_sets_secure(monkeypa
         )
         assert response.status_code == 200
         attrs = find_cookie(response.headers, ADMIN_COOKIE)
-        assert_24h_cookie_attrs(attrs, secure=True)
+        assert_7d_cookie_attrs(attrs, secure=True)
