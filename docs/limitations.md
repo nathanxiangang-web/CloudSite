@@ -1,38 +1,41 @@
-# CloudSite 1.0.0 Limitations
+# CloudSite Limitations
 
-CloudSite 1.0.0 is stable within the following explicit boundaries.
+CloudSite is designed primarily for self-hosted resource libraries backed by AList or compatible providers. The stable `v1.0.0` line and the `v2.0.0-alpha.x` development line share several architectural boundaries that operators should understand.
 
-## Generic AList is not a delta provider
+## Generic AList is not a true delta provider
 
-Generic AList uses Rolling Full Verification. CloudSite does not describe it as true incremental synchronization. A provider must explicitly declare delta capability before the delta strategy can be selected.
+Generic AList synchronization relies on verification of remote state rather than a provider-native change journal. CloudSite only treats a provider as delta-capable when the adapter explicitly declares that capability.
 
 ## Browser playback does not support every codec
 
-CloudSite does not transcode, generate HLS, or proxy media bodies. MP4 with H.264/AAC is the primary browser target. Compatibility with MKV, AVI, HEVC, and other formats depends on the browser and operating system.
+CloudSite does not transcode media into universally compatible formats. Browser playback still depends on the browser, operating system, codec and storage/provider behavior. MP4 with H.264/AAC remains the most broadly compatible target.
 
-## Folder identifiers may be path-derived
+## Direct delivery may expose the destination URL
 
-Resources use stable random IDs, and reliable rename or move operations preserve those IDs. Folder IDs may still depend on paths, so CloudSite does not guarantee that every folder URL remains unchanged forever.
+CloudSite normally authorizes a request and redirects the client to an AList/provider-native URL instead of proxying large file bodies. As a result, temporary destination URLs may be visible to the browser or client.
 
-## AList destination URLs are not fully hidden
+## Not every move or copy can be identified perfectly
 
-HTTP 302 downloads and binary previews may expose a temporary AList URL in the browser. Hiding the final destination would require proxying file bodies, which is outside the 1.0.0 architecture.
+Stable resource identity resolution is intentionally conservative. When provider metadata is insufficient and a rename/move match is ambiguous, CloudSite prefers creating or retaining separate identities rather than incorrectly merging unrelated resources.
 
-## Generic AList cannot identify every move or copy
+## Some folder identity remains path-sensitive
 
-Stable identity resolution is conservative. Ambiguous matches receive a new resource ID rather than risking an incorrect merge.
+Resource identities are designed to remain stable where reliable evidence exists, but folder/navigation identity may still depend on paths. CloudSite does not guarantee that every folder URL remains permanent after arbitrary upstream reorganizations.
 
-## SQLite has concurrency limits
+## SQLite has write-concurrency limits
 
-CloudSite uses SQLite in WAL mode with a busy timeout and automatic checkpoints. This is appropriate for the intended self-hosted workload but not for extremely high concurrent write volume.
+Current deployments use SQLite for the self-hosted workload. WAL mode and bounded write patterns work well for the intended single-instance deployment, but SQLite is not intended for very high concurrent write volume or multi-node database access.
 
-## Features not included in 1.0.0
+## Background processing is still evolving in the 2.0 alpha line
 
-- Redis, PostgreSQL, or Celery infrastructure
-- FFmpeg transcoding or HLS generation
-- User file uploads
-- Paid plans or membership tiers
-- Comments or community features
-- Complex ACL management
-- AI recommendations or OCR indexing
-- Large-scale distributed deployment
+The 2.0 prerelease line is adding richer automation, AI-assisted workflows and other background operations while the long-term task/worker architecture continues to evolve. Operators should treat prerelease background workflows as experimental until 2.0 reaches stable status.
+
+## Large libraries depend on provider behavior
+
+Indexing speed and verification cost are influenced by upstream listing latency, pagination quality, rate limits and provider capabilities. CloudSite can reduce unnecessary requests, but it cannot provide a true incremental feed when the upstream provider does not expose one.
+
+## Features intentionally outside the current core
+
+CloudSite does not aim to be a general-purpose object-storage gateway or media-transcoding cluster. Large-file transfer remains the responsibility of AList/storage providers, and distributed multi-node deployment is not the default operating model.
+
+For stable compatibility guarantees, see [Public contracts](contracts.md). For prerelease direction, see the [Roadmap](ROADMAP.md).
