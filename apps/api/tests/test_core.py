@@ -8,6 +8,7 @@ async def _true_coro():
     return True
 
 from cloudsite import download, main, preview
+from cloudsite.modules.delivery.domain import download as delivery_download_mod
 from cloudsite.alist import AListClient, AListError, AListUrlBuilder
 from cloudsite.crypto import decrypt_secret, encrypt_secret
 from cloudsite.download import DownloadError, DownloadUrlCache, map_alist_error, resolve_download_entry, validate_download_url, validate_resource_id
@@ -637,8 +638,8 @@ async def test_download_recovers_after_alist_returns_without_process_restart(mon
                 has_sign=False,
             )
 
-    monkeypatch.setattr(download, "decrypt_secret", lambda _value: "password")
-    monkeypatch.setattr(download, "AListClient", FakeClient)
+    monkeypatch.setattr(delivery_download_mod, "decrypt_secret", lambda _value: "password")
+    monkeypatch.setattr(delivery_download_mod, "AListClient", FakeClient)
     with pytest.raises(DownloadError) as raised:
         await resolve_download_entry(resource, connection)
     assert raised.value.code == "DL-002"

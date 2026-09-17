@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import download_rate_limit, main
+from cloudsite.modules.delivery.infrastructure import rate_limit as rate_limit_impl
 from cloudsite.database import StateBase
 from cloudsite.download_rate_limit import (
     DownloadRateDecision,
@@ -32,7 +33,7 @@ async def rate_store(tmp_path, monkeypatch, name="rate.db"):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(StateBase.metadata.create_all)
-    monkeypatch.setattr(download_rate_limit, "StateSession", factory)
+    monkeypatch.setattr(rate_limit_impl, "StateSession", factory)
     return engine, factory
 
 
@@ -142,7 +143,7 @@ async def test_api_restart_keeps_rate_limit_state(tmp_path, monkeypatch):
 
     restarted_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'rate.db'}")
     restarted_factory = async_sessionmaker(restarted_engine, expire_on_commit=False)
-    monkeypatch.setattr(download_rate_limit, "StateSession", restarted_factory)
+    monkeypatch.setattr(rate_limit_impl, "StateSession", restarted_factory)
     after_restart = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=55))
     assert after_restart.allowed is False
     assert after_restart.blocked_until == blocked.blocked_until
@@ -187,12 +188,12 @@ async def test_download_rate_cleanup_removes_only_stale_inactive_rows(tmp_path, 
 
 
 def test_untrusted_x_forwarded_for_not_accepted(monkeypatch):
-    monkeypatch.setattr(download_rate_limit.settings, "trusted_proxy_cidrs", "127.0.0.1/32,172.16.0.0/12")
+    monkeypatch.setattr(rate_limit_impl.settings, "trusted_proxy_cidrs", "127.0.0.1/32,172.16.0.0/12")
     assert get_effective_client_ip(request_from("198.51.100.20", "203.0.113.99")) == "198.51.100.20"
 
 
 def test_trusted_proxy_chain_uses_first_untrusted_hop(monkeypatch):
-    monkeypatch.setattr(download_rate_limit.settings, "trusted_proxy_cidrs", "127.0.0.1/32,172.16.0.0/12")
+    monkeypatch.setattr(rate_limit_impl.settings, "trusted_proxy_cidrs", "127.0.0.1/32,172.16.0.0/12")
     request = request_from("172.20.0.5", "192.0.2.250, 198.51.100.20, 172.19.0.8")
     assert get_effective_client_ip(request) == "198.51.100.20"
 

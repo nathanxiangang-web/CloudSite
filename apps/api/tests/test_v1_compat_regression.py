@@ -57,6 +57,7 @@ async def _setup(monkeypatch, with_second_resource=False):
         "cloudsite.auth": ("StateSession",),
         "cloudsite.userdata": ("StateSession", "IndexSession"),
         "cloudsite.download_rate_limit": ("StateSession",),
+        "cloudsite.modules.delivery.infrastructure.rate_limit": ("StateSession",),
         "cloudsite.search": ("StateSession", "IndexSession"),
         "cloudsite.indexer": ("StateSession", "IndexSession"),
         "cloudsite.site": ("StateSession", "IndexSession"),
