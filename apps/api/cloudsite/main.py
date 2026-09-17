@@ -141,6 +141,7 @@ from .routers.admin.delivery import router as admin_delivery_router
 from .routers.admin.api_tokens import router as admin_api_tokens_router
 from .routers.admin.connections import router as admin_connections_router
 from .routers.admin.parser_candidates import router as admin_parser_candidates_router
+from .platform.tasks.api import router as admin_tasks_router
 from .plugins import PluginRegistry
 
 app.include_router(admin_auth_router)
@@ -171,6 +172,7 @@ app.include_router(admin_delivery_router)
 app.include_router(admin_api_tokens_router)
 app.include_router(admin_connections_router)
 app.include_router(admin_parser_candidates_router)
+app.include_router(admin_tasks_router)
 
 # --- Plugin system ---
 _registry = PluginRegistry()
