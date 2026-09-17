@@ -1,131 +1,109 @@
 # Contributing to CloudSite
 
-Thank you for your interest in contributing to CloudSite. This guide covers the development setup, project structure, coding conventions, and the different ways you can contribute.
+Thank you for your interest in contributing to CloudSite. This guide covers the supported development setup, repository layout, quality gates and pull request expectations.
 
 ## Development environment
 
 ### Requirements
 
 - Python 3.12+
-- Node.js 20+ (for web frontend changes)
+- Node.js 24+
+- pnpm 10.15+
 - Git
+- Docker Engine + Docker Compose plugin for container and integration checks
 
-### Setup
+### Backend setup
 
 ```bash
 git clone https://github.com/nathanxiangang-web/CloudSite.git
-cd CloudSite
+cd CloudSite/apps/api
 python -m venv .venv
 source .venv/bin/activate   # Linux/macOS
-.venv\Scripts\activate      # Windows
-pip install -r apps/api/requirements.txt
+# .venv\Scripts\activate  # Windows
+pip install -e ".[test]"
+pytest
 ```
 
-### Run tests
+The backend tests use temporary databases and do not require a production AList instance.
+
+### Frontend setup
 
 ```bash
-cd apps/api
-python -m pytest -q --tb=short
+cd apps/web
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm run lint
+pnpm run test
+pnpm run build
 ```
 
-All tests use temporary SQLite databases and run in seconds. No external services are required.
-
-### Run the API locally
+### Development stack
 
 ```bash
-cd apps/api
-uvicorn cloudsite.main:app --reload
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
-The API is available at `http://localhost:8000`. Use the setup token flow to configure an AList instance.
+The development Compose file exposes Web on port `3000` and API on port `8000`.
 
-## Project structure
+## Repository layout
 
-```
+```text
 apps/
-  api/                    FastAPI backend
-    cloudsite/
-      main.py             Application entry, router registration
-      models.py           SQLAlchemy ORM models (StateBase / IndexBase)
-      migrations.py       Schema version + migration chain
-      database.py         Engine setup, init_databases()
-      services/           Pure application services (no FastAPI imports)
-      routers/            HTTP route handlers
-        admin/            Admin-only routes (protected by middleware)
-      *_schemas.py        Pydantic request/response schemas
-    tests/                pytest test suite
-  web/                    Next.js frontend
-docs/                     User-facing documentation
-scripts/                  Operational scripts (backup, checks, etc.)
-开发文档/                  Product development handbook (Chinese)
+  api/                    FastAPI backend and backend tests
+  web/                    Next.js frontend and frontend tests
+docs/                     Public user, operator and architecture documentation
+scripts/                  Release, backup, recovery and repository checks
+.github/                   CI, issue and pull request templates
 ```
 
-## Coding conventions
+Private product plans, AI-agent scratch files, local editor/tool settings and work-in-progress development notes are intentionally not part of the public repository.
 
-### Services
+## Engineering conventions
 
-- Pure functions, no FastAPI imports.
-- Return `Result` dataclass or raise domain exceptions.
-- Transactions are managed by the caller (service receives a session).
-- Use lazy imports for service modules to avoid circular dependencies.
+### Backend
 
-### Models
-
-- All ORM models live in `models.py`.
-- IDs are generated as `prefix + secrets.token_hex(16)` (e.g., `ct_` for quality todos).
-- Tables use `CREATE TABLE IF NOT EXISTS` in migrations.
+- Keep HTTP concerns in routers and reusable business logic in services or focused domain modules.
+- Keep transaction ownership explicit; do not hide commits inside unrelated helpers.
+- New provider-specific behavior should go through provider capabilities/adapters instead of name checks scattered through business code.
+- Preserve stable resource IDs and compatibility contracts unless a documented migration exists.
+- Avoid expanding already-large shared modules when a focused module boundary is available.
 
 ### Migrations
 
-- Explicit `CURRENT_SCHEMA_VERSION` constant in `migrations.py`.
-- Each migration is a `Migration(from_version, to_version, upgrade)` where `upgrade` is idempotent.
-- After adding a migration, update `CURRENT_SCHEMA_VERSION` and fix all test files that hard-assert the version number.
+- Schema changes must be explicit, deterministic and safe to run during upgrades.
+- Migration tests must cover both fresh initialization and upgrade paths where applicable.
+- Never modify production data formats without a recovery or rollback story.
 
-### Routes
+### Routes and security
 
-- Admin routes go in `routers/admin/` and are auto-protected by `admin_session_middleware`.
-- Register new routers in `main.py` following the existing pattern.
+- Admin routes belong under the protected admin routing boundary.
+- State-changing routes must preserve existing authentication and origin/CSRF protections.
+- Never commit credentials, tokens, `.env` files, databases, logs or production backups.
 
 ### Tests
 
-- Service tests: `tmp_path` SQLite + `async_sessionmaker`.
-- Route tests: `httpx.ASGITransport` + monkeypatch `main.StateSession` / `IndexSession` + admin cookies.
-- No mocking of the database — tests use real SQLite.
+Changes should include the smallest relevant regression test. Depending on scope, CI may run:
 
-## Ways to contribute
-
-### Code
-
-Bug fixes and feature implementations following the conventions above. Check the [roadmap](docs/ROADMAP.md) for planned work.
-
-### Templates
-
-Site presentation templates, email notification templates, and collection layout templates. These live under `apps/web/` and `apps/api/cloudsite/` respectively.
-
-### Translations
-
-UI strings in `apps/web/` are ready for i18n. Contribute language files following the existing locale structure.
-
-### Parse rules
-
-Content detection and organization rules in `apps/api/cloudsite/services/`. Each rule set defines how files are categorized into content types (software, tutorial, image, video, document, etc.).
-
-### Provider compatibility fixtures
-
-Test fixtures for different AList storage provider configurations. These help ensure CloudSite works across diverse backend setups.
-
-### API examples
-
-Example scripts and documentation for the public API. Contribute to `docs/api-examples/` with `curl` or Python `httpx` examples.
+- backend pytest suite;
+- frontend typecheck, lint, tests and production build;
+- Docker Compose validation and smoke tests;
+- dependency audits;
+- version consistency checks;
+- backup/restore hardening checks.
 
 ## Pull request process
 
-1. Fork the repository and create a branch from `main`.
-2. Write tests for your changes.
-3. Ensure `python -m pytest -q` passes with no failures.
-4. If you added a schema migration, update all test assertions that hard-code the version number.
-5. Open a pull request using the PR template.
+1. Fork the repository and create a focused branch from `main`.
+2. Keep each pull request limited to one coherent change.
+3. Add or update tests when behavior changes.
+4. Update public documentation when user-visible behavior changes.
+5. Run the relevant local checks before opening the pull request.
+6. Use the repository pull request template and describe migration or compatibility impact when applicable.
+
+## Public documentation policy
+
+Public documentation should help users, operators and contributors use or maintain released code. Internal product blueprints, unpublished architecture drafts and temporary agent context should stay outside the repository.
 
 ## License
 
-CloudSite is MIT licensed. By contributing, you agree that your contributions will be licensed under the same terms.
+CloudSite is released under the MIT License. By contributing, you agree that your contribution will be licensed under the same terms.
