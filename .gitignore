@@ -34,11 +34,15 @@ work/
 outputs/
 .codex-backups/
 skills/
-开发进度/
+outbox/
+apps/api/venv/
 
-# Local backup/scratch (release fix)
+# Private development material (keep outside the public repository)
+开发文档/
+开发进度/
+.arts/
+
+# Local backup/scratch
 *.bak.fix
 apps.bak.gallery./
 fix_paths.py
-outbox/
-apps/api/venv/

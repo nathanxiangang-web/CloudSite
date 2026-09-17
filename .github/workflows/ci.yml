@@ -159,7 +159,6 @@ jobs:
         run: python scripts/check-readme-install.py
 
   dependency-audit:
-    # 1.0 Supply Chain Gate: pip-audit + pnpm audit。HIGH/CRITICAL 阻止发布。
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -217,25 +216,7 @@ jobs:
       - name: Verify release version matches tag
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import re
-          from pathlib import Path
-
-          expected = os.environ["RELEASE_TAG"].removeprefix("v")
-          api = re.search(r'__version__ = "([^"]+)"', Path("apps/api/cloudsite/__init__.py").read_text()).group(1)
-          web = json.loads(Path("apps/web/package.json").read_text())["version"]
-
-          def normalized_version(value):
-              if re.fullmatch(r"[0-9]+\.[0-9]+", value):
-                  return value + ".0"
-              return value
-
-          if normalized_version(api) != normalized_version(expected) or normalized_version(web) != normalized_version(expected):
-            raise SystemExit(f"release tag {expected} does not match api={api}, web={web}")
-          PY
+        run: python scripts/check-release-version.py --tag "$RELEASE_TAG"
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -272,8 +253,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
+          prerelease=false
+          if [[ "$RELEASE_TAG" =~ -(alpha|beta|rc)([.-]|$) ]]; then
+            prerelease=true
+          fi
+
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS.txt --clobber
+            if [[ "$prerelease" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --prerelease
+            fi
           else
-            gh release create "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS.txt --generate-notes --verify-tag
+            release_args=(--generate-notes --verify-tag)
+            if [[ "$prerelease" == "true" ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS.txt "${release_args[@]}"
           fi

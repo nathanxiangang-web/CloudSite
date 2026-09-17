@@ -1,60 +1,41 @@
 # CloudSite Roadmap
 
-This roadmap tracks planned development phases. Items are committed when they pass full test suites and meet the acceptance criteria defined in the product development handbook.
+This public roadmap summarizes the direction of CloudSite without exposing internal implementation plans. It is a planning document, not a release commitment.
 
-## Completed
+## Released
 
-### v1.0 — Baseline (2024)
+### v1.0.0 — Stable baseline
 
-- AList-powered portal with browse, search, preview, share, download
-- User accounts, admin console, Docker Compose deployment
-- SQLite + FastAPI backend, Next.js frontend
+- AList-powered resource portal with browse, search, preview, sharing and direct-download flows.
+- User accounts and administration console.
+- Stable resource identities and local search/index state.
+- Docker Compose deployment for `linux/amd64` and `linux/arm64`.
+- Backup, recovery, diagnostics and compatibility checks.
 
-### v1.1 — Resourceization
+## Current development line
 
-- C1: Catalog entry/version/asset model
-- C2: Content detection and metadata extraction
-- C3: Release channels and asset schema
-- C4: Multi-platform asset matching
-- D1: Search index rebuild and projection
-- D2: Faceted filtering and sort
-- B1: Site branding and home page
-- B2: Publication scope and visibility
-- A1: Automation rule engine
-- A2: Batch organize and review
-- M1–M6: Migration, identity, sync, diagnostics, health check, backup
+### v2.0.0-alpha.x — Resource platform evolution
 
-### v1.3 — Automated Operations
+The 2.0 development line is experimental and may change before the stable release. Current work focuses on evolving CloudSite from a file-oriented portal into a resource-oriented platform while preserving the proven self-hosted deployment model.
 
-- A1: Automation rule parsing and execution
-- A2: Batch organize and review workflows
-- A3: Optional AI content completion (provider config, draft generation, budget tracking, review workflow)
-- A4: Content quality detection and maintenance to-do queue
+Public areas of active development include:
 
-## In Progress
+- richer resource catalog and metadata workflows;
+- publication scope, quality controls and submission workflows;
+- roles, API access and multi-connection management;
+- automation and optional AI-assisted content workflows;
+- stronger module boundaries and background-job architecture;
+- indexing and synchronization improvements for larger resource libraries;
+- frontend maintainability and critical-path end-to-end testing.
 
-### v1.2 — Website & Adoption
+## Longer-term direction
 
-- G1: Open-source adoption experience (templates, demo data, contribution guides, issue/PR templates, roadmap)
-- G2: Value measurement before scaling (baseline metrics, event tracking, retention controls)
+Future work may include additional storage/provider integrations, a more stable external API surface, plugin extensibility, stronger observability and larger-scale deployment options. These will be driven by demonstrated user needs rather than added only for architectural complexity.
 
-## Planned
+## Release policy
 
-### v1.5 — Team Collaboration
+- `v1.x` is the stable compatibility line.
+- `alpha`, `beta` and `rc` releases are prereleases and are intended for testing and evaluation.
+- Stable releases are published only after compatibility, migration, backup/restore and deployment checks pass.
 
-- T1: Multi-user roles and permissions (owner, editor, reviewer, viewer)
-- T2: Delivery packages (curated bundles with export/import, cross-instance portability)
-
-### v2.0 — Open Ecosystem
-
-- X1: Plugin marketplace (third-party content detectors, preview handlers, automation rules)
-- X2: Open API (stable public API for external integrations, webhook delivery)
-- X3: Federated search (cross-instance resource discovery, shared index protocol)
-
-## Maintenance
-
-Performance optimization, bug fixes, and dependency updates are ongoing across all phases. Infrastructure changes require demonstrated bottlenecks before scaling out.
-
----
-
-This roadmap is a proposal, not a commitment. Priorities may shift based on adoption feedback and resource availability. See [CloudSite未来产品开发手册.md](../开发文档/CloudSite未来产品开发手册.md) for detailed module specifications and acceptance criteria.
+For installation and upgrade instructions, see [Installation](installation.md) and [Deployment, upgrade, and backup](deployment-upgrade-backup.md).
