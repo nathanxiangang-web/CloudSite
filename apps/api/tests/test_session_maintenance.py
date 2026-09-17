@@ -150,20 +150,20 @@ async def test_session_token_lookup_uses_unique_index(monkeypatch):
             assert any("INDEX" in str(row[3]).upper() for row in plan)
 
 
-def test_admin_cookie_max_age_is_24h():
-    assert ADMIN_SESSION_MAX_AGE_SECONDS == 86400
+def test_admin_cookie_max_age_is_7d():
+    assert ADMIN_SESSION_MAX_AGE_SECONDS == 7 * 24 * 60 * 60
 
 
-def test_user_cookie_max_age_is_24h():
-    assert sessions.USER_SESSION_MAX_AGE == 86400
+def test_user_cookie_max_age_is_7d():
+    assert sessions.USER_SESSION_MAX_AGE == 7 * 24 * 60 * 60
 
 
-def test_session_retention_days_is_2():
-    assert sessions.SESSION_RETENTION_DAYS == 2
+def test_session_retention_days_is_7():
+    assert sessions.SESSION_RETENTION_DAYS == 7
 
 
 def test_admin_login_cookie_max_age():
-    """create_session_token 生成的 token 过期时间为 24 小时后。"""
+    """create_session_token 生成的 token 过期时间为 7 天后。"""
     import base64
     import json
     import time
@@ -174,5 +174,5 @@ def test_admin_login_cookie_max_age():
     expires = int(decoded.get("expires", 0))
     now = int(time.time())
     delta = expires - now
-    assert 86390 <= delta <= 86410
+    assert 7 * 86400 - 10 <= delta <= 7 * 86400 + 10
     assert verify_session_token(token)
