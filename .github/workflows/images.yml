@@ -107,7 +107,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/cloudsite-api
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
             type=ref,event=tag
             type=sha,prefix=sha-
 
@@ -127,7 +128,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/cloudsite-web
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
             type=ref,event=tag
             type=sha,prefix=sha-
 
