@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 
 from ... import __version__
 from ...models import Folder, OperationLog, Resource, SystemSetting
-from ...providers.service import provider_info
+from ...modules.providers.application.provider_service import provider_info
 from ...schemas import SystemInput
 
 router = APIRouter()
@@ -28,7 +28,7 @@ async def get_system():
             "sync_engine_version": engine_version_row.value if engine_version_row else "1.0",
             "initial_index_completed_at": initial_index_row.value if initial_index_row else None,
         })
-    values["provider"] = await provider_info()
+        values["provider"] = await provider_info(state)
     return values
 
 
