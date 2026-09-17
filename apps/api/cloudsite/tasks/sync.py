@@ -8,13 +8,17 @@ import random
 from contextlib import suppress
 
 from ..config import settings
+from ..modules.indexing.infrastructure.indexing_engine import use_indexing_v2
+from ..modules.indexing.infrastructure.legacy_bridge import run_indexing_v2
 
 
 async def _run_manual_sync_in_background(full: bool, force: bool) -> None:
     from cloudsite import main
 
     try:
-        if await main.rolling_enabled():
+        if use_indexing_v2():
+            await run_indexing_v2()
+        elif await main.rolling_enabled():
             await main.run_due_rolling_window(manual=True)
         else:
             result = await main.run_sync("manual", full, force)
@@ -45,7 +49,9 @@ async def _safe_startup_sync():
     if not values["sync_on_startup"]:
         return
     with suppress(Exception):
-        if await main.migrate_existing_index_to_rolling():
+        if use_indexing_v2():
+            await run_indexing_v2()
+        elif await main.migrate_existing_index_to_rolling():
             await main.run_due_rolling_window()
         elif await main.automatic_sync_due(values["sync_interval_minutes"]):
             await main.run_sync("startup")

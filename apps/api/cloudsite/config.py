@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     sync_mass_change_ratio: float = 0.10
     sync_max_item_attempts: int = 6
 
+    # C7: 索引引擎切换开关。默认 "v1" 使用 sync/rolling.py 旧索引；
+    # 设为 "v2" 时改用 modules/indexing 的 ScanCategoryService + ReconcileService。
+    # 环境变量 CLOUDSITE_INDEXING_ENGINE 控制。
+    indexing_engine: str = "v1"
+
     # Set exactly one existing CloudSite user ID before enabling automatic
     # organization. Zero disables user-controlled organization actions.
     organizer_user_id: int = 0
