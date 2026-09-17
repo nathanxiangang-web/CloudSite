@@ -33,5 +33,4 @@ async def list_cloud_download_tasks(request: Request):
     async with StateSession() as state:
         _, user = await require_user(state, request)
         result = await list_user_cloud_download_tasks(state, user.id)
-        await state.commit()
         return result

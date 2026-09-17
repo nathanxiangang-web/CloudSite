@@ -19,3 +19,14 @@ class Plugin(Protocol):
     version: str
 
     def get_routers(self) -> list[APIRouter]: ...
+
+    async def on_load(self) -> None:
+        """Optional: called when the plugin is loaded."""
+        ...
+
+    async def on_unload(self) -> None:
+        """Optional: called when the plugin is disabled.
+
+        Implementations should preserve content data per X3 contract.
+        """
+        ...

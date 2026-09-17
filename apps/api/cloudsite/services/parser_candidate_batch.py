@@ -168,6 +168,7 @@ async def run_parser_candidate_batch(
 
 async def recover_interrupted_candidates(
     state: AsyncSession,
+    limit: int = 1000,
 ) -> list[ParserCandidateTask]:
     """Convert leftover running candidates to failed with an interrupted message.
 

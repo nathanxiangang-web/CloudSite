@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 
 from ...parser_candidate_schemas import (
     DEFAULT_LIST_LIMIT,
@@ -274,7 +274,7 @@ async def admin_recover_interrupted_candidates():
     "/api/admin/parser-candidates/{task_id}",
     response_model=ParserCandidateTaskOutput,
 )
-async def admin_get_parser_candidate(task_id: str):
+async def admin_get_parser_candidate(task_id: str = Path(..., pattern=r"^pt_[0-9a-f]{32}$")):
     """Get a single parser candidate task by ID."""
     from ...main import StateSession
     from ...services.parser_candidates import get_parser_candidate
@@ -291,7 +291,7 @@ async def admin_get_parser_candidate(task_id: str):
     "/api/admin/parser-candidates/{task_id}/cancel",
     response_model=ParserCandidateTaskOutput,
 )
-async def admin_cancel_parser_candidate(task_id: str):
+async def admin_cancel_parser_candidate(task_id: str = Path(..., pattern=r"^pt_[0-9a-f]{32}$")):
     """Cancel a pending or running parser candidate task."""
     from ...main import StateSession
     from ...services.parser_candidates import cancel_parser_candidate
