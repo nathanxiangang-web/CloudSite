@@ -27,6 +27,7 @@ PLATFORM = CLOUDSITE / "platform"
 LEGACY_TOP_LEVEL_FILES = {
     "__init__.py",
     "main.py",
+    "worker_main.py",
     "config.py",
     "database.py",
     "models.py",
