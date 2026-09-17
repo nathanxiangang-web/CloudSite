@@ -74,7 +74,7 @@ async def _persist_component(state, component: str, status: str, error: str | No
 @router.get("/api/health")
 async def health():
     """存活检查：进程存活即 200。"""
-    return {"status": "alive", "version": __version__}
+    return {"status": "healthy", "version": __version__}
 
 
 @router.get("/api/ready")
