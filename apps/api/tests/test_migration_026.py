@@ -32,7 +32,7 @@ async def test_fresh_init_reaches_v26(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 26
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 28
 
         tables = await conn.exec_driver_sql(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='cloud_download_tasks'"
@@ -75,7 +75,7 @@ async def test_old_v25_db_upgrades_to_v26_preserving_rows(tmp_path, monkeypatch)
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 26
+        assert await get_state_schema_version(conn) == 28
 
         users = (await conn.execute(text("SELECT COUNT(*) FROM users"))).scalar_one()
         assert users == 2
@@ -98,7 +98,7 @@ async def test_v25_to_v26_idempotent(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 26
+        assert await get_state_schema_version(conn) == 28
         rows = await conn.exec_driver_sql(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cloud_download_tasks'"
         )

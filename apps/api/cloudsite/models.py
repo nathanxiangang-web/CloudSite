@@ -1438,3 +1438,64 @@ class CloudDownloadTask(StateBase):
     display_name: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ParserCandidateTask(StateBase):
+    __tablename__ = "parser_candidate_tasks"
+    task_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    input_fingerprint: Mapped[str] = mapped_column(String(64))
+    parser_version: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending", index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("resource_id", "input_fingerprint", "parser_version"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
+            name="ck_parser_candidate_tasks_status",
+        ),
+    )
+
+
+class CatalogReviewSuggestion(StateBase):
+    __tablename__ = "catalog_review_suggestions"
+    suggestion_id: Mapped[str] = mapped_column(String(35), primary_key=True)
+    parser_candidate_task_id: Mapped[str | None] = mapped_column(String(35), nullable=True, index=True)
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
+    suggestion_kind: Mapped[str] = mapped_column(String(40), index=True)
+    proposed_entry_id: Mapped[str | None] = mapped_column(String(35), nullable=True)
+    proposed_fields_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    evidence_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending", index=True)
+    reviewed_by: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_entry_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        UniqueConstraint("parser_candidate_task_id", "suggestion_kind"),
+        CheckConstraint(
+            "suggestion_kind IN ('new_resource', 'new_release', 'deliverable', "
+            "'possible_duplicate', 'conflict')",
+            name="ck_catalog_review_suggestions_kind",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'reviewed', 'applied', 'rejected')",
+            name="ck_catalog_review_suggestions_status",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="ck_catalog_review_suggestions_confidence",
+        ),
+        CheckConstraint(
+            "applied_entry_revision IS NULL OR applied_entry_revision > 0",
+            name="ck_catalog_review_suggestions_revision_positive",
+        ),
+    )

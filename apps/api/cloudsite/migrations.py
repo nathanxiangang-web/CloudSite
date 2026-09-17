@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 26
+CURRENT_SCHEMA_VERSION = 28
 
 
 @dataclass(frozen=True, slots=True)
@@ -1499,6 +1499,80 @@ async def state_v25_to_v26_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v26_to_v27_upgrade(conn: AsyncConnection) -> None:
+    """Schema v26 -> v27: durable parser candidate task state, idempotent."""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS parser_candidate_tasks("
+        "task_id VARCHAR(35) PRIMARY KEY,"
+        "resource_id VARCHAR(64) NOT NULL,"
+        "input_fingerprint VARCHAR(64) NOT NULL,"
+        "parser_version VARCHAR(40) NOT NULL,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "retry_count INTEGER NOT NULL DEFAULT 0,"
+        "result_json TEXT,"
+        "error_text TEXT,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "completed_at DATETIME,"
+        "UNIQUE (resource_id, input_fingerprint, parser_version),"
+        "CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_parser_candidate_tasks_status "
+        "ON parser_candidate_tasks (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_parser_candidate_tasks_resource_id "
+        "ON parser_candidate_tasks (resource_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_parser_candidate_tasks_parser_version "
+        "ON parser_candidate_tasks (parser_version)"
+    )
+
+
+async def state_v27_to_v28_upgrade(conn: AsyncConnection) -> None:
+    """Schema v27 -> v28: durable, typed A2 review suggestions."""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_review_suggestions("
+        "suggestion_id VARCHAR(35) PRIMARY KEY,"
+        "parser_candidate_task_id VARCHAR(35),"
+        "resource_id VARCHAR(64) NOT NULL,"
+        "suggestion_kind VARCHAR(40) NOT NULL,"
+        "proposed_entry_id VARCHAR(35),"
+        "proposed_fields_json TEXT NOT NULL DEFAULT '{}',"
+        "evidence_json TEXT NOT NULL DEFAULT '{}',"
+        "confidence FLOAT NOT NULL DEFAULT 0.0,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "reviewed_by VARCHAR(100) NOT NULL DEFAULT '',"
+        "reviewed_at DATETIME,"
+        "applied_entry_revision INTEGER,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "error_text TEXT,"
+        "UNIQUE (parser_candidate_task_id, suggestion_kind),"
+        "CHECK (suggestion_kind IN ('new_resource', 'new_release', 'deliverable', 'possible_duplicate', 'conflict')),"
+        "CHECK (status IN ('pending', 'reviewed', 'applied', 'rejected')),"
+        "CHECK (confidence >= 0 AND confidence <= 1),"
+        "CHECK (applied_entry_revision IS NULL OR applied_entry_revision > 0))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_resource_id "
+        "ON catalog_review_suggestions (resource_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_status "
+        "ON catalog_review_suggestions (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_suggestion_kind "
+        "ON catalog_review_suggestions (suggestion_kind)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_parser_candidate_task_id "
+        "ON catalog_review_suggestions (parser_candidate_task_id)"
+    )
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1525,5 +1599,7 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v23_to_v24", from_version=23, to_version=24, upgrade=state_v23_to_v24_upgrade),
     Migration(id="state_v24_to_v25", from_version=24, to_version=25, upgrade=state_v24_to_v25_upgrade),
     Migration(id="state_v25_to_v26", from_version=25, to_version=26, upgrade=state_v25_to_v26_upgrade),
+    Migration(id="state_v26_to_v27", from_version=26, to_version=27, upgrade=state_v26_to_v27_upgrade),
+    Migration(id="state_v27_to_v28", from_version=27, to_version=28, upgrade=state_v27_to_v28_upgrade),
 ]
 
