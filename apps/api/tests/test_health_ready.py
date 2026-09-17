@@ -1,7 +1,7 @@
 """M6 健康检查分级端点测试。
 
 覆盖：
-- GET /api/health 存活探针始终 200 alive。
+- GET /api/health 存活探针始终 200 healthy。
 - GET /api/ready 就绪探针：数据库正常 + AList 正常 → 200 ready。
 - GET /api/ready 数据库正常 + AList 离线 → 200 degraded。
 - GET /api/ready 数据库不可用 → 503 not_ready。
@@ -39,7 +39,7 @@ async def test_health_liveness_always_200(monkeypatch):
     async with client:
         res = await client.get("/api/health")
         assert res.status_code == 200
-        assert res.json()["status"] == "alive"
+        assert res.json()["status"] == "healthy"
     await engine.dispose()
 
 
