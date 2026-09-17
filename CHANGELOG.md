@@ -1,6 +1,32 @@
 # Changelog
 
-This changelog starts from the CloudSite 1.0.0 stable baseline.
+This changelog records public CloudSite releases and user-visible compatibility changes.
+
+## [2.0.0-alpha.1] - 2026-09-17
+
+CloudSite 2.0 enters an experimental prerelease line. It keeps the existing self-hosted deployment model while expanding the project toward a resource-oriented platform.
+
+### Added
+
+- Expanded catalog and resource metadata capabilities.
+- Publication scope, quality-management and submission workflows.
+- Follow/notification-related resource workflows.
+- Role, API-token and multi-connection foundations.
+- Automation and optional AI-assisted content workflows.
+- Cloud-download and delivery-related capabilities.
+- Additional administration and diagnostics surfaces.
+
+### Changed
+
+- Project version moved to the `2.0.0-alpha.x` development line.
+- Public documentation now distinguishes the stable `v1.0.0` baseline from the experimental 2.0 prerelease line.
+- Repository and release checks continue to protect the 1.0 compatibility baseline while 2.0 architecture work proceeds incrementally.
+
+### Important
+
+- This is an **alpha prerelease**, not the stable replacement for `v1.0.0`.
+- Some 2.0 internals are still transitioning from the 1.x architecture and may change before the stable release.
+- Back up persistent data before testing prerelease upgrades.
 
 ## [1.0.0] - 2026-09-07
 
@@ -38,4 +64,5 @@ CloudSite 1.0.0 establishes the stable self-hosted AList resource portal baselin
 - The documented 1.0 URL routes, error codes, environment variables, data ownership, authentication boundaries, share behavior, and HTTP 302 transfer semantics form the compatibility baseline.
 - Compatible additions may be introduced in later 1.x releases. Existing 1.0 contract names are not removed or renamed without a deprecation path.
 
+[2.0.0-alpha.1]: https://github.com/nathanxiangang-web/CloudSite/releases/tag/v2.0.0-alpha.1
 [1.0.0]: https://github.com/nathanxiangang-web/CloudSite/releases/tag/v1.0.0
