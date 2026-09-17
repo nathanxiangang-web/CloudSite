@@ -170,7 +170,7 @@ Responses must not expose tracebacks, internal filesystem paths, plaintext crede
 | `CLOUDSITE_WEB_PORT` | `3000` | Published Web port |
 | `CLOUDSITE_API_IMAGE` | GHCR API image | API image repository |
 | `CLOUDSITE_WEB_IMAGE` | GHCR Web image | Web image repository |
-| `CLOUDSITE_IMAGE_TAG` | `v1.0.0` | Fixed deployment image tag |
+| `CLOUDSITE_IMAGE_TAG` | `v2.0.0-alpha.1` | Fixed deployment image tag |
 | `CLOUDSITE_DOMAIN` | `cloud.example.com` | Traefik hostname |
 | `TRAEFIK_NETWORK` | `my-servers_app-net` | Existing Traefik Docker network |
 | `TRAEFIK_ENTRYPOINT` | `websecure` | Traefik entry point |
