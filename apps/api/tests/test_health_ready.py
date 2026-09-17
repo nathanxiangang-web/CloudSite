@@ -110,7 +110,7 @@ async def test_v17_to_v18_adds_health_check_state_and_enabled(tmp_path, monkeypa
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 25
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 28
         tables = await conn.run_sync(lambda c: inspect(c).get_table_names())
         assert "health_check_state" in tables
         settings_cols = await conn.run_sync(lambda c: {col["name"] for col in inspect(c).get_columns("system_settings")})
@@ -130,7 +130,7 @@ async def test_v17_to_v18_idempotent(tmp_path, monkeypatch):
     await database.init_databases()
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == 25
+        assert await get_state_schema_version(conn) == 28
         tables = await conn.run_sync(lambda c: inspect(c).get_table_names())
         assert "health_check_state" in tables
 

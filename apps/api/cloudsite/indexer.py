@@ -671,11 +671,12 @@ async def run_sync(sync_type: str = "manual", full: bool = False, force: bool = 
             running = await session.scalar(select(SyncRun.id).where(SyncRun.status == "running").limit(1))
             if running:
                 return {"status": "already_running", "run_id": running}
-            client, roots = await load_client_and_roots()
+            connections = await load_all_connections_and_roots()
+            roots_total = sum(len(roots) for _conn, _client, roots in connections)
             run = SyncRun(
                 sync_type="full" if full else sync_type,
                 status="running",
-                roots_total=len(roots),
+                roots_total=roots_total,
             )
             session.add(run)
             await session.commit()
@@ -687,70 +688,75 @@ async def run_sync(sync_type: str = "manual", full: bool = False, force: bool = 
             suspicious = False
             errors: list[str] = []
             limiter = SyncRateLimiter(settings.sync_list_rps, settings.sync_list_jitter_ms)
+            circuit_opened = False
 
-            async with client:
-                for root in roots:
-                    base_folders, base_resources = total_folders, total_resources
-                    last_progress_at = 0.0
+            for _conn, client, roots in connections:
+                async with client:
+                    for root in roots:
+                        base_folders, base_resources = total_folders, total_resources
+                        last_progress_at = 0.0
 
-                    async def update_progress(folder_count: int, resource_count: int, current_path: str) -> None:
-                        nonlocal last_progress_at
-                        current = time.monotonic()
-                        if current - last_progress_at < 1.0:
-                            return
-                        await session.execute(
-                            update(SyncRun)
-                            .where(SyncRun.id == run_id)
-                            .values(
-                                folders_scanned=base_folders + folder_count,
-                                resources_scanned=base_resources + resource_count,
-                                current_path=current_path,
+                        async def update_progress(folder_count: int, resource_count: int, current_path: str) -> None:
+                            nonlocal last_progress_at
+                            current = time.monotonic()
+                            if current - last_progress_at < 1.0:
+                                return
+                            await session.execute(
+                                update(SyncRun)
+                                .where(SyncRun.id == run_id)
+                                .values(
+                                    folders_scanned=base_folders + folder_count,
+                                    resources_scanned=base_resources + resource_count,
+                                    current_path=current_path,
+                                )
                             )
-                        )
-                        await session.commit()
-                        last_progress_at = current
+                            await session.commit()
+                            last_progress_at = current
 
-                    try:
-                        scanned_folders, scanned_resources = await scan_roots(
-                            client, [root], update_progress, limiter
-                        )
-                        total_folders += len(scanned_folders)
-                        total_resources += len(scanned_resources)
-                        root_added, root_updated, root_removed, guarded = await _commit_root(
-                            session, run, root, scanned_folders, scanned_resources
-                        )
-                        added += root_added
-                        updated += root_updated
-                        removed += root_removed
-                        suspicious = suspicious or guarded
-                        completed += 1
-                        run = await session.get(SyncRun, run_id)
-                        run.roots_completed = completed
-                        run.folders_scanned = total_folders
-                        run.resources_scanned = total_resources
-                        run.current_path = normalize_path(root.alist_path)
-                        await session.commit()
-                    except Exception as exc:
-                        await session.rollback()
-                        failed += 1
-                        message = str(exc)[:1000]
-                        errors.append(f"{normalize_path(root.alist_path)}: {message}")
-                        run = await session.get(SyncRun, run_id)
-                        run.roots_failed = failed
-                        run.error_message = "\n".join(errors)[:2000]
-                        session.add(
-                            SyncRootResult(
-                                sync_run_id=run_id,
-                                root_mapping_id=root.id,
-                                root_path=normalize_path(root.alist_path),
-                                status="failed",
-                                error_message=message,
+                        try:
+                            scanned_folders, scanned_resources = await scan_roots(
+                                client, [root], update_progress, limiter
                             )
-                        )
-                        await session.commit()
-                        if is_access_restriction(exc):
-                            await open_sync_circuit(exc)
-                            break
+                            total_folders += len(scanned_folders)
+                            total_resources += len(scanned_resources)
+                            root_added, root_updated, root_removed, guarded = await _commit_root(
+                                session, run, root, scanned_folders, scanned_resources
+                            )
+                            added += root_added
+                            updated += root_updated
+                            removed += root_removed
+                            suspicious = suspicious or guarded
+                            completed += 1
+                            run = await session.get(SyncRun, run_id)
+                            run.roots_completed = completed
+                            run.folders_scanned = total_folders
+                            run.resources_scanned = total_resources
+                            run.current_path = normalize_path(root.alist_path)
+                            await session.commit()
+                        except Exception as exc:
+                            await session.rollback()
+                            failed += 1
+                            message = str(exc)[:1000]
+                            errors.append(f"{normalize_path(root.alist_path)}: {message}")
+                            run = await session.get(SyncRun, run_id)
+                            run.roots_failed = failed
+                            run.error_message = "\n".join(errors)[:2000]
+                            session.add(
+                                SyncRootResult(
+                                    sync_run_id=run_id,
+                                    root_mapping_id=root.id,
+                                    root_path=normalize_path(root.alist_path),
+                                    status="failed",
+                                    error_message=message,
+                                )
+                            )
+                            await session.commit()
+                            if is_access_restriction(exc):
+                                await open_sync_circuit(exc)
+                                circuit_opened = True
+                                break
+                if circuit_opened:
+                    break
 
             await set_search_index_dirty(True)
             all_folders = list((await session.scalars(select(Folder))).all())
@@ -784,7 +790,7 @@ async def run_sync(sync_type: str = "manual", full: bool = False, force: bool = 
             await log_operation(
                 "sync",
                 run.status,
-                f"同步结束：{completed}/{len(roots)} 个根目录完成；{total_folders} 个文件夹，{total_resources} 个资源；新增 {added}，修改 {updated}，移除 {removed}",
+                f"同步结束：{completed}/{roots_total} 个根目录完成；{total_folders} 个文件夹，{total_resources} 个资源；新增 {added}，修改 {updated}，移除 {removed}",
                 level=level,
             )
             return {

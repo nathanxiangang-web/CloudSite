@@ -4,7 +4,7 @@ import math
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, desc, func, or_, select
 
-from ..models import AListConnection, Folder, Resource
+from ..models import Folder, Resource
 from ..office import OfficePreviewError, ensure_preview_cached, office_cache_filename
 from ..preview import PreviewError, load_text_preview, preview_capability
 from ..schemas import (
@@ -14,6 +14,7 @@ from ..schemas import (
     ResourcePageOutput,
     TextPreviewOutput,
 )
+from ..services.connections import resolve_resource_connection
 from ..services.resources import (
     breadcrumbs_for_folder,
     folder_dict,
@@ -119,7 +120,7 @@ async def resource_text_preview(resource_id: str):
         resource = await index.get(Resource, resource_id)
         if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
             raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
-        connection = await state.get(AListConnection, 1)
+        connection = await resolve_resource_connection(state, resource)
         try:
             return await load_text_preview(resource, connection)
         except PreviewError as exc:
@@ -136,7 +137,7 @@ async def resource_pdf_preview(resource_id: str):
             raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
         if preview_capability(resource)["preview_type"] != "pdf":
             raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 PDF 在线预览"})
-        connection = await state.get(AListConnection, 1)
+        connection = await resolve_resource_connection(state, resource)
         try:
             await ensure_preview_cached(resource, connection)
         except OfficePreviewError as exc:
@@ -154,7 +155,7 @@ async def resource_office_preview(resource_id: str):
             raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
         if preview_capability(resource)["preview_type"] != "office":
             raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 Office 在线预览"})
-        connection = await state.get(AListConnection, 1)
+        connection = await resolve_resource_connection(state, resource)
         try:
             await ensure_preview_cached(resource, connection)
         except OfficePreviewError as exc:

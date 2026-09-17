@@ -41,3 +41,4 @@ skills/
 apps.bak.gallery./
 fix_paths.py
 outbox/
+apps/api/venv/

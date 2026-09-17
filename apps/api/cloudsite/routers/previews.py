@@ -8,9 +8,10 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from ..config import settings
 from ..download import validate_resource_id
-from ..models import AListConnection, Resource
+from ..models import Resource
 from ..office import OFFICE_CONTENT_TYPES, office_content_type
 from ..preview import PreviewError, resolve_preview_url
+from ..services.connections import resolve_resource_connection
 from ..shares.service import resource_in_publication_scope
 
 router = APIRouter()
@@ -54,7 +55,7 @@ async def preview(resource_id: str, refresh: bool = False):
             return _preview_error_redirect(resource_id, "PV-001")
         if not await resource_in_publication_scope(state, resource):
             return _preview_error_redirect(resource_id, "PV-001")
-        connection = await state.get(AListConnection, 1)
+        connection = await resolve_resource_connection(state, resource)
         try:
             resolve_started = time.perf_counter()
             resolution = await resolve_preview_url(resource, connection, force_refresh=refresh)

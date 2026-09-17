@@ -1243,3 +1243,26 @@ button:active, .button:active { transform:scale(.97); }
 .catalog-location-manager { margin-top: 14px; padding: 14px; border: 1px dashed var(--line); border-radius: 10px; background: #fbfcfe; }
 @media (max-width: 900px) { .catalog-grid { grid-template-columns: repeat(2, 1fr); } .catalog-asset-detail dl { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .catalog-grid { grid-template-columns: 1fr; } .catalog-editor-toolbar { flex-direction: column; align-items: stretch; } }
+.cloud-download-page { max-width: 1100px; }
+.cloud-download-auth { margin-top: 18px; text-align: center; }
+.cloud-download-auth h2 { justify-content: center; }
+.cloud-download-auth p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+.cloud-download-auth .button { margin: 0 auto; }
+.cloud-download-form { grid-template-columns: 1fr; }
+.cloud-download-tasks-panel { margin-top: 18px; }
+.cloud-download-task-list { display: flex; flex-direction: column; }
+.cloud-download-task-item { min-height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) 90px; align-items: center; gap: 14px; border-bottom: 1px solid #edf0f5; padding: 12px 0; }
+.cloud-download-task-item:last-child { border-bottom: 0; }
+.cloud-download-task-copy strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-download-task-copy small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.cloud-download-task-progress { display: flex; align-items: center; gap: 10px; }
+.cloud-download-progress-bar { flex: 1; height: 6px; background: #e9edf4; border-radius: 99px; overflow: hidden; }
+.cloud-download-progress-bar span { display: block; height: 100%; border-radius: 99px; background: var(--blue); transition: width .3s ease; }
+.cloud-download-task-progress b { font-size: 12px; text-align: right; min-width: 42px; }
+.cloud-download-status { font-size: 11px; text-align: center; padding: 4px 10px; border-radius: 99px; background: #edf1f6; color: #66758c; }
+.cloud-download-status.running { background: #eaf2ff; color: var(--blue); }
+.cloud-download-status.completed { background: #e9f8ef; color: #199248; }
+.cloud-download-status.failed { background: #fff0f1; color: #d33d49; }
+@media (max-width: 760px) { .cloud-download-task-item { grid-template-columns: 1fr; gap: 8px; } .cloud-download-task-progress { grid-column: 1; } .cloud-download-status { justify-self: start; } }
+[data-theme="dark"] .cloud-download-progress-bar { background: #2a2a2c; }
+[data-theme="dark"] .cloud-download-status { background: #38383a; color: #8e8e93; }

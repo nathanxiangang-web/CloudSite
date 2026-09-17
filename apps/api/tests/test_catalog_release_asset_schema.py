@@ -63,7 +63,7 @@ async def test_fresh_init_creates_release_asset_metadata_columns(tmp_path, monke
 
     async with state_engine.connect() as conn:
         assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
-        assert CURRENT_SCHEMA_VERSION == 25
+        assert CURRENT_SCHEMA_VERSION == 28
 
         release_cols = await _columns(conn, "catalog_releases")
         for col in ("channel", "release_date", "is_recommended"):

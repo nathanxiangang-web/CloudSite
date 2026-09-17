@@ -83,14 +83,14 @@ async def view_delivery(access_token: str, code: str | None = None):
 
 
 @router.post("/api/delivery/{access_token}/feedback")
-async def submit_feedback(access_token: str, body: DeliveryFeedbackRequest):
+async def submit_feedback(access_token: str, body: DeliveryFeedbackRequest, code: str | None = None):
     from ..main import StateSession
     from ..models import OperationLog
 
     service = _delivery_service()
     async with StateSession() as state:
         try:
-            package = await service.verify_access(state, access_token)
+            package = await service.verify_access(state, access_token, access_code=code)
             state.add(OperationLog(
                 level="INFO",
                 module="delivery",

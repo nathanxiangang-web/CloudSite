@@ -43,3 +43,15 @@ export function currentRelativeUrl(): string {
   if (typeof window === "undefined") return "/";
   return `${window.location.pathname}${window.location.search}`;
 }
+
+export const CLOUD_DOWNLOAD_HREF = "/cloud-download";
+export const CLOUD_DOWNLOAD_LABEL = "\u4e91\u4e0b\u8f7d";
+const LEGACY_BROWSE_HREF = "/browse";
+const LEGACY_BROWSE_LABEL = "\u6d4f\u89c8";
+
+export function mapLegacyBrowseToCloudDownload<T extends { href: string; label: string }>(item: T): T {
+  if (item.href === LEGACY_BROWSE_HREF && item.label === LEGACY_BROWSE_LABEL) {
+    return { ...item, href: CLOUD_DOWNLOAD_HREF, label: CLOUD_DOWNLOAD_LABEL };
+  }
+  return item;
+}

@@ -142,6 +142,23 @@ async def try_record(state: AsyncSession, event_type: str,
         pass
 
 
+async def try_record_committed(state: AsyncSession, event_type: str,
+                               event_data: dict | None = None,
+                               user_id: str | None = None) -> None:
+    """Best-effort event recording with commit. Never raises.
+
+    Records the event and commits the session so the metric row persists
+    even when the caller closes the session without committing. Used by
+    public routes that own a short-lived state session and must not let
+    metrics storage failure change the user response.
+    """
+    try:
+        await record_event(state, event_type, event_data, user_id)
+        await state.commit()
+    except Exception:
+        pass
+
+
 async def set_config(state: AsyncSession, enabled: bool | None = None,
                      retention_days: int | None = None,
                      upload_raw_queries: bool | None = None) -> MetricsConfig:

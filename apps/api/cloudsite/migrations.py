@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 25
+CURRENT_SCHEMA_VERSION = 28
 
 
 @dataclass(frozen=True, slots=True)
@@ -1388,6 +1388,205 @@ async def state_v24_to_v25_upgrade(conn: AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS ix_provider_compat_result ON provider_compat_records(test_result)"
     )
 
+    await repair_content_root_mappings_legacy_unique(conn)
+
+
+async def detect_legacy_alist_path_auto_index(conn: AsyncConnection) -> str | None:
+    """Detect legacy single-column UNIQUE(alist_path) auto-index on content_root_mappings."""
+    indexes = await conn.exec_driver_sql(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='index' AND tbl_name='content_root_mappings' "
+        "AND sql IS NULL AND name LIKE 'sqlite_autoindex_%'"
+    )
+    for (idx_name,) in indexes.fetchall():
+        info = await conn.exec_driver_sql(f"PRAGMA index_info('{idx_name}')")
+        cols = info.fetchall()
+        if len(cols) == 1 and cols[0][2] == "alist_path":
+            return idx_name
+    return None
+
+
+async def repair_content_root_mappings_legacy_unique(conn: AsyncConnection) -> bool:
+    """Rebuild content_root_mappings to remove legacy single-column UNIQUE(alist_path).
+
+    SQLite forbids DROP INDEX on auto-indexes from column-level UNIQUE constraints.
+    We rebuild the table with the same columns and only composite
+    UNIQUE(connection_id, alist_path), copy all rows preserving IDs, drop the
+    old table, rename, and recreate helper indexes.
+
+    Idempotent: returns False when the legacy auto-index is absent.
+    Fails closed: any copy or schema error raises and rolls back the transaction.
+    """
+    legacy_index = await detect_legacy_alist_path_auto_index(conn)
+    if legacy_index is None:
+        return False
+
+    cols_info = await conn.exec_driver_sql("PRAGMA table_info(content_root_mappings)")
+    columns = cols_info.fetchall()
+
+    col_defs: list[str] = []
+    col_names: list[str] = []
+    for _cid, name, col_type, notnull, dflt, pk in columns:
+        col_names.append(name)
+        parts = [name]
+        if col_type:
+            parts.append(col_type)
+        if pk:
+            parts.append("PRIMARY KEY")
+        if notnull:
+            parts.append("NOT NULL")
+        if dflt is not None:
+            parts.append(f"DEFAULT {dflt}")
+        col_defs.append(" ".join(parts))
+
+    await conn.exec_driver_sql(
+        "CREATE TABLE content_root_mappings__repair ("
+        + ", ".join(col_defs)
+        + ", UNIQUE (connection_id, alist_path))"
+    )
+    await conn.exec_driver_sql(
+        f"INSERT INTO content_root_mappings__repair ({', '.join(col_names)}) "
+        f"SELECT {', '.join(col_names)} FROM content_root_mappings"
+    )
+    await conn.exec_driver_sql("DROP TABLE content_root_mappings")
+    await conn.exec_driver_sql(
+        "ALTER TABLE content_root_mappings__repair RENAME TO content_root_mappings"
+    )
+
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_root_mappings_connection_id "
+        "ON content_root_mappings(connection_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_content_root_mappings_content_type "
+        "ON content_root_mappings(content_type)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_content_root_mappings_conn_path "
+        "ON content_root_mappings(connection_id, alist_path)"
+    )
+
+    return True
+
+
+async def state_v25_to_v26_upgrade(conn: AsyncConnection) -> None:
+    """CloudSite 115 cloud download submission state.
+
+    Adds cloud_download_tasks for per-user cloud download submissions.
+    Only owner, driver hash, status, and display metadata are stored;
+    submitted URLs and credentials are never persisted in this table.
+    driver_hash is intentionally non-unique because multiple users may
+    submit the same driver hash.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS cloud_download_tasks("
+        "id INTEGER PRIMARY KEY,"
+        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "driver_hash VARCHAR(128),"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "display_name VARCHAR(255) NOT NULL DEFAULT '',"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_cloud_download_tasks_user_id ON cloud_download_tasks(user_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_cloud_download_tasks_driver_hash ON cloud_download_tasks(driver_hash)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_cloud_download_tasks_status ON cloud_download_tasks(status)"
+    )
+
+
+async def state_v26_to_v27_upgrade(conn: AsyncConnection) -> None:
+    """Schema v26 -> v27: durable parser candidate task state, idempotent."""
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS parser_candidate_tasks("
+        "task_id VARCHAR(35) PRIMARY KEY,"
+        "resource_id VARCHAR(64) NOT NULL,"
+        "input_fingerprint VARCHAR(64) NOT NULL,"
+        "parser_version VARCHAR(40) NOT NULL,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "retry_count INTEGER NOT NULL DEFAULT 0,"
+        "result_json TEXT,"
+        "error_text TEXT,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "completed_at DATETIME,"
+        "UNIQUE (resource_id, input_fingerprint, parser_version),"
+        "CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_parser_candidate_tasks_status "
+        "ON parser_candidate_tasks (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_parser_candidate_tasks_resource_id "
+        "ON parser_candidate_tasks (resource_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_parser_candidate_tasks_parser_version "
+        "ON parser_candidate_tasks (parser_version)"
+    )
+
+
+async def state_v27_to_v28_upgrade(conn: AsyncConnection) -> None:
+    """Schema v27 -> v28: durable, typed A2 review suggestions.
+
+    Adds catalog_review_suggestions to state.db for evidence-backed
+    review suggestions generated by parser candidate tasks.
+
+    Enforces:
+    - one suggestion per task and kind: UNIQUE (parser_candidate_task_id, suggestion_kind)
+    - suggestion_kind constrained to new_resource, new_release, deliverable,
+      possible_duplicate, conflict
+    - status constrained to pending, reviewed, applied, rejected
+    - confidence in [0, 1]
+    - applied_entry_revision is NULL or positive
+
+    Note: parser_candidate_task_id has no foreign key to allow task cleanup
+    while preserving suggestion history (SET NULL semantics).
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS catalog_review_suggestions("
+        "suggestion_id VARCHAR(35) PRIMARY KEY,"
+        "parser_candidate_task_id VARCHAR(35),"
+        "resource_id VARCHAR(64) NOT NULL,"
+        "suggestion_kind VARCHAR(40) NOT NULL,"
+        "proposed_entry_id VARCHAR(35),"
+        "proposed_fields_json TEXT NOT NULL DEFAULT '{}',"
+        "evidence_json TEXT NOT NULL DEFAULT '{}',"
+        "confidence FLOAT NOT NULL DEFAULT 0.0,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "reviewed_by VARCHAR(100) NOT NULL DEFAULT '',"
+        "reviewed_at DATETIME,"
+        "applied_entry_revision INTEGER,"
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "error_text TEXT,"
+        "UNIQUE (parser_candidate_task_id, suggestion_kind),"
+        "CHECK (suggestion_kind IN ('new_resource', 'new_release', 'deliverable', 'possible_duplicate', 'conflict')),"
+        "CHECK (status IN ('pending', 'reviewed', 'applied', 'rejected')),"
+        "CHECK (confidence >= 0 AND confidence <= 1),"
+        "CHECK (applied_entry_revision IS NULL OR applied_entry_revision > 0))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_resource_id "
+        "ON catalog_review_suggestions (resource_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_status "
+        "ON catalog_review_suggestions (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_suggestion_kind "
+        "ON catalog_review_suggestions (suggestion_kind)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_catalog_review_suggestions_parser_candidate_task_id "
+        "ON catalog_review_suggestions (parser_candidate_task_id)"
+    )
 
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
@@ -1414,5 +1613,8 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v22_to_v23", from_version=22, to_version=23, upgrade=state_v22_to_v23_upgrade),
     Migration(id="state_v23_to_v24", from_version=23, to_version=24, upgrade=state_v23_to_v24_upgrade),
     Migration(id="state_v24_to_v25", from_version=24, to_version=25, upgrade=state_v24_to_v25_upgrade),
+    Migration(id="state_v25_to_v26", from_version=25, to_version=26, upgrade=state_v25_to_v26_upgrade),
+    Migration(id="state_v26_to_v27", from_version=26, to_version=27, upgrade=state_v26_to_v27_upgrade),
+    Migration(id="state_v27_to_v28", from_version=27, to_version=28, upgrade=state_v27_to_v28_upgrade),
 ]
 

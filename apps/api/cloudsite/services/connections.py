@@ -164,6 +164,24 @@ async def record_compat(
     return record
 
 
+async def resolve_resource_connection(session: AsyncSession, resource) -> AListConnection | None:
+    """Resolve the AList connection for a resource through its root mapping.
+
+    Legacy resources (root_mapping_id is None) use the default connection (id=1).
+    Resources with a known root_mapping_id resolve through ContentRootMapping.connection_id
+    and fail closed (return None) when the mapping is missing or disabled, so callers never
+    fall back to the default connection for a known non-default root. A missing or disabled
+    connection is returned as-is so the downstream resolver can surface its existing error.
+    """
+    mapping_id = getattr(resource, "root_mapping_id", None)
+    if mapping_id is None:
+        return await session.get(AListConnection, 1)
+    mapping = await session.get(ContentRootMapping, mapping_id)
+    if not mapping or not mapping.enabled:
+        return None
+    return await session.get(AListConnection, mapping.connection_id)
+
+
 async def get_connection_roots(session: AsyncSession, connection_id: int) -> list[ContentRootMapping]:
     rows = await session.scalars(
         select(ContentRootMapping)

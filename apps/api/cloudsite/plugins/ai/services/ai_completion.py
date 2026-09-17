@@ -20,7 +20,7 @@ from typing import Any
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import (
+from cloudsite.models import (
     AIBudgetUsage,
     AIGenerationDraft,
     AIProviderConfig,
@@ -165,6 +165,12 @@ async def list_provider_configs(
     return [_config_to_summary(r) for r in rows]
 
 
+_UPDATABLE_FIELDS = frozenset({
+    "display_name", "endpoint_url", "api_key", "model_name",
+    "enabled", "system_prompt", "max_tokens", "temperature",
+})
+
+
 async def update_provider_config(
     state: AsyncSession,
     config_id: str,
@@ -174,6 +180,8 @@ async def update_provider_config(
     if row is None:
         raise ProviderConfigNotFound(config_id)
     for key, val in fields.items():
+        if key not in _UPDATABLE_FIELDS:
+            raise AICompletionError(f"field \{key}\ is not updatable")
         if hasattr(row, key) and val is not None:
             setattr(row, key, val)
     row.updated_at = utcnow()
@@ -272,7 +280,7 @@ async def generate_draft(
 
     if config_id is None:
         config = await state.scalar(
-            select(AIProviderConfig).where(AIProviderConfig.enabled == True)  # noqa: E712
+            select(AIProviderConfig).where(AIProviderConfig.enabled == True).order_by(AIProviderConfig.created_at.asc())  # noqa: E712
         )
         if config is None:
             raise NoEnabledProvider()
