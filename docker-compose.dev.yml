@@ -57,3 +57,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+  # 独立 Worker 服务（可选）。默认不启动，需显式启用 profile：
+  #   docker compose -f docker-compose.dev.yml --profile worker up -d --build
+  worker:
+    build:
+      context: ./apps/api
+    command: ["python", "-m", "cloudsite.worker_main"]
+    environment:
+      CLOUDSITE_SECRET_KEY: ${CLOUDSITE_SECRET_KEY:-cloudsite-development-key-change-me}
+      CLOUDSITE_MASTER_KEY: ${CLOUDSITE_MASTER_KEY:-}
+      CLOUDSITE_ALLOW_INSECURE_DEV_KEY: "true"
+      CLOUDSITE_DATA_DIR: /data
+      CLOUDSITE_WORKER_QUEUE: ${CLOUDSITE_WORKER_QUEUE:-default}
+      CLOUDSITE_WORKER_POLL_INTERVAL: ${CLOUDSITE_WORKER_POLL_INTERVAL:-2.0}
+      CLOUDSITE_WORKER_MAX_CONCURRENT: ${CLOUDSITE_WORKER_MAX_CONCURRENT:-4}
+      CLOUDSITE_INDEXING_ENGINE: ${CLOUDSITE_INDEXING_ENGINE:-v1}
+    volumes:
+      - ${CLOUDSITE_DATA_PATH:-./data}:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - worker

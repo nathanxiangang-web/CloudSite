@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # 环境变量 CLOUDSITE_INDEXING_ENGINE 控制。
     indexing_engine: str = "v1"
 
+    # C9: 独立 Worker 进程配置。Worker 从 DB 队列租约并执行任务，
+    # 与 API 进程解耦。环境变量 CLOUDSITE_WORKER_* 控制。
+    worker_queue: str = "default"
+    worker_poll_interval: float = 2.0
+    worker_max_concurrent: int = 4
+
     # Set exactly one existing CloudSite user ID before enabling automatic
     # organization. Zero disables user-controlled organization actions.
     organizer_user_id: int = 0
