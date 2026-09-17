@@ -1,6 +1,6 @@
 """管理员会话令牌生成与校验。
 
-Cookie 有效期统一为 24 小时（86400 秒），管理员与用户保持一致。
+Cookie 有效期统一为 7 天（604800 秒），管理员与用户保持一致。
 """
 import base64
 import hashlib
@@ -11,7 +11,7 @@ import time
 
 from ..config import settings
 
-ADMIN_SESSION_MAX_AGE_SECONDS = 86400
+ADMIN_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 logger = logging.getLogger(__name__)
 
 _INSECURE_SECRET_VALUES = {

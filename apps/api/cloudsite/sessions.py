@@ -14,9 +14,9 @@ from .config import settings
 
 
 USER_SESSION_COOKIE = "cloudsite_user_session"
-USER_SESSION_MAX_AGE = 24 * 60 * 60
+USER_SESSION_MAX_AGE = 7 * 24 * 60 * 60
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
-SESSION_RETENTION_DAYS = 2
+SESSION_RETENTION_DAYS = 7
 SESSION_CLEANUP_SECONDS = 6 * 60 * 60
 
 
