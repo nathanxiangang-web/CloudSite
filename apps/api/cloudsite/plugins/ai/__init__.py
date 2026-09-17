@@ -21,3 +21,12 @@ class AIPlugin:
 
 
 plugin = AIPlugin()
+
+# Register AI task handlers with the platform task registry
+try:
+    from cloudsite.platform.tasks.registry import get_registry
+    from cloudsite.plugins.ai.tasks.ai_generate import handle_ai_generate_draft
+
+    get_registry().register("ai.generate_draft", handle_ai_generate_draft, queue="ai")
+except ImportError:
+    pass
