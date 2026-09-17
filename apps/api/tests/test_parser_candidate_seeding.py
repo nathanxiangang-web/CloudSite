@@ -23,6 +23,7 @@ from cloudsite.services.parser_candidate_seeding import (
     seed_parser_candidates_from_sync_run,
 )
 from cloudsite.services.resource_name_parser import PARSER_VERSION
+from cloudsite.modules.automation.application import parser_candidate_seeding as parser_candidate_seeding_impl
 
 
 async def _sessions(tmp_path):
@@ -227,14 +228,14 @@ async def test_per_item_failure_continues(tmp_path, monkeypatch):
         await _add_change(index, run.id, object_id="r3", change_type="updated")
 
         from cloudsite.services import parser_candidate_seeding
-        original_enqueue = parser_candidate_seeding.enqueue_indexed_resource
+        original_enqueue = parser_candidate_seeding_impl.enqueue_indexed_resource
 
         async def flaky_enqueue(state, index, resource_id):
             if resource_id == "r2":
                 raise RuntimeError("simulated enqueue failure")
             return await original_enqueue(state, index, resource_id)
 
-        monkeypatch.setattr(parser_candidate_seeding, "enqueue_indexed_resource", flaky_enqueue)
+        monkeypatch.setattr(parser_candidate_seeding_impl, "enqueue_indexed_resource", flaky_enqueue)
 
         result = await seed_parser_candidates_from_sync_run(
             state, index, sync_run_id=run.id, max_items=10
