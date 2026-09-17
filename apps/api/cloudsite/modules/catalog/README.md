@@ -1,22 +1,102 @@
 # Catalog Module
 
 ## Responsibility
-Catalog entries, metadata, follow, views, publication scope.
+
+Catalog entries, metadata, releases, follow/subscription, and publication
+scope. This module is the editorial layer over resources: it groups resources
+into catalog entries (e.g., a series, a movie, an album), attaches rich
+metadata, manages release versions, and lets users follow entries to receive
+notifications on new releases.
+
+Core duties:
+- Catalog entry CRUD and publication scope management.
+- Metadata extraction and revision history.
+- Release management (version, assets, locations).
+- Tag assignment and relation graph between entries.
+- User follow/subscription and release notifications.
+- Search projection outbox for the search module.
 
 ## Public API
-- CatalogEntry CRUD, metadata extraction, follow/unfollow
-- Catalog search and projection
+
+- `create_entry(resource_id, metadata)` - create a catalog entry.
+- `update_metadata(entry_id, metadata)` - revision-tracked update.
+- `publish_release(entry_id, release)` - publish a new release version.
+- `follow_entry(user_id, entry_id)` / `unfollow_entry(...)`.
+- `list_releases(entry_id)` / `get_entry(entry_id)`.
+- `assign_tags(entry_id, tags)` / `set_relation(entry_a, entry_b, kind)`.
+
+Exports live in `contracts/public.py`. The `public/` directory holds the
+entry and release schemas.
 
 ## Domain Model
-- CatalogEntry, CatalogMetadata, CatalogRelease, CatalogFollow
+
+- CatalogEntry (id, resource_id, title, scope, status, created_at)
+- CatalogMetadata (entry_id, fields, revision_id)
+- CatalogRelease (id, entry_id, version, assets, published_at)
+- CatalogAsset (release_id, kind, resource_id)
+- CatalogLocation (release_id, provider_id, path)
+- CatalogTag (id, name) / CatalogTagAssignment (entry_id, tag_id)
+- CatalogRelation (entry_a, entry_b, relation_kind)
+- CatalogRevision (entry_id, revision_id, diff, author, at)
+- CatalogFollow (user_id, entry_id, created_at)
 
 ## Database Tables
-- catalog_entries, catalog_metadata, catalog_releases, catalog_follows
+
+- `catalog_entries`, `catalog_releases`, `catalog_assets`, `catalog_locations`
+- `catalog_tags`, `catalog_tag_assignments`, `catalog_relations`
+- `catalog_revisions` - metadata revision history.
+- `catalog_search_outbox` - projection outbox for search.
+- `catalog_search_projection_state` - projection watermark.
+- `catalog_favorites`, `catalog_subscriptions` - user engagement.
+- `catalog_release_notifications` - pending release notifications.
+- `catalog_suggestions` - AI-generated metadata suggestions.
 
 ## Dependencies
+
 - platform/db
-- modules/resources (via contracts)
-- modules/search (via contracts)
+- platform/tasks (for metadata extraction and projection jobs)
+- modules/resources (via contracts) - source resource for an entry.
+- modules/search (via contracts) - to trigger projection updates.
+- modules/notifications (via contracts) - for release notifications.
+
+## Events/Tasks
+
+- Emits `catalog.metadata_changed`, `catalog.release_published`.
+- Enqueues metadata extraction and search projection tasks.
+- Consumes `indexing.change_detected` to refresh entry resource links.
+- Release notifications fan out via the notifications module.
+
+## Security
+
+- Publication scope enforces who can see an entry (public, unlisted, private).
+- Metadata edits require editor or admin role; tracked in revisions.
+- Follow/subscription is user-scoped; one user cannot read another's follows.
+- Suggestion application requires editor approval; never auto-applied.
+
+## Failure Modes
+
+- Source resource deleted: entry marked `source_gone`; editor resolves.
+- Revision conflict: optimistic locking on metadata; last writer retries.
+- Projection outbox backlog: eventual consistency; search lags until drained.
+- Release with no assets: rejected at publish time with a validation error.
+
+## Tests
+
+- `tests/unit/` - metadata revision diff, scope checks, relation graph.
+- `tests/contract/` - entry and release schema stability.
+- Target coverage: publication scope, revision history, follow lifecycle.
+
+## Do Not
+
+- Do not store raw file bytes; reference resources by ID.
+- Do not auto-apply AI suggestions; require editor approval.
+- Do not bypass publication scope in any query.
+- Do not write to the FTS index directly; use the outbox pattern.
 
 ## Current Migration Status
-Code in `services/catalog*.py` (46.8KB — largest service file). To be split and moved in Phase 3.
+
+Code is currently in `services/catalog*.py` (46.8KB, the largest service
+file). This is a prime candidate for splitting. Migration to `modules/catalog/`
+is scheduled for Phase 3. The module skeleton with schemas in `public/` is in
+place. The 46.8KB file will split into entry, metadata, release, follow, and
+projection services during migration.

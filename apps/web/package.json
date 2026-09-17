@@ -10,7 +10,11 @@
     "lint": "eslint .",
     "test:security": "node --test tests/*.test.mts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mts"
+    "test": "node --test tests/*.test.mts",
+    "e2e": "playwright test --config=e2e/playwright.config.ts",
+    "e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
+    "e2e:report": "playwright show-report e2e/e2e-report",
+    "e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",
@@ -35,7 +39,8 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4.1.12",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@playwright/test": "^1.49.0"
   },
   "packageManager": "pnpm@10.15.1"
 }
