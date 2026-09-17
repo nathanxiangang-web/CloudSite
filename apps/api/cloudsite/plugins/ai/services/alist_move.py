@@ -74,7 +74,7 @@ async def move_file_within_root(
     The source name is confirmed via client.list_path(refresh=True, strict=True)
     on the source directory, and a target collision is rejected so the move
     never overwrites an existing destination file. The AList move API is called
-    via client._authenticated_request('POST', '/api/fs/move', ...); response
+    via client.move_file('POST', '/api/fs/move', ...); response
     code verification is performed by AListClient._request per existing behavior.
     """
     root_parts = _normalize_segments(root, allow_root=True)
@@ -114,14 +114,10 @@ async def move_file_within_root(
                 status_code=409,
             )
 
-    payload = await client._authenticated_request(
-        "POST",
-        "/api/fs/move",
-        json={
-            "src_dir": source_dir,
-            "dst_dir": destination_dir_normalized,
-            "names": [filename],
-        },
+    payload = await client.move_file(
+        source_dir=source_dir,
+        destination_dir=destination_dir_normalized,
+        names=[filename],
     )
     return MoveResult(
         source=_join(source_parts), destination=destination, result=payload

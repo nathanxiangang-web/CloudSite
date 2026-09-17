@@ -35,10 +35,14 @@ class _MockClient:
         self.list_calls.append((path, refresh, strict))
         return self._listings.get(path, [])
 
-    async def _authenticated_request(
-        self, method: str, path: str, **kwargs: Any
+    async def move_file(
+        self, source_dir: str, destination_dir: str, names: list[str]
     ) -> dict[str, Any]:
-        self.move_calls.append({"method": method, "path": path, "kwargs": kwargs})
+        self.move_calls.append({
+            "method": "POST",
+            "path": "/api/fs/move",
+            "kwargs": {"json": {"src_dir": source_dir, "dst_dir": destination_dir, "names": names}},
+        })
         if self._move_error is not None:
             raise self._move_error
         return self._move_payload

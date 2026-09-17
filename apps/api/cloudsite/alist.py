@@ -188,6 +188,17 @@ class AListClient:
         await self.login()
         return await self._request(method, path, **kwargs)
 
+    async def move_file(self, source_dir: str, destination_dir: str, names: list[str]) -> dict[str, Any]:
+        """Move files within AList storage.
+
+        Public interface for the /api/fs/move endpoint.
+        """
+        return await self._authenticated_request(
+            "POST",
+            "/api/fs/move",
+            json={"src_dir": source_dir, "dst_dir": destination_dir, "names": names},
+        )
+
     async def list_path(self, path: str, refresh: bool = False, strict: bool = False) -> list[dict[str, Any]]:
         payload = await self._authenticated_request(
             "POST",

@@ -267,3 +267,69 @@ async def admin_recover_interrupted_candidates():
             recovered=items,
             recovered_count=len(items),
         )
+
+
+
+@router.get(
+    "/api/admin/parser-candidates/{task_id}",
+    response_model=ParserCandidateTaskOutput,
+)
+async def admin_get_parser_candidate(task_id: str):
+    """Get a single parser candidate task by ID."""
+    from ...main import StateSession
+    from ...services.parser_candidates import get_parser_candidate
+
+    async with StateSession() as state:
+        try:
+            task = await get_parser_candidate(state, task_id)
+        except ParserCandidateError as exc:
+            raise _translate_candidate_error(exc) from exc
+        return _task_to_output(task)
+
+
+@router.post(
+    "/api/admin/parser-candidates/{task_id}/cancel",
+    response_model=ParserCandidateTaskOutput,
+)
+async def admin_cancel_parser_candidate(task_id: str):
+    """Cancel a pending or running parser candidate task."""
+    from ...main import StateSession
+    from ...services.parser_candidates import cancel_parser_candidate
+
+    async with StateSession() as state:
+        try:
+            task = await cancel_parser_candidate(state, task_id)
+            await state.commit()
+        except ParserCandidateError as exc:
+            raise _translate_candidate_error(exc) from exc
+        return _task_to_output(task)
+
+
+@router.post(
+    "/api/admin/parser-candidates/seed",
+    response_model=ParserCandidateEnqueueOutput,
+)
+async def admin_seed_parser_candidates_from_sync(
+    sync_run_id: int,
+    max_items: int = Query(500, ge=1, le=5000),
+):
+    """Seed parser candidates from a completed sync run.
+
+    Scans resources changed in the given sync run and enqueues
+    parser candidate tasks for each, skipping those already enqueued.
+    """
+    from ...main import StateSession, IndexSession
+    from ...services.parser_candidate_seeding import seed_parser_candidates_from_sync_run
+
+    async with StateSession() as state, IndexSession() as index:
+        try:
+            result = await seed_parser_candidates_from_sync_run(
+                state, index, sync_run_id=sync_run_id, max_items=max_items,
+            )
+            await state.commit()
+        except ParserCandidateError as exc:
+            raise _translate_candidate_error(exc) from exc
+        return ParserCandidateEnqueueOutput(
+            enqueued_count=result.enqueued_count,
+            skipped_count=result.skipped_count,
+        )
