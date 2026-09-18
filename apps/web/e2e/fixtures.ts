@@ -1,5 +1,5 @@
 import { test as base, expect, type Page, type APIRequestContext } from '@playwright/test';
-import { waitForApiReady, waitForWebReady, loginViaApi, type ApiHealth } from './helpers';
+import { waitForApiReady, waitForWebReady, loginViaApi, loginViaUi, WEB_BASE_URL, type ApiHealth } from './helpers';
 
 /**
  * Shared E2E fixtures for CloudSite.
@@ -15,6 +15,7 @@ export type E2EFixtures = {
   webReady: boolean;
   apiAuth: APIRequestContext;
   freshPage: Page;
+  loggedInPage: Page;
 };
 
 export const test = base.extend<E2EFixtures>({
@@ -37,7 +38,7 @@ export const test = base.extend<E2EFixtures>({
   },
 
   freshPage: async ({ browser }, use) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ baseURL: WEB_BASE_URL });
     const page = await context.newPage();
     await page.goto('/').catch(() => {});
     await page.evaluate(() => {
@@ -50,6 +51,15 @@ export const test = base.extend<E2EFixtures>({
     });
     await use(page);
     await context.close();
+  },
+
+  loggedInPage: async ({ page, webReady, apiHealth }, use) => {
+    test.skip(!webReady || !apiHealth.ok, 'web or API not ready');
+    await loginViaUi(page, {
+      username: process.env.E2E_USER ?? 'nathan',
+      password: process.env.E2E_PASS ?? '647lsxasd',
+    });
+    await use(page);
   },
 });
 

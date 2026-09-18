@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from ..config import settings
 from ..download import validate_resource_id
 from ..models import Resource
-from ..office import OFFICE_CONTENT_TYPES, office_content_type
+from ..office import OFFICE_CONTENT_TYPES, OfficePreviewError, office_content_type, render_pdf_pages
 from ..preview import PreviewError, resolve_preview_url
 from ..services.connections import resolve_resource_connection
 from ..shares.service import resource_in_publication_scope
@@ -36,6 +36,30 @@ async def serve_office_file(filename: str):
     if not path.is_file():
         raise HTTPException(404, "预览文件不存在或已过期")
     return FileResponse(path, media_type=office_content_type(extension), headers={"Content-Disposition": "inline"})
+
+
+@router.get("/office-files/{filename}/page/{page}")
+async def serve_pdf_page(filename: str, page: int):
+    from ..main import IndexSession, StateSession
+
+    if not filename or "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "无效的预览文件名")
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    if extension != "pdf":
+        raise HTTPException(403, {"code": "PV-002", "message": "该格式不支持在线预览"})
+    resource_id = filename.rsplit(".", 1)[0] if "." in filename else filename
+    async with IndexSession() as index, StateSession() as state:
+        resource = await index.get(Resource, resource_id)
+        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
+            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
+    try:
+        names = render_pdf_pages(resource)
+    except OfficePreviewError as exc:
+        raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+    if page < 1 or page > len(names):
+        raise HTTPException(404, "预览页不存在或已过期")
+    pages_dir = settings.office_cache_dir / f"{resource_id}_pages"
+    return FileResponse(pages_dir / names[page - 1], media_type="image/png")
 
 
 def _preview_error_redirect(resource_id: str, code: str) -> RedirectResponse:

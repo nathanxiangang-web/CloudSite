@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, desc, func, or_, select
 
 from ..models import Folder, Resource
-from ..office import OfficePreviewError, ensure_preview_cached, office_cache_filename
+from ..office import OfficePreviewError, ensure_preview_cached, office_cache_filename, render_pdf_pages
 from ..preview import PreviewError, create_preview_ticket, load_text_preview, preview_capability
 from ..schemas import (
     FolderDetailOutput,

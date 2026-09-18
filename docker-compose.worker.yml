@@ -12,7 +12,7 @@
 
 services:
   worker:
-    image: ${CLOUDSITE_API_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-api}:${CLOUDSITE_IMAGE_TAG:-v2.0.0-alpha.1}
+    image: ${CLOUDSITE_API_IMAGE:-ghcr.io/nathanxiangang-web/cloudsite-api}:${CLOUDSITE_IMAGE_TAG:-v2.0.0-alpha.2}
     pull_policy: always
     command: ["python", "-m", "cloudsite.worker_main"]
     environment:

@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { navigateTo, waitForApiResponse, loginViaUi, uniqueName } from './helpers';
+import { navigateTo, waitForApiResponse, uniqueName } from './helpers';
 
 /**
  * B5-06 Share flow.
@@ -9,84 +9,73 @@ import { navigateTo, waitForApiResponse, loginViaUi, uniqueName } from './helper
  */
 
 test.describe('06 - Share', () => {
-  test('resource detail has a share button', async ({ page, webReady, apiHealth }) => {
-    test.skip(!webReady || !apiHealth.ok, 'web or API not ready');
-    await navigateTo(page, '/browse');
-    await waitForApiResponse(page, /\/api\//);
-    const resourceLink = page.locator('a[href*="/resource/"]').first();
+  test('resource detail has a share button', async ({ loggedInPage }) => {
+    await navigateTo(loggedInPage, '/browse');
+    await loggedInPage.locator('.resource-card, a[href*="/resource/"], .empty').first().waitFor({ timeout: 10_000 }).catch(() => {});
+    const resourceLink = loggedInPage.locator('a[href*="/resource/"]').first();
     const linkCount = await resourceLink.count();
     test.skip(linkCount === 0, 'no resources available');
     await resourceLink.click();
-    await page.waitForLoadState('networkidle').catch(() => {});
-    const shareBtn = page.locator(
-      'a:has-text("Share"), button:has-text("Share"), [data-testid="share-button"]',
+    await loggedInPage.waitForURL((url) => url.pathname.includes('/resource/'), { timeout: 15_000 }).catch(() => {});
+    await loggedInPage.waitForTimeout(2000);
+    const shareBtn = loggedInPage.locator(
+      '.detail-actions button:has-text("分享"), button:has-text("分享"), [data-testid="share-button"]',
     ).first();
     const btnCount = await shareBtn.count();
     test.skip(btnCount === 0, 'no share button on resource detail');
     await expect(shareBtn).toBeVisible();
   });
 
-  test('create a share link for a resource', async ({ page, webReady, apiHealth }) => {
-    test.skip(!webReady || !apiHealth.ok, 'web or API not ready');
-    const username = process.env.E2E_USER ?? 'e2e_user';
-    const password = process.env.E2E_PASS ?? 'e2e_pass_123';
-    await loginViaUi(page, { username, password });
-    await navigateTo(page, '/browse');
-    await waitForApiResponse(page, /\/api\//);
-    const resourceLink = page.locator('a[href*="/resource/"]').first();
+  test('create a share link for a resource', async ({ loggedInPage }) => {
+    await navigateTo(loggedInPage, '/browse');
+    await loggedInPage.locator('.resource-card, a[href*="/resource/"], .empty').first().waitFor({ timeout: 10_000 }).catch(() => {});
+    const resourceLink = loggedInPage.locator('a[href*="/resource/"]').first();
     const linkCount = await resourceLink.count();
     test.skip(linkCount === 0, 'no resources available');
     await resourceLink.click();
-    await page.waitForLoadState('networkidle').catch(() => {});
-    const shareBtn = page.locator(
-      'a:has-text("Share"), button:has-text("Share"), [data-testid="share-button"]',
+    await loggedInPage.waitForURL((url) => url.pathname.includes('/resource/'), { timeout: 15_000 }).catch(() => {});
+    const shareBtn = loggedInPage.locator(
+      '.detail-actions button:has-text("分享"), button:has-text("分享"), [data-testid="share-button"]',
     ).first();
     const btnCount = await shareBtn.count();
     test.skip(btnCount === 0, 'no share button');
     await shareBtn.click();
-    await page.waitForTimeout(2000);
-    // Look for a generated share URL or token.
-    const shareUrl = page.locator('input[readonly], [data-testid="share-url"], a[href*="/s/"]').first();
+    await loggedInPage.waitForTimeout(2000);
+    const shareUrl = loggedInPage.locator('input[readonly], [data-testid="share-url"], a[href*="/s/"]').first();
     const urlCount = await shareUrl.count();
     test.skip(urlCount === 0, 'no share URL generated');
     await expect(shareUrl).toBeVisible();
   });
 
-  test('open a public share link', async ({ page, webReady, apiHealth }) => {
+  test('open a public share link', async ({ loggedInPage, page, webReady, apiHealth }) => {
     test.skip(!webReady || !apiHealth.ok, 'web or API not ready');
-    // Navigate to the share route pattern. We try the admin shares list
-    // or a known share token from env.
     const knownToken = process.env.E2E_SHARE_TOKEN;
     if (knownToken) {
       await navigateTo(page, `/s/${knownToken}`);
       const body = page.locator('body');
       await expect(body).toBeVisible();
     } else {
-      // Try to create a share first, then open it.
-      const username = process.env.E2E_USER ?? 'e2e_user';
-      const password = process.env.E2E_PASS ?? 'e2e_pass_123';
-      await loginViaUi(page, { username, password });
-      await navigateTo(page, '/browse');
-      await waitForApiResponse(page, /\/api\//);
-      const resourceLink = page.locator('a[href*="/resource/"]').first();
+      await navigateTo(loggedInPage, '/browse');
+      await waitForApiResponse(loggedInPage, /\/api\//);
+      const resourceLink = loggedInPage.locator('a[href*="/resource/"]').first();
       const linkCount = await resourceLink.count();
       test.skip(linkCount === 0, 'no resources available');
       await resourceLink.click();
-      await page.waitForLoadState('networkidle').catch(() => {});
-      const shareBtn = page.locator(
-        'button:has-text("Share"), [data-testid="share-button"]',
+      await loggedInPage.waitForLoadState('networkidle').catch(() => {});
+      const shareBtn = loggedInPage.locator(
+        'button:has-text("分享"), button:has-text("Share"), [data-testid="share-button"]',
       ).first();
       const btnCount = await shareBtn.count();
       test.skip(btnCount === 0, 'no share button');
       await shareBtn.click();
-      await page.waitForTimeout(2000);
-      const shareLink = page.locator('a[href*="/s/"]').first();
+      await loggedInPage.waitForTimeout(2000);
+      const shareLink = loggedInPage.locator('a[href*="/s/"]').first();
       const shareLinkCount = await shareLink.count();
       test.skip(shareLinkCount === 0, 'no share link generated');
       const href = await shareLink.getAttribute('href');
       test.skip(!href, 'share link has no href');
-      await navigateTo(page, href as string);
-      const body = page.locator('body');
+      await navigateTo(loggedInPage, href as string);
+      const body = loggedInPage.locator('body');
       await expect(body).toBeVisible();
     }
   });

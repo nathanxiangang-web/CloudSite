@@ -114,11 +114,11 @@ export async function loginViaUi(
     password: process.env.E2E_PASS ?? 'e2e_pass_123',
   };
   await navigateTo(page, '/login');
-  const userInput = page.locator('input[name="username"], input[name="email"], input[type="email"]').first();
-  const passInput = page.locator('input[name="password"], input[type="password"]').first();
+  const userInput = page.locator('input[autocomplete="username"], input[name="username"], input[name="email"], input[type="email"]').first();
+  const passInput = page.locator('input[type="password"], input[name="password"]').first();
   await userInput.fill(creds.username);
   await passInput.fill(creds.password);
-  const submit = page.locator('button[type="submit"], button:has-text("Login"), button:has-text("Sign in")').first();
+  const submit = page.locator('button.user-auth-submit, button[type="submit"], button:has-text("登录"), button:has-text("Login"), button:has-text("Sign in")').first();
   await submit.click();
   await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15_000 }).catch(() => {});
 }
@@ -136,15 +136,19 @@ export async function registerViaUi(
     email: `e2e_${Date.now()}@example.test`,
   };
   await navigateTo(page, '/register');
-  const userInput = page.locator('input[name="username"]').first();
+  const userInput = page.locator('input[autocomplete="username"], input[name="username"]').first();
   const emailInput = page.locator('input[name="email"], input[type="email"]').first();
-  const passInput = page.locator('input[name="password"], input[type="password"]').first();
+  const passInputs = page.locator('input[type="password"], input[name="password"]');
   await userInput.fill(creds.username);
   if (await emailInput.count() > 0) {
     await emailInput.fill(creds.email ?? `${creds.username}@example.test`);
   }
-  await passInput.fill(creds.password);
-  const submit = page.locator('button[type="submit"], button:has-text("Register"), button:has-text("Sign up")').first();
+  const passCount = await passInputs.count();
+  await passInputs.nth(0).fill(creds.password);
+  if (passCount > 1) {
+    await passInputs.nth(1).fill(creds.password);
+  }
+  const submit = page.locator('button.user-auth-submit, button[type="submit"], button:has-text("创建账号"), button:has-text("Register"), button:has-text("Sign up")').first();
   await submit.click();
   await page.waitForURL((url) => !url.pathname.includes('/register'), { timeout: 15_000 }).catch(() => {});
 }
@@ -153,14 +157,23 @@ export async function registerViaUi(
  * Log out via the web UI. Looks for a logout link/button or visits /logout.
  */
 export async function logoutViaUi(page: import('@playwright/test').Page): Promise<void> {
-  const logoutLink = page.locator('a:has-text("Logout"), a:has-text("Log out"), button:has-text("Logout"), button:has-text("Log out")').first();
-  if (await logoutLink.count() > 0) {
-    await logoutLink.click();
-  } else {
-    await page.goto('/logout').catch(() => {});
-    await page.goto('/login').catch(() => {});
+  const logoutBtn = page.locator('button:has-text("退出登录"), button:has-text("Logout"), button:has-text("Log out")').first();
+  const detailsSummary = page.locator('details.auth-menu > summary').first();
+  if ((await detailsSummary.count()) > 0) {
+    await detailsSummary.click().catch(() => {});
+    await page.waitForTimeout(500);
   }
-  await page.waitForURL((url) => url.pathname === '/' || url.pathname.includes('/login'), { timeout: 10_000 }).catch(() => {});
+  const btnCount = await logoutBtn.count();
+  if (btnCount > 0) {
+    await logoutBtn.click({ force: true }).catch(() => {});
+  }
+  await page.evaluate(async () => {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    window.location.href = '/login';
+  }).catch(() => {});
+  await page.waitForURL((url) => url.pathname.includes('/login'), { timeout: 10_000 }).catch(() => {});
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(500);
 }
 
 /**
@@ -168,8 +181,12 @@ export async function logoutViaUi(page: import('@playwright/test').Page): Promis
  * menu, logout button, or absence of login link).
  */
 export async function isAuthenticated(page: import('@playwright/test').Page): Promise<boolean> {
-  const logout = page.locator('a:has-text("Logout"), button:has-text("Logout"), [data-testid="user-menu"]').first();
-  const login = page.locator('a:has-text("Login"), a:has-text("Sign in")').first();
+  if (page.url().includes('/login') || page.url().includes('/register')) return false;
+  await page.waitForTimeout(500);
+  const authMenu = page.locator('details.auth-menu').first();
+  const logout = page.locator('button:has-text("退出登录"), a:has-text("退出登录"), button:has-text("Logout"), [data-testid="user-menu"]').first();
+  const login = page.locator('nav.auth-links a:has-text("登录"), a:has-text("Login"), a:has-text("Sign in")').first();
+  if ((await authMenu.count()) > 0) return true;
   if ((await logout.count()) > 0) return true;
   if ((await login.count()) > 0) return false;
   return false;

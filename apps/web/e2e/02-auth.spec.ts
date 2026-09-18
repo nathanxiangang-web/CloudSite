@@ -40,16 +40,15 @@ test.describe('02 - Authentication', () => {
   test('login page rejects invalid credentials', async ({ page, webReady, apiHealth }) => {
     test.skip(!webReady || !apiHealth.ok, 'web or API not ready');
     await navigateTo(page, '/login');
-    const userInput = page.locator('input[name="username"], input[name="email"], input[type="email"]').first();
-    const passInput = page.locator('input[name="password"], input[type="password"]').first();
+    const userInput = page.locator('input[autocomplete="username"], input[name="username"], input[type="email"]').first();
+    const passInput = page.locator('input[type="password"], input[name="password"]').first();
     await userInput.fill('nonexistent_user_xyz');
     await passInput.fill('wrong_password_123');
-    const submit = page.locator('button[type="submit"]').first();
+    const submit = page.locator('button.user-auth-submit, button[type="submit"]').first();
     await submit.click();
-    // Should stay on login page or show an error.
     await page.waitForTimeout(2000);
     const stillOnLogin = page.url().includes('/login');
-    const hasError = (await page.locator('text=/invalid|incorrect|error|failed/i').count()) > 0;
+    const hasError = (await page.locator('text=/invalid|incorrect|error|failed|错误|失败/i').count()) > 0;
     expect(stillOnLogin || hasError).toBe(true);
   });
 

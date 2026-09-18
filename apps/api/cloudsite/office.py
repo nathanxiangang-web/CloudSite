@@ -1,3 +1,5 @@
+import re
+import subprocess
 import time
 from pathlib import Path
 
@@ -49,6 +51,47 @@ def sweep_office_cache() -> None:
     for path in cache_dir.glob("*"):
         if path.is_file() and (now - path.stat().st_mtime) > settings.office_cache_ttl_seconds:
             path.unlink(missing_ok=True)
+        elif path.is_dir() and path.name.endswith("_pages"):
+            try:
+                if not any(path.iterdir()) or all((now - p.stat().st_mtime) > settings.office_cache_ttl_seconds for p in path.iterdir()):
+                    for p in path.iterdir():
+                        p.unlink(missing_ok=True)
+                    path.rmdir()
+            except OSError:
+                pass
+
+
+def _page_number(name: str) -> int:
+    match = re.search(r"-(\d+)\.png$", name)
+    return int(match.group(1)) if match else 0
+
+
+def render_pdf_pages(resource) -> list[str]:
+    """把缓存 PDF 转成每页 PNG，返回按页码排序的文件名列表（page-N.png）。"""
+    pdf_path = office_cache_path(resource)
+    if not pdf_path.is_file():
+        raise OfficePreviewError("PV-004", "预览文件不存在或已过期", 404)
+    pages_dir = settings.office_cache_dir / f"{resource.id}_pages"
+    now = time.time()
+    cached = sorted(pages_dir.glob("page-*.png"), key=lambda p: _page_number(p.name)) if pages_dir.exists() else []
+    if cached and all((now - p.stat().st_mtime) < settings.office_cache_ttl_seconds for p in cached):
+        return [p.name for p in cached]
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    for path in pages_dir.glob("*.png"):
+        path.unlink(missing_ok=True)
+    try:
+        subprocess.run(
+            ["pdftoppm", "-png", "-r", "120", str(pdf_path), str(pages_dir / "page")],
+            check=True, capture_output=True, timeout=60,
+        )
+    except FileNotFoundError as exc:
+        raise OfficePreviewError("PV-010", "服务器缺少 PDF 渲染组件", 503) from exc
+    except Exception as exc:
+        raise OfficePreviewError("PV-999", "PDF 渲染失败") from exc
+    rendered = sorted(pages_dir.glob("page-*.png"), key=lambda p: _page_number(p.name))
+    if not rendered:
+        raise OfficePreviewError("PV-999", "PDF 渲染失败（无页面输出）")
+    return [p.name for p in rendered]
 
 
 async def ensure_preview_cached(resource, connection) -> Path:
