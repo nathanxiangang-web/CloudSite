@@ -29,6 +29,8 @@ jobs:
           else
             python scripts/check-architecture-debt.py
           fi
+      - name: Self-test architecture debt rules
+        run: bash scripts/tests/test-architecture-debt-ratchet.sh
 
   backend:
     runs-on: ubuntu-latest
