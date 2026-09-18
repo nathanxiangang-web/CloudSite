@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
+import { catalogAssetDownloadPath } from "../src/features/catalog/api.ts";
 import {
   assetDimensionLabel,
-  catalogAssetDownloadPath,
   releaseIsHistorical,
   releaseIsPublished,
   releaseIsRecommended,
-} from "../src/features/catalog/index.ts";
+} from "../src/features/catalog/model.ts";
 
 test("catalog detail helpers preserve release and download behavior", () => {
   assert.equal(releaseIsPublished({ status: "published" }), true);
