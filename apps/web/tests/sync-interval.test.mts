@@ -20,13 +20,9 @@ test("normalizeSyncInterval falls back to 360 for invalid values", () => {
   assert.equal(normalizeSyncInterval(999), 360);
 });
 
-test("isRollingFixedSchedule true only for 1.1 with completed initial index", () => {
-  assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.1", initial_index_completed_at: "2026-09-01T00:00:00Z" }), true);
-});
-
-test("isRollingFixedSchedule false for legacy or incomplete index", () => {
+test("isRollingFixedSchedule stays disabled after the rolling engine was removed", () => {
   assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.0", initial_index_completed_at: "2026-09-01T00:00:00Z" }), false);
+  assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.1", initial_index_completed_at: "2026-09-01T00:00:00Z" }), false);
   assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.1", initial_index_completed_at: null }), false);
-  assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.1" }), false);
   assert.equal(isRollingFixedSchedule({}), false);
 });

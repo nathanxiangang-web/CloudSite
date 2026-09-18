@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { renderXlsxWorkbook } from "@/lib/xlsx-preview";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
@@ -43,16 +44,11 @@ async function renderOffice(arrayBuffer: ArrayBuffer, extension: string): Promis
     const result = await mammoth.convertToHtml({ arrayBuffer });
     return sanitizeHtml(result.value);
   }
-  if (ext === "xlsx" || ext === "xls") {
-    const XLSX = await import("xlsx");
-    const workbook = XLSX.read(arrayBuffer, { type: "array" });
-    const sheets: string[] = [];
-    for (const name of workbook.SheetNames) {
-      const sheet = workbook.Sheets[name];
-      const html = XLSX.utils.sheet_to_html(sheet, { editable: false });
-      sheets.push(`<div class="xlsx-sheet"><h4>${escapeHtml(name)}</h4>${html}</div>`);
-    }
-    return sanitizeHtml(sheets.length ? sheets.join("") : "<p>未能在该电子表格中提取到数据。</p>");
+  if (ext === "xlsx") {
+    return sanitizeHtml(await renderXlsxWorkbook(arrayBuffer));
+  }
+  if (ext === "xls") {
+    throw new Error("旧版 XLS 浏览器内预览暂不支持，请下载后使用 Excel 或 LibreOffice 查看。");
   }
   if (ext === "pptx" || ext === "ppt") {
     const JSZip = (await import("jszip")).default;
