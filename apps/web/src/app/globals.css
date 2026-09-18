@@ -752,6 +752,8 @@ button:active, .button:active { transform:scale(.97); }
 [data-theme="dark"] {
   --blue:#0A84FF; --blue-soft:#0a2540; --ink:#f5f5f7; --muted:#8e8e93; --line:#38383a; --panel:#1c1c1e; --bg:#000;
 }
+[data-theme="dark"] .login-page { background:radial-gradient(circle at 50% 0,#1a1a2e 0,transparent 38%),#000; }
+[data-theme="dark"] .user-auth-page { background:radial-gradient(circle at 50% 0,#1a1a2e 0,transparent 38%),#000; }
 [data-theme="dark"] html { background:#000; }
 [data-theme="dark"] body { background:#000; color:#f5f5f7; }
 [data-theme="dark"] .app-shell,
