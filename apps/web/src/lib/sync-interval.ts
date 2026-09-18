@@ -7,5 +7,5 @@ export function isRollingFixedSchedule(system: {
   sync_engine_version?: string;
   initial_index_completed_at?: string | null;
 }): boolean {
-  return system.sync_engine_version === "1.1" && Boolean(system.initial_index_completed_at);
+  return false;
 }

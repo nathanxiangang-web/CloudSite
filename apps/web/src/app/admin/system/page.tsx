@@ -40,7 +40,7 @@ function capLabel(value: string | undefined) {
 function strategyLabel(value: string | undefined) {
   if (value === "delta") return "增量同步";
   if (value === "webhook_delta") return "Webhook + 增量";
-  return "Rolling 1.1 同步";
+  return "Indexing v2";
 }
 
 export default function SystemPage() {

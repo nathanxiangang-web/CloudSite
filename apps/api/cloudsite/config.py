@@ -30,10 +30,10 @@ class Settings(BaseSettings):
     sync_mass_change_ratio: float = 0.10
     sync_max_item_attempts: int = 6
 
-    # C7: 索引引擎切换开关。默认 "v1" 使用 sync/rolling.py 旧索引；
-    # 设为 "v2" 时改用 modules/indexing 的 ScanCategoryService + ReconcileService。
-    # 环境变量 CLOUDSITE_INDEXING_ENGINE 控制。
-    indexing_engine: str = "v1"
+    # C7/C11: 索引引擎。"v2" 使用 modules/indexing 的
+    # ScanCategoryService + ReconcileService 写入 folders/resources 表。
+    # 环境变量 CLOUDSITE_INDEXING_ENGINE 控制。默认 v2。
+    indexing_engine: str = "v2"
 
     # C9: 独立 Worker 进程配置。Worker 从 DB 队列租约并执行任务，
     # 与 API 进程解耦。环境变量 CLOUDSITE_WORKER_* 控制。

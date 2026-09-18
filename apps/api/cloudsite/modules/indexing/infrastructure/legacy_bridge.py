@@ -1,15 +1,15 @@
-"""Legacy-to-v2 indexing bridge.
+"""V2 indexing engine bridge.
 
 When CLOUDSITE_INDEXING_ENGINE=v2, :func:`run_indexing_v2` is called
 instead of the legacy rolling window. It wires the new
 ``ScanCategoryService`` and ``ReconcileService`` to a provider adapter
 and indexing store, executes a scan+reconcile pass for each requested
-category, and returns a summary dict shaped like
-``run_due_rolling_window``'s result so callers can treat both engines
-uniformly.
+category, and returns a summary dict.
 
-Production wiring (real adapter/store factories) is added in a later
-change; until then callers inject fakes or receive a ``skipped`` status.
+:func:`run_indexing_v2_production` provides the production wiring:
+it loads AList connections + content roots from the state DB, builds
+an AListProviderAdapter and a ProductionIndexingStore (writing to
+folders/resources tables), and delegates to run_indexing_v2.
 """
 from __future__ import annotations
 
@@ -95,4 +95,56 @@ async def run_indexing_v2(
     return summary.to_dict()
 
 
-__all__ = ["V2IndexingSummary", "run_indexing_v2"]
+async def run_indexing_v2_production() -> dict[str, Any]:
+    """Production entry point for v2 indexing.
+
+    Loads AList connections + content roots, builds real adapter/store,
+    and runs scan+reconcile for every enabled content type. Writes go
+    to the folders/resources tables so the frontend sees the data.
+    """
+    from cloudsite.database import IndexSession, StateSession
+    from cloudsite.indexer import load_all_connections_and_roots
+    from cloudsite.models import ContentRootMapping
+    from sqlalchemy import select
+
+    from .alist_adapter import AListProviderAdapter
+    from .production_store import ProductionIndexingStore
+
+    connections = await load_all_connections_and_roots()
+    if not connections:
+        return {"status": "skipped", "engine": "v2", "reason": "no_connections"}
+
+    all_category_ids: list[str] = []
+    for _conn, _client, roots in connections:
+        for root in roots:
+            if root.content_type not in all_category_ids:
+                all_category_ids.append(root.content_type)
+
+    total_summary = V2IndexingSummary()
+    for _conn, client, roots in connections:
+        adapter = AListProviderAdapter(client, roots)
+        async with IndexSession() as session:
+            store = ProductionIndexingStore(session)
+            result = await run_indexing_v2(
+                adapter=adapter,
+                store=store,
+                category_ids=[r.content_type for r in roots],
+            )
+            await session.commit()
+        if result.get("status") == "success":
+            total_summary.categories_scanned += result.get("categories_scanned", 0)
+            total_summary.pages_fetched += result.get("pages_fetched", 0)
+            writes = result.get("writes", {})
+            total_summary.writes.added += writes.get("added", 0)
+            total_summary.writes.changed += writes.get("changed", 0)
+            total_summary.writes.removed += writes.get("removed", 0)
+            total_summary.writes.unchanged += writes.get("unchanged", 0)
+        elif result.get("status") == "partial":
+            total_summary.errors.extend(result.get("errors", []))
+
+    if total_summary.errors:
+        total_summary.status = "partial"
+    return total_summary.to_dict()
+
+
+__all__ = ["V2IndexingSummary", "run_indexing_v2", "run_indexing_v2_production"]
