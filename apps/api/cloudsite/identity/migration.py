@@ -101,9 +101,39 @@ async def migrate_stable_resource_ids() -> int:
                 )
             missing = active_ids - identity_ids
             if missing:
-                raise RuntimeError(
-                    f"Stable ID 注册表不完整：{len(missing)} 个活跃资源缺少身份记录"
-                )
+
+                now = datetime.now(timezone.utc)
+                async with IndexSession() as index:
+                    missing_rows = list(
+                        (
+                            await index.scalars(
+                                select(Resource).where(
+                                    Resource.id.in_(missing),
+                                    Resource.status == "active",
+                                )
+                            )
+                        ).all()
+                    )
+                for res in missing_rows:
+                    existing = await state.get(ResourceIdentity, res.id)
+                    if existing is None:
+                        state.add(ResourceIdentity(
+                            resource_id=res.id,
+                            current_path=res.path,
+                            root_mapping_id=res.root_mapping_id,
+                            status="active",
+                            first_seen_at=now,
+                            last_seen_at=now,
+                            last_name=res.name,
+                            last_extension=res.extension or "",
+                            last_mime_type=res.mime_type or "",
+                            last_size=res.size or 0,
+                            fingerprint_version=1,
+                            created_from="auto_backfill",
+                            updated_at=now,
+                        ))
+                await state.commit()
+                total += len(missing)
             return total
 
     async with IndexSession() as index:
