@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
 from .. import __version__
 from .exception_handlers import register_exception_handlers
@@ -35,7 +35,7 @@ def create_app_shell() -> FastAPI:
     return app
 
 
-def register_public_routers(app: FastAPI) -> None:
+def register_public_routers(app: FastAPI) -> APIRouter:
     """Register public/user-facing routers in their historical order."""
     from ..auth import router as auth_router
     from ..site import router as site_router
@@ -82,6 +82,7 @@ def register_public_routers(app: FastAPI) -> None:
     )
     for router in routers:
         app.include_router(router)
+    return users_router
 
 
 def register_admin_routers(app: FastAPI) -> None:
@@ -162,8 +163,9 @@ def register_plugin_routers(app: FastAPI) -> "PluginRegistry":
     return registry
 
 
-def compose_app(app: FastAPI) -> "PluginRegistry":
-    """Apply the full CloudSite route/plugin graph to an existing app shell."""
-    register_public_routers(app)
+def compose_app(app: FastAPI) -> tuple["PluginRegistry", APIRouter]:
+    """Apply the route/plugin graph and return transitional compatibility handles."""
+    users_router = register_public_routers(app)
     register_admin_routers(app)
-    return register_plugin_routers(app)
+    registry = register_plugin_routers(app)
+    return registry, users_router

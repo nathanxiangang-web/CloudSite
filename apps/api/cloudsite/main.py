@@ -53,7 +53,7 @@ SESSION_COOKIE = "cloudsite_session"
 SHARE_CLEANUP_SECONDS = 3600
 
 app = create_app_shell()
-_registry = compose_app(app)
+_registry, users_router = compose_app(app)
 
 # 兼容 re-export：历史测试与懒加载代码仍直接从 cloudsite.main 读取这些符号。
 from .routers.home import (

@@ -31,7 +31,7 @@ Composition is intentionally split into two functions.
 main.py now performs only these two composition calls:
 
     app = create_app_shell()
-    _registry = compose_app(app)
+    _registry, users_router = compose_app(app)
 
 The two phases preserve a legacy compatibility detail: cloudsite.main.app exists
 before router modules are imported. This reduces circular-import risk while the
@@ -43,8 +43,11 @@ M3 deliberately keeps historical re-exports still used by tests and legacy
 code, including scheduler state, selected router helpers/caches, DTO helpers,
 and security/database functions.
 
-Those re-exports are migration debt, not the target architecture. Remove them
-incrementally only when callers have moved behind module or platform contracts.
+Those re-exports are migration debt, not the target architecture. The
+users_router handle is also returned by the composition root only because the
+legacy admin route inventory test imports it from cloudsite.main. It is not a
+new wiring entry point. Remove these compatibility handles incrementally only
+when callers have moved behind module or platform contracts.
 
 ## Rule for new work
 
