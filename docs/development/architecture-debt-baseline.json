@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "policy": "Existing architecture debt may be removed but no new debt IDs may be introduced.",
+  "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
   "counts": {
     "module_legacy_import": 25,
-    "router_orm_import": 65
+    "router_orm_import": 63
   },
   "violations": [
     {
@@ -227,18 +227,6 @@
       "file": "apps/api/cloudsite/routers/admin/diagnostics.py",
       "target": "sqlalchemy",
       "id": "router_orm_import::apps/api/cloudsite/routers/admin/diagnostics.py::sqlalchemy"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/admin/identities.py",
-      "target": "cloudsite.models",
-      "id": "router_orm_import::apps/api/cloudsite/routers/admin/identities.py::cloudsite.models"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/admin/identities.py",
-      "target": "sqlalchemy",
-      "id": "router_orm_import::apps/api/cloudsite/routers/admin/identities.py::sqlalchemy"
     },
     {
       "rule": "router_orm_import",

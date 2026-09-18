@@ -23,9 +23,15 @@ jobs:
       - name: Enforce architecture debt ratchet
         env:
           BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
         run: |
+          zero_sha="0000000000000000000000000000000000000000"
           if [[ -n "$BASE_REF" ]]; then
             python scripts/check-architecture-debt.py --baseline-ref "origin/$BASE_REF"
+          elif [[ "$EVENT_NAME" == "push" && "$EVENT_REF" == "refs/heads/main" && -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero_sha" ]]; then
+            python scripts/check-architecture-debt.py --baseline-ref "$BEFORE_SHA"
           else
             python scripts/check-architecture-debt.py
           fi
