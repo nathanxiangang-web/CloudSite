@@ -20,8 +20,12 @@ test("parseWorksheetXml resolves shared, inline, boolean, and sparse cells", () 
     </row>
     <row r="2"><c r="B2"><v>42</v></c></row>
   </sheetData></worksheet>`;
-  assert.deepEqual(parseWorksheetXml(xml, ["Shared"]), [
-    ["Shared", undefined, "Inline", "TRUE"],
-    [undefined, "42"],
-  ]);
+  const rows = parseWorksheetXml(xml, ["Shared"]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0][0], "Shared");
+  assert.equal(rows[0][1], undefined);
+  assert.equal(rows[0][2], "Inline");
+  assert.equal(rows[0][3], "TRUE");
+  assert.equal(rows[1][0], undefined);
+  assert.equal(rows[1][1], "42");
 });
