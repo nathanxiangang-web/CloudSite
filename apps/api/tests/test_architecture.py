@@ -173,6 +173,40 @@ class TestNoNewTopLevelFiles:
         )
 
 
+class TestCompositionRoot:
+    """Application wiring belongs in infrastructure/composition.py, not main.py."""
+
+    def test_main_does_not_register_routers_directly(self):
+        main_file = CLOUDSITE / "main.py"
+        source = main_file.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        assert ".include_router(" not in source
+        assert "create_app_shell()" in source
+        assert "compose_app(app)" in source
+
+        router_alias_imports: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            for alias in node.names:
+                if alias.name == "router":
+                    router_alias_imports.append(
+                        f"line {node.lineno}: from {node.module or '<relative>'} import router"
+                    )
+        assert not router_alias_imports, (
+            "cloudsite.main must not own router imports:\n" + "\n".join(router_alias_imports)
+        )
+
+    def test_composition_root_owns_router_registration(self):
+        composition = CLOUDSITE / "infrastructure" / "composition.py"
+        assert composition.exists()
+        source = composition.read_text(encoding="utf-8")
+        assert "def create_app_shell(" in source
+        assert "def compose_app(" in source
+        assert "app.include_router(" in source
+
+
 class TestModuleStructure:
     """Validate that each module has the required minimum structure."""
 
