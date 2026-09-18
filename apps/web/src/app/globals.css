@@ -914,6 +914,12 @@ button:active, .button:active { transform:scale(.97); }
 [data-theme="dark"] .admin-tab { color:#8e8e93; }
 [data-theme="dark"] .admin-tab:hover { color:var(--blue); background:#2c2c2e; }
 [data-theme="dark"] .admin-tab.active { color:#fff; background:var(--blue); }
+[data-theme="dark"] .sync-run-list > button { background:#1c1c1e; border-color:#38383a; }
+[data-theme="dark"] .sync-run-list > button.selected { background:#0a2540; }
+[data-theme="dark"] .sync-progress-bar { background:#1c1c1e; }
+[data-theme="dark"] .search-state { background:#1c1c1e; border-color:#38383a; }
+[data-theme="dark"] .readonly-value { background:#2c2c2e; border-color:#38383a; color:#aeaeb2; }
+[data-theme="dark"] .diagnostic-flow span { background:#2c2c2e; color:#aeaeb2; }
 
 /* 类型图标背景 */
 [data-theme="dark"] .type-software { background:#0a2540; }
