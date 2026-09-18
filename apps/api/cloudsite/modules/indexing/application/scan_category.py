@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from ..domain.snapshot import CategorySnapshot, SnapshotEntry
 from ..infrastructure.provider_adapter import ProviderAdapter
@@ -32,6 +33,7 @@ class ScanCategoryService:
         *,
         max_pages: int = 100,
         page_size: int | None = None,
+        on_progress: Any = None,
     ) -> ScanCategoryResult:
         caps = self._adapter.capabilities
         if not caps.supports_scan:
@@ -48,7 +50,7 @@ class ScanCategoryService:
         while pages < max_pages:
             limit = page_size or caps.max_page_size
             entries, next_cursor, page_complete = await self._adapter.scan_category(
-                category_id, cursor=cursor, limit=limit,
+                category_id, cursor=cursor, limit=limit, on_progress=on_progress,
             )
             all_entries.extend(entries)
             pages += 1

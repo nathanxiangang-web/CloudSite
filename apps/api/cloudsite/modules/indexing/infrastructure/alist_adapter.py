@@ -47,6 +47,7 @@ class AListProviderAdapter:
         *,
         cursor: str | None = None,
         limit: int | None = None,
+        on_progress: Any = None,
     ) -> tuple[list[SnapshotEntry], str | None, bool]:
         root = self._roots.get(category_id)
         if root is None:
@@ -69,6 +70,8 @@ class AListProviderAdapter:
         while queue:
             current_path = queue.pop(0)
             items = await self._client.list_path(current_path)
+            if on_progress:
+                await on_progress(current_path, len(entries))
             for item in items:
                 name = str(item.get("name") or "").strip()
                 if not name:

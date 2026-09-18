@@ -54,6 +54,7 @@ async def run_indexing_v2(
     adapter: ProviderAdapter | None = None,
     store: IndexingStore | None = None,
     category_ids: list[str] | None = None,
+    on_progress: Any = None,
 ) -> dict[str, Any]:
     """Run one indexing v2 scan+reconcile pass.
 
@@ -76,7 +77,9 @@ async def run_indexing_v2(
 
     for category_id in categories:
         try:
-            scan_result: ScanCategoryResult = await scan_service.scan(category_id)
+            scan_result: ScanCategoryResult = await scan_service.scan(
+                category_id, on_progress=on_progress,
+            )
             reconcile_result: ReconcileResult = await reconcile_service.reconcile(
                 scan_result.snapshot
             )
@@ -146,12 +149,18 @@ async def run_indexing_v2_production() -> dict[str, Any]:
                 f"Scanning: {root_label}",
             )
             try:
+                async def _on_progress(path: str, count: int) -> None:
+                    await _update_v2_sync_status(
+                        "running", categories_done, total_categories,
+                        int(time.time() - t0), path, entries_scanned + count,
+                    )
                 async with IndexSession() as session:
                     store = ProductionIndexingStore(session)
                     result = await run_indexing_v2(
                         adapter=adapter,
                         store=store,
                         category_ids=[root.content_type],
+                        on_progress=_on_progress,
                     )
                     await session.commit()
             except asyncio.CancelledError:
