@@ -9,7 +9,7 @@ from cloudsite import main
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.identity import IdentityObservation, identity_fingerprint, resolve_resource_identities
 from cloudsite.identity import migration
-from cloudsite.sync import rolling
+
 from cloudsite.models import (
     CollectionItem,
     DownloadEvent,
@@ -331,106 +331,3 @@ async def test_identity_diagnostics_require_real_admin_session(monkeypatch):
     await state_engine.dispose()
     await index_engine.dispose()
 
-
-async def _rolling_identity_fixture(monkeypatch):
-    state_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    index_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    state_sessions = async_sessionmaker(state_engine, expire_on_commit=False)
-    index_sessions = async_sessionmaker(index_engine, expire_on_commit=False)
-    async with state_engine.begin() as connection:
-        await connection.run_sync(StateBase.metadata.create_all)
-    async with index_engine.begin() as connection:
-        await connection.run_sync(IndexBase.metadata.create_all)
-        await connection.exec_driver_sql(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
-            "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
-            "content_type UNINDEXED, description, tags, breadcrumb_text, "
-            "tokenize='unicode61 remove_diacritics 2')"
-        )
-    monkeypatch.setattr(rolling, "StateSession", state_sessions)
-    await seed_identity(state_sessions, "r_stable", "/a/A.zip")
-    async with index_sessions() as session:
-        source = Folder(id="f_a", name="a", path="/a", parent_id=None, content_type="software", root_mapping_id=1, status="active")
-        target = Folder(id="f_b", name="b", path="/b", parent_id=None, content_type="software", root_mapping_id=1, status="active")
-        cycle = SyncCycle(cycle_type="normal", status="running", anchor_at=NOW)
-        run = SyncRun(sync_type="rolling_window", status="running")
-        session.add_all([source, target, cycle, run])
-        await session.flush()
-        session.add_all(
-            [
-                SyncCycleItem(cycle_id=cycle.id, folder_id=source.id, folder_path=source.path, status="running"),
-                SyncCycleItem(cycle_id=cycle.id, folder_id=target.id, folder_path=target.path, status="success"),
-                Resource(
-                    id="r_stable",
-                    name="A.zip",
-                    path="/a/A.zip",
-                    parent_id=source.id,
-                    content_type="software",
-                    root_mapping_id=1,
-                    extension="zip",
-                    mime_type="application/zip",
-                    size=42,
-                    modified_at=NOW,
-                    indexed_at=NOW,
-                    status="active",
-                ),
-            ]
-        )
-        await session.commit()
-        return state_engine, index_engine, state_sessions, index_sessions, cycle.id, run.id
-
-
-async def test_rolling_cross_scope_move_stays_pending_until_source_is_missing(monkeypatch):
-    state_engine, index_engine, _, index_sessions, cycle_id, run_id = await _rolling_identity_fixture(monkeypatch)
-    target_entries = rolling.validate_scope_entries(
-        "/b", [{"name": "A.zip", "is_dir": False, "size": 42, "modified": NOW.isoformat(), "type": "application/zip"}]
-    )
-    async with index_sessions() as session:
-        cycle = await session.get(SyncCycle, cycle_id)
-        run = await session.get(SyncRun, run_id)
-        source = await session.get(Folder, "f_a")
-        target = await session.get(Folder, "f_b")
-        target_item = await session.scalar(select(SyncCycleItem).where(SyncCycleItem.folder_id == "f_b"))
-        first = await rolling._commit_scope(session, cycle, target_item, run, target, target_entries, "target")
-        assert first["added"] == 0
-        await session.commit()
-        candidate = await session.scalar(select(ResourceIdentityCandidate))
-        assert candidate.status == "pending"
-        source_item = await session.scalar(select(SyncCycleItem).where(SyncCycleItem.folder_id == "f_a"))
-        second = await rolling._commit_scope(session, cycle, source_item, run, source, [], "source")
-        assert second["updated"] == 1
-        await session.commit()
-        moved = await session.get(Resource, "r_stable")
-        assert moved.path == "/b/A.zip"
-        assert (await session.scalar(select(ResourceIdentityCandidate.status))) == "resolved_move"
-    await state_engine.dispose()
-    await index_engine.dispose()
-
-
-async def test_rolling_cross_scope_copy_gets_new_id_after_source_is_confirmed(monkeypatch):
-    state_engine, index_engine, _, index_sessions, cycle_id, run_id = await _rolling_identity_fixture(monkeypatch)
-    target_entries = rolling.validate_scope_entries(
-        "/b", [{"name": "A.zip", "is_dir": False, "size": 42, "modified": NOW.isoformat(), "type": "application/zip"}]
-    )
-    source_entries = rolling.validate_scope_entries(
-        "/a", [{"name": "A.zip", "is_dir": False, "size": 42, "modified": NOW.isoformat(), "type": "application/zip"}]
-    )
-    async with index_sessions() as session:
-        cycle = await session.get(SyncCycle, cycle_id)
-        run = await session.get(SyncRun, run_id)
-        target = await session.get(Folder, "f_b")
-        target_item = await session.scalar(select(SyncCycleItem).where(SyncCycleItem.folder_id == "f_b"))
-        await rolling._commit_scope(session, cycle, target_item, run, target, target_entries, "target")
-        await session.commit()
-        source = await session.get(Folder, "f_a")
-        source_item = await session.scalar(select(SyncCycleItem).where(SyncCycleItem.folder_id == "f_a"))
-        result = await rolling._commit_scope(session, cycle, source_item, run, source, source_entries, "source")
-        assert result["added"] == 1
-        await session.commit()
-        resources = list((await session.scalars(select(Resource).order_by(Resource.path))).all())
-        assert [(row.path, row.id) for row in resources][0] == ("/a/A.zip", "r_stable")
-        assert resources[1].path == "/b/A.zip"
-        assert resources[1].id != "r_stable"
-        assert (await session.scalar(select(ResourceIdentityCandidate.status))) == "resolved_new"
-    await state_engine.dispose()
-    await index_engine.dispose()

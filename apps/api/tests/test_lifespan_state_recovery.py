@@ -85,20 +85,7 @@ def _install_startup_tripwires(monkeypatch) -> list[str]:
         "migrate_stable_resource_ids",
         _async_tripwire("migrate_stable_resource_ids"),
     )
-    monkeypatch.setattr(
-        main, "recover_rolling_state", _async_tripwire("recover_rolling_state")
-    )
-    monkeypatch.setattr(
-        main,
-        "migrate_existing_index_to_rolling",
-        _async_tripwire("migrate_existing_index_to_rolling"),
-    )
-    monkeypatch.setattr(
-        main, "resolve_rolling_mode", _async_tripwire("resolve_rolling_mode")
-    )
-    monkeypatch.setattr(
-        main, "prepare_index_recovery", _async_tripwire("prepare_index_recovery")
-    )
+
     monkeypatch.setattr(main, "StateSession", lambda *a, **kw: _TripwireSession())
     monkeypatch.setattr(main, "scheduler_loop", _async_tripwire("scheduler_loop"))
     monkeypatch.setattr(

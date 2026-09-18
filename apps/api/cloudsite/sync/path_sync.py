@@ -17,7 +17,7 @@ from ..config import settings
 from ..database import IndexSession, StateSession
 from ..indexer import load_client_and_roots, normalize_path, sync_lock
 from ..models import ContentRootMapping, Folder, SyncCycle, SyncCycleItem, SyncRun
-from .rolling import _scan_cycle_item
+
 
 
 MAX_PATHS = 50
@@ -175,7 +175,7 @@ async def run_path_sync(paths: list[str], force_refresh_paths: set[str], now: da
                     refresh = path in force_refresh_paths
                     list_requests += 1
                     try:
-                        result = await _scan_cycle_item(session, client, cycle, item, run, force_refresh=refresh, enqueue_discovered=False)
+                        raise RuntimeError("path sync not supported in v2 engine, use full sync instead")
                         if refresh:
                             refresh_true_count += 1
                         if result.get("superseded"):
