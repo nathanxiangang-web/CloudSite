@@ -1,0 +1,27 @@
+schema_version: 1
+name: "providers"
+kind: "business"
+migration_status: "partial"
+responsibility: "Storage provider abstraction, AList gateway, connections, content-root mapping, capabilities, and provider sync state."
+public_contract: "contracts/public.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/http"
+  - "platform/security"
+  - "platform/observability"
+
+owned_tables:
+  - "alist_connections"
+  - "content_root_mappings"
+  - "provider_sync_state"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Only this module talks directly to AList/storage backends."
+  - "Credentials are decrypted only inside this boundary."
+  - "Provider endpoints come from connection configuration."
+  - "Scans must not block request handlers."

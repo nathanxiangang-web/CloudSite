@@ -194,6 +194,25 @@ class TestModuleStructure:
                 )
         assert not violations, "Missing required directories:\n" + "\n".join(violations)
 
+    def test_modules_have_manifest(self):
+        if not MODULES.exists():
+            return
+        violations: list[str] = []
+        for mod_dir in sorted(MODULES.iterdir()):
+            if not mod_dir.is_dir() or mod_dir.name.startswith("_"):
+                continue
+            manifest = mod_dir / "module.yaml"
+            if not manifest.exists():
+                violations.append(f"modules/{mod_dir.name}/module.yaml (missing)")
+                continue
+            content = manifest.read_text(encoding="utf-8")
+            if "schema_version: 1" not in content:
+                violations.append(f"modules/{mod_dir.name}/module.yaml (schema_version != 1)")
+            if f'name: "{mod_dir.name}"' not in content:
+                violations.append(f"modules/{mod_dir.name}/module.yaml (name mismatch)")
+        assert not violations, "Invalid module manifests:\n" + "\n".join(violations)
+
+
     def test_modules_have_readme(self):
         if not MODULES.exists():
             return
