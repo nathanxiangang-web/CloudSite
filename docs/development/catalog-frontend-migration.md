@@ -22,3 +22,8 @@ Later slices:
 - M6c follow/subscription;
 - M6d admin Catalog;
 - final retirement of legacy src/lib/catalog*.
+
+
+Compatibility note: the legacy `.catalog-card-unavailable` selector remains
+global because the not-yet-migrated Catalog detail route still consumes it.
+It moves with the detail slice rather than being removed prematurely.
