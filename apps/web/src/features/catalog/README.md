@@ -19,3 +19,14 @@ Still legacy and intentionally deferred:
 - existing catalog-specific rules inside app/globals.css
 
 Those slices move incrementally in M6b/M6c rather than being rewritten at once.
+
+
+## M6b Model Ownership
+
+Catalog types, route builders, labels, availability rules, and formatting
+helpers are now owned by features/catalog/model.ts.
+
+src/lib/catalog.ts remains as a compatibility facade so existing admin/detail
+code and tests continue to work while they migrate. New feature code must import
+the model directly inside the Catalog feature or through the feature public
+entry from outside the feature.

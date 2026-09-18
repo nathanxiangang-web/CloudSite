@@ -10,7 +10,7 @@ import {
   CATALOG_CONTENT_TYPE_LABELS,
   catalogEntryHref,
   contentTypeLabel,
-} from "@/lib/catalog";
+} from "../model";
 import { fetchCatalogEntries, fetchCatalogSearch, fetchCatalogTags } from "@/lib/catalog-client";
 
 const CONTENT_TYPES = ["software", "image", "video", "document", "file"];
