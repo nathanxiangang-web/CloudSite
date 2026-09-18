@@ -89,6 +89,45 @@ platform -> shares
 Platform provides infrastructure (db, http, security, tasks, observability,
 settings) that modules consume. It must not know about business domains.
 
+
+## Rule 5: Frontend Uses Feature Boundaries
+
+Frontend is part of the CloudSite 2.0 modularization effort.
+
+Required direction:
+
+```text
+app -> features
+features -> lib/api, components/ui
+features -> other features only through public entry points
+components/ui -> no business features
+```
+
+Rules:
+
+- `app/**/page.tsx` should stay thin and compose a feature view.
+- Feature-specific API calls, hooks, state, components, and styles belong in `features/<name>/`.
+- New business-page CSS must not be appended to `app/globals.css`.
+- `app/globals.css` is a legacy hotspot and should shrink toward tokens, resets, and shared layout only.
+- Shared presentational primitives belong in `components/ui/`; business-specific components remain in their feature.
+- A feature must not import another feature's internal files directly. Import from that feature's public entry point.
+- Large route pages should be migrated incrementally, not rewritten all at once.
+
+Target feature shape:
+
+```text
+features/<name>/
+  index.ts
+  api.ts
+  types.ts
+  hooks/
+  components/
+  views/
+  styles/
+```
+
+Enforcement should be added incrementally through lint/architecture checks as features migrate.
+
 ## Module Internal Structure
 
 Each module follows the same layout:
