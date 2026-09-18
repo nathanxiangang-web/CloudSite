@@ -119,6 +119,10 @@ jobs:
           cache-dependency-path: apps/web/pnpm-lock.yaml
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+      - name: Frontend architecture
+        run: pnpm run arch
+      - name: Self-test frontend architecture rules
+        run: pnpm run arch:test
       - name: Type check
         run: pnpm run typecheck
       - name: Lint
