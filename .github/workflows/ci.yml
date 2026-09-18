@@ -195,26 +195,6 @@ jobs:
       - name: Run backup content roundtrip test
         run: bash scripts/tests/test-backup-content-roundtrip.sh
 
-  lockfile-repair:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.15.1
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-      - name: Generate corrected pnpm lockfile
-        run: |
-          pnpm install --lockfile-only --no-frozen-lockfile
-          echo "__LOCKFILE_BEGIN__"
-          cat pnpm-lock.yaml
-          echo "__LOCKFILE_END__"
-
   publish:
     if: github.event_name != 'pull_request'
     needs: [backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
