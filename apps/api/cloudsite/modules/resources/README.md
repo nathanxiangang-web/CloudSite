@@ -38,8 +38,6 @@ Exports live in `contracts/public.py`.
 - `folders` - folder tree nodes.
 - `resources` - file resource records.
 - `download_rate_limits` - rate limit counters.
-- `download_events` - download audit log (also consumed by delivery).
-- `download_diagnostics` - failed download diagnostics.
 
 ## Dependencies
 
@@ -86,8 +84,6 @@ Exports live in `contracts/public.py`.
 
 ## Current Migration Status
 
-Code is currently in `indexer.py`, `preview.py`, `download.py`,
-`download_rate_limit.py`, and `office.py` at the top level. These move to
-`modules/resources/` in Phase 3. The module skeleton exists with empty layers.
-Note: `indexer.py` is a misnomer in legacy; its resource-facing parts land
-here, while scan logic lands in `modules/indexing/`.
+Migration status: partial. `Folder`, `Resource`, and `DownloadRateLimit` ORM declarations are now owned by `modules/resources/infrastructure/models.py`; `cloudsite.models` remains a compatibility re-export. Read/query services, preview/download behavior, and Indexing writes are still legacy and will move behind Resources application/contracts in later slices.
+
+`indexer.py` remains a legacy mixed-responsibility surface: scan orchestration belongs to Indexing, while authoritative Folder/Resource persistence belongs to Resources.
