@@ -153,32 +153,22 @@ async def load_text_preview(resource, connection) -> dict:
         raise PreviewError("PV-002", capability["reason"] or "资源不支持文本预览", 400)
     if resource.size > settings.text_preview_max_bytes:
         raise PreviewError("PV-007", "文本文件过大，不提供在线预览", 413)
-    if not connection or not connection.enabled:
-        raise PreviewError("PV-005", "上游存储暂时不可用", 503)
+    from .office import OfficePreviewError, ensure_preview_cached
     try:
-        password = decrypt_secret(connection.password_ciphertext)
-        async with AListClient(connection.base_url, connection.username, password) as client:
-            entry = await client.get_preview_entry(resource.path)
-        url, _ = validate_download_url(entry.url, entry.host)
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds, follow_redirects=True) as client:
-            async with client.stream("GET", url, headers={"Range": f"bytes=0-{settings.text_preview_max_bytes}"}) as response:
-                response.raise_for_status()
-                total = _response_total_size(response)
-                if total is not None and total > settings.text_preview_max_bytes:
-                    raise PreviewError("PV-007", "文本文件过大，不提供在线预览", 413)
-                content = bytearray()
-                async for chunk in response.aiter_bytes():
-                    remaining = settings.text_preview_max_bytes + 1 - len(content)
-                    content.extend(chunk[:remaining])
-                    if len(content) > settings.text_preview_max_bytes:
-                        raise PreviewError("PV-007", "文本文件过大，不提供在线预览", 413)
-    except PreviewError:
-        raise
+        cached_path = await ensure_preview_cached(resource, connection)
+    except OfficePreviewError as exc:
+        raise PreviewError(exc.code, exc.message, exc.status_code) from exc
+    try:
+        raw = cached_path.read_bytes()
     except Exception as exc:
-        raise _map_alist_preview_error(exc) from exc
+        raise PreviewError("PV-999", "读取缓存文件失败") from exc
+    max_bytes = settings.text_preview_max_bytes
+    truncated = len(raw) > max_bytes
+    if truncated:
+        raw = raw[:max_bytes]
     return {
-        "content": bytes(content).decode("utf-8", errors="replace"),
-        "truncated": False,
+        "content": raw.decode("utf-8", errors="replace"),
+        "truncated": truncated,
         "size": resource.size,
         "encoding": "utf-8",
         "preview_type": capability["preview_type"],
