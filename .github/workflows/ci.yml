@@ -37,6 +37,10 @@ jobs:
           fi
       - name: Self-test architecture debt rules
         run: bash scripts/tests/test-architecture-debt-ratchet.sh
+      - name: Validate module ownership and dependency graph
+        run: python scripts/check-module-architecture.py
+      - name: Self-test module architecture rules
+        run: bash scripts/tests/test-module-architecture.sh
 
   backend:
     runs-on: ubuntu-latest
