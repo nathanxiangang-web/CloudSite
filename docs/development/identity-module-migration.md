@@ -60,13 +60,17 @@ so the legacy caller still owns the transaction exactly as before.
 
 ## M4b-4b — Descendant path-mutation boundary
 
-Next:
+Status: implemented in this change.
 
-- move descendant Folder/Resource path mutation behind the owning indexing/
-  resource boundary rather than importing those shared legacy models into
-  identity;
-- preserve prefix-only rename behavior and LIKE escaping;
-- do not introduce a new module_legacy_import debt ID.
+The descendant path rewrite now belongs to
+`modules/indexing/infrastructure/production_store.py`, alongside the existing
+Folder/Resource persistence adapter. Identity keeps only a legacy facade for
+call compatibility.
+
+The move preserves prefix-only replacement, SQL LIKE wildcard escaping,
+caller-owned transactions, and unchanged result counts. No new indexing
+legacy-dependency ID is introduced because the production store already owns
+the existing Folder/Resource ORM dependency.
 
 The architecture debt ratchet must stay at or below its existing baseline.
 
