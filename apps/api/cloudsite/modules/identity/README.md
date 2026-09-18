@@ -91,20 +91,29 @@ No dependency on resources, catalog, or shares. Identity is a leaf domain.
 
 ## Current Migration Status
 
-**Partial (M4a).**
+**Partial (M4b-1).**
 
-The pure identity core now lives under `modules/identity/domain/` and is
-exported only through `modules/identity/contracts/public.py`. The legacy
-`cloudsite.identity.fingerprint` and `cloudsite.identity.schemas` modules are
-thin compatibility facades, so existing callers keep the same runtime types and
-fingerprint behavior.
+M4a moved the persistence-free identity core and public contract into the
+business module. M4b-1 now also moves ownership of the five identity ORM tables
+into `modules/identity/infrastructure/models.py`:
 
-Still legacy and intentionally not moved in M4a:
+- `resource_identities`
+- `resource_identity_history`
+- `resource_identity_candidates`
+- `folder_identities`
+- `folder_identity_histories`
 
-- SQLAlchemy-backed resource/folder identity reconciliation;
-- stable-ID migration and backup orchestration;
+The table names, columns, constraints, bases, and metadata registration are
+unchanged. `cloudsite.models` re-exports the exact same classes so legacy
+imports keep working while callers migrate.
+
+Still legacy:
+
+- SQLAlchemy-backed resource/folder reconciliation service behavior;
+- stable-ID migration/backup orchestration;
 - admin identity diagnostics API;
-- identity-owned ORM table declarations in the shared models file.
+- identity side effects that write the shared operation log or mutate
+  index-owned Folder/Resource paths.
 
-M4b will introduce repository/application ports before moving the SQLAlchemy
-service logic. M4c will move the admin API and complete the module boundary.
+M4b-2 will introduce explicit application/repository ports around reconciliation
+before moving that service logic. M4c will move the admin API.

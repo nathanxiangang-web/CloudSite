@@ -4,6 +4,7 @@ kind: "business"
 migration_status: "partial"
 responsibility: "Stable resource identity generation, fingerprinting, candidate reconciliation, history, and legacy ID migration."
 public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
 
 allowed_dependencies:
   - "platform/db"
