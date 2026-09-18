@@ -1,0 +1,28 @@
+schema_version: 1
+name: "search"
+kind: "business"
+migration_status: "skeleton"
+responsibility: "Full-text search, search projection, index rebuild/recovery, filtering/sorting/faceting, and query analytics."
+public_contract: "contracts/public.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/tasks"
+  - "modules/resources/contracts"
+  - "modules/catalog/contracts"
+
+owned_tables:
+  - "fts_resources"
+  - "search_query_logs"
+  - "catalog_search_outbox"
+  - "catalog_search_projection_state"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "FTS is rebuildable and never authoritative."
+  - "Rebuild/recovery must run through tasks."
+  - "Every query must enforce visibility scope."
+  - "Consume indexing events instead of importing indexing internals."

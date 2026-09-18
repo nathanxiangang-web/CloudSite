@@ -1,0 +1,28 @@
+schema_version: 1
+name: "indexing"
+kind: "business"
+migration_status: "active"
+responsibility: "Inventory scanning, resource inspection, snapshot reconciliation, task-driven scan orchestration, and downstream change records."
+public_contract: "contracts/public.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/tasks"
+  - "modules/providers/contracts"
+  - "modules/resources/contracts"
+  - "modules/identity/contracts"
+
+owned_tables:
+  - "indexing_tasks"
+  - "inventory_snapshots"
+  - "resource_skeletons"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Long scans must run through tasks."
+  - "Do not write resources/identity internals directly; use contracts."
+  - "Do not add new logic to legacy sync tables/paths."
+  - "Use per-task timeouts for provider work."

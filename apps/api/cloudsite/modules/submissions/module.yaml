@@ -1,0 +1,26 @@
+schema_version: 1
+name: "submissions"
+kind: "business"
+migration_status: "partial"
+responsibility: "User submissions and the admin review workflow, including approval/rejection/request-changes and application of approved changes."
+public_contract: "contracts/public.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "modules/catalog/contracts"
+  - "modules/notifications/contracts"
+  - "modules/users/contracts"
+
+owned_tables:
+  - "submissions"
+  - "submission_reviews"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Approved changes require admin review."
+  - "Users cannot review their own submissions."
+  - "Store references/diffs instead of duplicating catalog state."
+  - "All lifecycle transitions must follow the status machine."

@@ -1,0 +1,29 @@
+schema_version: 1
+name: "automation"
+kind: "business"
+migration_status: "partial"
+responsibility: "Automation rules, suggestion generation/review, parser candidates, and parser evaluation. Automation output is advisory and requires editor approval."
+public_contract: "contracts/public.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/tasks"
+  - "modules/catalog/contracts"
+  - "plugins/ai"
+
+owned_tables:
+  - "catalog_suggestions"
+  - "parser_candidates"
+  - "parser_candidate_batches"
+  - "review_suggestions"
+  - "automation rule tables"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Never auto-apply suggestions."
+  - "Never store AI API keys in module code."
+  - "Batch processing must run through platform/tasks."
+  - "Do not depend on search or shares internals."

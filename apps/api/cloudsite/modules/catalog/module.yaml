@@ -1,0 +1,39 @@
+schema_version: 1
+name: "catalog"
+kind: "business"
+migration_status: "partial"
+responsibility: "Catalog entries, metadata, releases, publication scope, tags, relations, follows/subscriptions, and search projection outbox."
+public_contract: "contracts/public.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/tasks"
+  - "modules/resources/contracts"
+  - "modules/search/contracts"
+  - "modules/notifications/contracts"
+
+owned_tables:
+  - "catalog_entries"
+  - "catalog_releases"
+  - "catalog_assets"
+  - "catalog_locations"
+  - "catalog_tags"
+  - "catalog_tag_assignments"
+  - "catalog_relations"
+  - "catalog_revisions"
+  - "catalog_search_outbox"
+  - "catalog_search_projection_state"
+  - "catalog_favorites"
+  - "catalog_subscriptions"
+  - "catalog_release_notifications"
+  - "catalog_suggestions"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Reference resources by ID; never store raw file bytes."
+  - "AI suggestions require editor approval."
+  - "Never bypass publication scope."
+  - "Do not write directly to the FTS index; use the outbox."
