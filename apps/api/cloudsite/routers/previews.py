@@ -35,7 +35,7 @@ async def serve_office_file(filename: str):
     path = settings.office_cache_dir / filename
     if not path.is_file():
         raise HTTPException(404, "预览文件不存在或已过期")
-    return FileResponse(path, media_type=office_content_type(extension), content_disposition_type="inline")
+    return FileResponse(path, media_type=office_content_type(extension), headers={"Content-Disposition": "inline"})
 
 
 def _preview_error_redirect(resource_id: str, code: str) -> RedirectResponse:

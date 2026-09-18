@@ -10,20 +10,15 @@ export default function PdfPreview({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    let blobUrl = "";
     (async () => {
       try {
         const result = await api<{ url: string }>(`/api/resources/${id}/pdf-preview`);
-        const response = await fetch(result.url, { credentials: "same-origin" });
-        if (!response.ok) throw new Error(`PDF 加载失败 (${response.status})`);
-        const blob = await response.blob();
-        blobUrl = URL.createObjectURL(blob);
-        if (!cancelled) { setUrl(blobUrl); setLoading(false); }
+        if (!cancelled) { setUrl(result.url); setLoading(false); }
       } catch (err) {
         if (!cancelled) { setError(err instanceof Error ? err.message : "PDF 加载失败"); setLoading(false); }
       }
     })();
-    return () => { cancelled = true; if (blobUrl) URL.revokeObjectURL(blobUrl); };
+    return () => { cancelled = true; };
   }, [id]);
 
   if (loading) return <div className="loading">正在加载 PDF…</div>;
