@@ -18,6 +18,8 @@ Browser
 
 CloudSite is an index, policy, presentation, and redirect layer. AList remains the storage gateway, and the underlying provider remains responsible for file delivery.
 
+The 2.0 modularization effort covers both backend and frontend. Backend modules are organized by business domain; frontend code is organized by feature boundary so route files remain thin and feature logic can be understood and changed without reading the entire UI codebase.
+
 ## Layer structure
 
 ```text
@@ -55,6 +57,38 @@ apps/api/cloudsite/
     ├── registry.py
     └── ai/                  # AI completion, cloud download
 ```
+
+## Frontend structure (target)
+
+```text
+apps/web/src/
+├── app/                    # Next.js routes, layouts, loading/error boundaries
+├── features/               # business feature modules
+│   ├── catalog/
+│   ├── search/
+│   ├── indexing/
+│   ├── automation/
+│   ├── shares/
+│   ├── users/
+│   └── resources/
+├── components/
+│   └── ui/                 # shared presentation primitives
+├── lib/
+│   └── api/                # shared HTTP/API transport primitives
+└── styles/
+    ├── tokens.css
+    ├── base.css
+    └── layout.css
+```
+
+Frontend rules:
+
+1. `app/**/page.tsx` is a route/composition shell, not the primary home of feature logic.
+2. Feature-specific components, hooks, state, API clients, and styles live under `features/<name>/`.
+3. `app/globals.css` is legacy and must shrink over time; no new feature-specific CSS is added there.
+4. Shared visual primitives go in `components/ui/`; business components stay inside their feature.
+5. Cross-feature imports should use a feature public entry point instead of reaching into internal folders.
+6. Frontend migration follows the same Strangler strategy as the backend: all new work uses the target structure, and old pages are migrated feature-by-feature.
 
 ## Dependency rules
 
