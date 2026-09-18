@@ -87,6 +87,10 @@ async def admin_session_middleware(request: Request, call_next):
     if path.startswith("/p/"):
         resource_id = path.removeprefix("/p/")
         preview_ticket_valid = validate_preview_ticket(resource_id, request.query_params.get("ticket"))
+    elif path.startswith("/office-files/"):
+        filename = path.removeprefix("/office-files/")
+        resource_id = filename.rsplit(".", 1)[0] if "." in filename else filename
+        preview_ticket_valid = validate_preview_ticket(resource_id, request.query_params.get("ticket"))
     requires_user = not preview_ticket_valid and (
         (
             path.startswith("/api/")

@@ -1,12 +1,13 @@
 """resources 路由：资源列表、详情、文件夹。"""
 import math
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, desc, func, or_, select
 
 from ..models import Folder, Resource
 from ..office import OfficePreviewError, ensure_preview_cached, office_cache_filename
-from ..preview import PreviewError, load_text_preview, preview_capability
+from ..preview import PreviewError, create_preview_ticket, load_text_preview, preview_capability
 from ..schemas import (
     FolderDetailOutput,
     FolderListOutput,
@@ -142,7 +143,7 @@ async def resource_pdf_preview(resource_id: str):
             await ensure_preview_cached(resource, connection)
         except OfficePreviewError as exc:
             raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
-        return {"url": f"/office-files/{office_cache_filename(resource)}"}
+        return {"url": f"/office-files/{office_cache_filename(resource)}?{urlencode({'ticket': create_preview_ticket(resource.id)})}"}
 
 
 @router.get("/api/resources/{resource_id}/office-preview")
@@ -160,7 +161,7 @@ async def resource_office_preview(resource_id: str):
             await ensure_preview_cached(resource, connection)
         except OfficePreviewError as exc:
             raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
-        return {"url": f"/office-files/{office_cache_filename(resource)}"}
+        return {"url": f"/office-files/{office_cache_filename(resource)}?{urlencode({'ticket': create_preview_ticket(resource.id)})}"}
 
 
 @router.get("/api/folders", response_model=FolderListOutput)
