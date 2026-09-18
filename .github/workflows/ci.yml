@@ -11,6 +11,27 @@ permissions:
   contents: read
 
 jobs:
+  architecture-debt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enforce architecture debt ratchet
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ -n "$BASE_REF" ]]; then
+            python scripts/check-architecture-debt.py --baseline-ref "origin/$BASE_REF"
+          else
+            python scripts/check-architecture-debt.py
+          fi
+      - name: Self-test architecture debt rules
+        run: bash scripts/tests/test-architecture-debt-ratchet.sh
+
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -197,7 +218,7 @@ jobs:
 
   publish:
     if: github.event_name != 'pull_request'
-    needs: [backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
+    needs: [architecture-debt, backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
     permissions:
       contents: read
       packages: write
