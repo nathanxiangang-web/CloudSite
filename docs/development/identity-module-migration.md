@@ -95,3 +95,16 @@ Every step must preserve:
 - append-only identity history;
 - migration idempotence and zero legacy ID rewrites;
 - admin authentication requirements.
+
+
+## M4c — Admin identity query boundary
+
+Status: implemented in this change.
+
+The existing admin endpoints remain unchanged, but persistence queries now live
+inside the Identity module. The legacy router is a thin HTTP/authentication
+boundary and has no SQLAlchemy, shared-model, or cloudsite.main session
+dependency.
+
+Expected architecture ratchet effect: router ORM debt decreases by two entries
+(sqlalchemy and cloudsite.models) with no new debt IDs.
