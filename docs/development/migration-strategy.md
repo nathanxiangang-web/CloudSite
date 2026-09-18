@@ -34,16 +34,65 @@ Legacy Delete
 
 ## Phase 3: Gradual migration (post-batch-1)
 
+### Backend
+
 - Move one module at a time from flat structure to `modules/<name>/`
 - Order: identity → users → providers → shares → collections → catalog → search → resources → indexing → automation → delivery → notifications → submissions
 - Each migration: move code, update imports, run tests, verify
 
+### Frontend
+
+Frontend is part of the 2.0 modularization effort and must migrate by feature boundary instead of continuing to grow route-local pages and the global stylesheet.
+
+Target shape:
+
+```text
+apps/web/src/
+├── app/                    # route shells only
+├── features/               # business feature modules
+│   ├── catalog/
+│   ├── search/
+│   ├── indexing/
+│   ├── automation/
+│   ├── shares/
+│   ├── users/
+│   └── resources/
+├── components/
+│   └── ui/                 # shared presentational primitives
+├── lib/
+│   └── api/                # shared transport / API primitives
+└── styles/
+    ├── tokens.css
+    ├── base.css
+    └── layout.css
+```
+
+Rules:
+
+- `app/**/page.tsx` is a route entry and composition shell, not the home of feature logic.
+- Feature-specific components, hooks, API calls, state, and styles belong in `features/<name>/`.
+- New feature-specific CSS must not be appended to `app/globals.css`.
+- `globals.css` is treated as legacy and will shrink over time into tokens, resets, and global layout rules.
+- Shared UI primitives go to `components/ui/`; business components do not.
+- Cross-feature imports must go through each feature's public entry point, not internal files.
+- Frontend migration follows the same Strangler approach: new code uses the new structure, existing pages move feature-by-feature.
+
 ## Phase 4: Legacy cleanup
 
-- Delete `sync/rolling.py` after all providers migrated to new indexing
+### Backend
+
+- Delete legacy sync/indexing paths after the new indexing path fully replaces them
 - Delete top-level `*.py` files after all modules migrated
 - Consolidate `models.py` into per-module `infrastructure/models.py`
 - Consolidate `migrations.py` into `platform/db/migrations/`
+
+### Frontend
+
+- Reduce `app/globals.css` to design tokens, resets, shared layout, and truly global styles
+- Move business-page CSS into feature-local styles
+- Split large route pages into feature views/components/hooks
+- Move route-local API logic into `features/<name>/api.ts` or shared `lib/api/`
+- Keep `app/` focused on routing, layouts, loading/error boundaries, and feature composition
 
 ## Current-to-target mapping
 
@@ -73,10 +122,14 @@ Legacy Delete
 | `shares/` | `modules/shares/` | 3 |
 | `identity/` | `modules/identity/` | 3 |
 | `providers/` | `modules/providers/` | 3 |
+| `apps/web/src/app/**/page.tsx` feature logic | `apps/web/src/features/<feature>/` | 3 |
+| `apps/web/src/app/globals.css` business styles | feature-local styles + `styles/` | 3-4 |
+| route-local API/state logic | `features/<feature>/api.ts`, hooks, state | 3 |
+| shared visual primitives | `components/ui/` | 3 |
 
 ## What does NOT move
 
 - `plugins/` — already well-structured, stays in place
 - `plugins/ai/` — AI plugin stays as-is
-- Test files — move with their modules in Phase 3
-- Frontend (`apps/web/`) — not affected by backend module refactoring
+- Backend test files move with their modules in Phase 3
+- Frontend route ownership remains under Next.js `app/`, but business implementation moves behind feature boundaries under `features/`
