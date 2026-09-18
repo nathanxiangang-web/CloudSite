@@ -39,6 +39,7 @@ async def resolve_folder_identities(
             identity.last_name = obs.name
             identity.identity_fingerprint = obs.fingerprint
             identity.status = "active"
+            identity.updated_at = now
             await repository.save(identity)
             claimed_ids.add(identity.folder_id)
             resolutions.append(
@@ -67,6 +68,7 @@ async def resolve_folder_identities(
             best.last_name = obs.name
             best.last_seen_at = now
             best.status = "active"
+            best.updated_at = now
             await repository.save(best)
             claimed_ids.add(best.folder_id)
             event = (
