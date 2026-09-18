@@ -180,74 +180,100 @@ def _parse_baseline(text: str, source: str) -> set[str]:
     return set(ids)
 
 
-def _load_baseline(baseline_ref: str | None) -> set[str]:
+def _load_current_baseline() -> set[str]:
     relative = BASELINE_PATH.relative_to(ROOT).as_posix()
-
-    if baseline_ref:
-        verify = subprocess.run(
-            ["git", "rev-parse", "--verify", baseline_ref],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        )
-        if verify.returncode != 0:
-            raise SystemExit(f"Cannot resolve architecture baseline ref: {baseline_ref}")
-
-        show = subprocess.run(
-            ["git", "show", f"{baseline_ref}:{relative}"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        )
-        if show.returncode == 0:
-            print(f"Using architecture debt baseline from {baseline_ref}:{relative}")
-            return _parse_baseline(show.stdout, f"{baseline_ref}:{relative}")
-
-        # One-time M2 bootstrap: main did not have a baseline before this PR.
-        # After M2 lands, every future PR base contains the file, so editing the
-        # baseline in the same PR cannot hide newly introduced debt.
-        if BASELINE_PATH.exists():
-            print(
-                f"Base ref {baseline_ref} has no architecture debt baseline; "
-                "using the reviewed current-file baseline for one-time bootstrap."
-            )
-            return _parse_baseline(BASELINE_PATH.read_text(encoding="utf-8"), relative)
-
-        raise SystemExit(f"Architecture debt baseline missing from {baseline_ref}:{relative}")
-
     if not BASELINE_PATH.exists():
         raise SystemExit(
             f"Architecture debt baseline missing: {relative}. "
             "Generate it intentionally with --print-baseline, review it, then commit it."
         )
-    return _parse_baseline(BASELINE_PATH.read_text(encoding="utf-8"), relative)
+    return _parse_baseline(
+        BASELINE_PATH.read_text(encoding="utf-8"),
+        relative,
+    )
+
+
+def _load_baseline_from_ref(baseline_ref: str) -> set[str]:
+    relative = BASELINE_PATH.relative_to(ROOT).as_posix()
+    verify = subprocess.run(
+        ["git", "rev-parse", "--verify", baseline_ref],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if verify.returncode != 0:
+        raise SystemExit(f"Cannot resolve architecture baseline ref: {baseline_ref}")
+
+    show = subprocess.run(
+        ["git", "show", f"{baseline_ref}:{relative}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if show.returncode != 0:
+        raise SystemExit(
+            f"Architecture debt baseline missing from {baseline_ref}:{relative}"
+        )
+
+    print(f"Using previous architecture debt baseline from {baseline_ref}:{relative}")
+    return _parse_baseline(show.stdout, f"{baseline_ref}:{relative}")
 
 
 def check(baseline_ref: str | None = None) -> int:
     current = collect_debt()
-    baseline = _load_baseline(baseline_ref)
     current_ids = {debt.debt_id for debt in current}
-    introduced = sorted(current_ids - baseline)
-    removed = sorted(baseline - current_ids)
+    committed_baseline = _load_current_baseline()
 
-    print(f"Architecture debt: current={len(current_ids)} baseline={len(baseline)} removed={len(removed)} new={len(introduced)}")
-    if removed:
-        print("Removed debt (good):")
-        for debt_id in removed:
-            print(f"  - {debt_id}")
+    missing_from_baseline = sorted(current_ids - committed_baseline)
+    stale_in_baseline = sorted(committed_baseline - current_ids)
+
+    sync_failed = bool(missing_from_baseline or stale_in_baseline)
+    if sync_failed:
+        print("ARCHITECTURE DEBT BASELINE IS OUT OF SYNC:", file=sys.stderr)
+        if missing_from_baseline:
+            print("Current debt missing from committed baseline:", file=sys.stderr)
+            for debt_id in missing_from_baseline:
+                print(f"  - {debt_id}", file=sys.stderr)
+        if stale_in_baseline:
+            print("Removed debt still present in committed baseline:", file=sys.stderr)
+            for debt_id in stale_in_baseline:
+                print(f"  - {debt_id}", file=sys.stderr)
+        print(
+            "Regenerate the exact baseline with --print-baseline after the code change. "
+            "The committed baseline must equal the current scanner output.",
+            file=sys.stderr,
+        )
+
+    introduced: list[str] = []
+    previous_count: int | None = None
+    if baseline_ref:
+        previous_baseline = _load_baseline_from_ref(baseline_ref)
+        previous_count = len(previous_baseline)
+        introduced = sorted(current_ids - previous_baseline)
+
+    print(
+        "Architecture debt: "
+        f"current={len(current_ids)} committed={len(committed_baseline)} "
+        f"previous={previous_count if previous_count is not None else 'n/a'} "
+        f"new={len(introduced)} stale={len(stale_in_baseline)}"
+    )
 
     if introduced:
         print("NEW ARCHITECTURE DEBT IS NOT ALLOWED:", file=sys.stderr)
         for debt_id in introduced:
             print(f"  - {debt_id}", file=sys.stderr)
         print(
-            "Do not refresh the baseline to hide new debt. Route dependencies through "
-            "module contracts/platform boundaries or remove an equivalent legacy dependency.",
+            "Updating the current baseline cannot self-approve new debt. Route the "
+            "dependency through module contracts/platform boundaries instead.",
             file=sys.stderr,
         )
-        return 1
 
-    return 0
+    if baseline_ref and not introduced and previous_count is not None:
+        removed_count = previous_count - len(current_ids)
+        if removed_count > 0:
+            print(f"Ratchet tightened by {removed_count} debt ID(s).")
+
+    return 1 if sync_failed or introduced else 0
 
 
 def main() -> int:
@@ -259,7 +285,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--baseline-ref",
-        help="Read the enforcement baseline from a git ref (used by PR CI to prevent baseline self-approval).",
+        help="Read the previous enforcement baseline from a git ref. Current committed baseline must also exactly match current debt.",
     )
     args = parser.parse_args()
 
