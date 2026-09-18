@@ -81,6 +81,13 @@ class ProductionIndexingStore:
             if is_dir:
                 existing = await self._session.get(Folder, entry.resource_id)
                 if existing is None:
+                    existing = await self._session.scalar(
+                        select(Folder).where(
+                            Folder.root_mapping_id == root_mapping_id,
+                            Folder.path == entry.path,
+                        )
+                    )
+                if existing is None:
                     self._session.add(Folder(
                         id=entry.resource_id,
                         name=entry.name,
@@ -104,6 +111,13 @@ class ProductionIndexingStore:
                     existing.status = "active"
             else:
                 existing = await self._session.get(Resource, entry.resource_id)
+                if existing is None:
+                    existing = await self._session.scalar(
+                        select(Resource).where(
+                            Resource.root_mapping_id == root_mapping_id,
+                            Resource.path == entry.path,
+                        )
+                    )
                 ext = meta.get("extension", "")
                 mime = meta.get("mime_type", "")
                 thumb = meta.get("thumbnail", "")
