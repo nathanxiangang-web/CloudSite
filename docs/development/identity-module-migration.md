@@ -50,16 +50,19 @@ adapter owns module ORM access. The legacy compatibility service injects an
 OperationLog audit sink backed by the caller's same AsyncSession, preserving
 single-transaction history/audit writes and the resolver's one final commit.
 
-## M4b-4 — Folder persistence and path-mutation boundary
+## M4b-4 — Folder repository port
 
-Next:
+Status: implemented in this change.
 
-- migrate folder identity persistence through module-owned repository ports;
-- keep the folder resolver's caller-owned commit behavior;
-- move descendant Folder/Resource path mutation behind the owning indexing/
-  resource boundary rather than importing those shared legacy models into
-  identity;
-- do not introduce a new module_legacy_import debt ID.
+Folder identity resolution now runs through a module-owned
+`FolderIdentityRepository` adapter. Unlike resource resolution, the folder
+port deliberately exposes no commit operation, preserving the existing
+caller-owned transaction behavior.
+
+The legacy `cascade_rename_descendants()` helper is intentionally not moved
+into Identity: it mutates index-owned Folder/Resource rows. A later indexing/
+resource boundary change must own that mutation rather than creating an
+Identity dependency on shared legacy models.
 
 The architecture debt ratchet must stay at or below its existing baseline.
 

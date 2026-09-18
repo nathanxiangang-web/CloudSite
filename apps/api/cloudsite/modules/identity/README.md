@@ -119,13 +119,16 @@ while the legacy service supplies an OperationLog audit adapter using the same
 caller transaction. Resource resolution now runs from the module application
 layer and still commits exactly once per complete batch.
 
+M4b-4 moves folder identity persistence behind `FolderIdentityRepository`.
+The module application resolver intentionally has no commit port and therefore
+preserves the historical caller-owned transaction behavior.
+
 Still legacy:
 
-- SQLAlchemy-backed folder identity reconciliation;
 - stable-ID migration/backup orchestration;
 - admin identity diagnostics API;
-- identity side effects that write the shared operation log or mutate
-  index-owned Folder/Resource paths.
+- descendant path mutation that writes index-owned Folder/Resource paths.
 
-M4b-4 will migrate folder identity persistence and separate descendant path
-mutation from the Identity owner. M4c will move the admin API.
+That path-mutation helper remains outside the Identity module by design and
+must move behind an Indexing/Resource-owned boundary rather than becoming an
+Identity dependency. M4c will move the admin identity API.
