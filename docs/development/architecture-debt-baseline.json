@@ -1,0 +1,550 @@
+{
+  "schema_version": 1,
+  "policy": "Existing architecture debt may be removed but no new debt IDs may be introduced.",
+  "counts": {
+    "module_legacy_import": 25,
+    "router_orm_import": 65
+  },
+  "violations": [
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_seeding.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_seeding.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_candidates.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidates.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_candidates.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidates.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/parser_evaluation.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_evaluation.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/suggestion_review.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_review.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/automation/application/suggestion_review.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_review.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/catalog/application/catalog_entry.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_entry.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/catalog/application/catalog_entry.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_entry.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/catalog/application/catalog_release.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_release.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/catalog/application/catalog_release.py",
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_release.py::cloudsite.services"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/delivery/application/download_event.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/delivery/application/download_event.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/delivery/infrastructure/rate_limit.py",
+      "target": "cloudsite.database",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/delivery/infrastructure/rate_limit.py::cloudsite.database"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/delivery/infrastructure/rate_limit.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/delivery/infrastructure/rate_limit.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/indexing/infrastructure/alist_adapter.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/indexing/infrastructure/alist_adapter.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/indexing/infrastructure/legacy_bridge.py",
+      "target": "cloudsite.database",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/indexing/infrastructure/legacy_bridge.py::cloudsite.database"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/indexing/infrastructure/legacy_bridge.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/indexing/infrastructure/legacy_bridge.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/indexing/infrastructure/production_store.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/indexing/infrastructure/production_store.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/notifications/application/notification_service.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/notifications/application/notification_service.py::cloudsite.models"
+    },
+    {
+      "rule": "module_legacy_import",
+      "file": "apps/api/cloudsite/modules/providers/application/provider_service.py",
+      "target": "cloudsite.models",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/providers/application/provider_service.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/alist.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/alist.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/alist.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/alist.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/auth.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/auth.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/catalog.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/catalog.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/catalog.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/catalog.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/collections.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/collections.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/collections.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/collections.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/content_roots.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/content_roots.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/content_roots.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/content_roots.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/delivery.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/delivery.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/diagnostics.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/diagnostics.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/diagnostics.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/diagnostics.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/identities.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/identities.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/identities.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/identities.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/index.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/index.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/index.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/index.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/notifications.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/notifications.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/notifications.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/notifications.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/overview.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/overview.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/overview.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/overview.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/presentation.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/presentation.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/presentation.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/presentation.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/publication_scope.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/publication_scope.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/publication_scope.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/publication_scope.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/quality.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/quality.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/quality.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/quality.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/roles.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/roles.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/roles.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/roles.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/search.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/search.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/search.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/search.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/setup.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/setup.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/setup.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/setup.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/shares.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/shares.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/shares.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/shares.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/site.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/site.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/submissions.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/submissions.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/submissions.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/submissions.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/sync.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/sync.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/sync.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/sync.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/system.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/system.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/admin/system.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/admin/system.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/browse.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/browse.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/browse.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/browse.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/catalog.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/catalog.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/catalog.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/catalog.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/catalog_follow.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/catalog_follow.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/collections.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/collections.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/collections.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/collections.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/delivery.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/delivery.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/downloads.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/downloads.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/health.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/health.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/health.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/health.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/home.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/home.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/home.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/home.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/notifications.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/notifications.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/notifications.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/notifications.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/previews.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/previews.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/resources.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/resources.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/resources.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/resources.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/search.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/search.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/search.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/search.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/shares.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/shares.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/shares.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/shares.py::sqlalchemy"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/submissions.py",
+      "target": "cloudsite.models",
+      "id": "router_orm_import::apps/api/cloudsite/routers/submissions.py::cloudsite.models"
+    },
+    {
+      "rule": "router_orm_import",
+      "file": "apps/api/cloudsite/routers/submissions.py",
+      "target": "sqlalchemy",
+      "id": "router_orm_import::apps/api/cloudsite/routers/submissions.py::sqlalchemy"
+    }
+  ]
+}

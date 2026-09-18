@@ -15,11 +15,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Generate reviewed architecture debt baseline candidate
-        run: python scripts/check-architecture-debt.py --print-baseline
+      - name: Enforce architecture debt ratchet
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ -n "$BASE_REF" ]]; then
+            python scripts/check-architecture-debt.py --baseline-ref "origin/$BASE_REF"
+          else
+            python scripts/check-architecture-debt.py
+          fi
 
   backend:
     runs-on: ubuntu-latest
@@ -207,7 +216,7 @@ jobs:
 
   publish:
     if: github.event_name != 'pull_request'
-    needs: [backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
+    needs: [architecture-debt, backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
     permissions:
       contents: read
       packages: write

@@ -13,8 +13,12 @@ import ast
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import subprocess
 import sys
 from typing import Iterable
+import warnings
+
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "apps" / "api" / "cloudsite"
@@ -166,21 +170,62 @@ def baseline_payload(debts: list[Debt]) -> dict[str, object]:
     }
 
 
-def _load_baseline() -> set[str]:
+def _parse_baseline(text: str, source: str) -> set[str]:
+    data = json.loads(text)
+    if data.get("schema_version") != 1:
+        raise SystemExit(f"Unsupported architecture debt baseline schema_version from {source}.")
+    ids = [item["id"] for item in data.get("violations", [])]
+    if len(ids) != len(set(ids)):
+        raise SystemExit(f"Duplicate architecture debt IDs in baseline from {source}.")
+    return set(ids)
+
+
+def _load_baseline(baseline_ref: str | None) -> set[str]:
+    relative = BASELINE_PATH.relative_to(ROOT).as_posix()
+
+    if baseline_ref:
+        verify = subprocess.run(
+            ["git", "rev-parse", "--verify", baseline_ref],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if verify.returncode != 0:
+            raise SystemExit(f"Cannot resolve architecture baseline ref: {baseline_ref}")
+
+        show = subprocess.run(
+            ["git", "show", f"{baseline_ref}:{relative}"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if show.returncode == 0:
+            print(f"Using architecture debt baseline from {baseline_ref}:{relative}")
+            return _parse_baseline(show.stdout, f"{baseline_ref}:{relative}")
+
+        # One-time M2 bootstrap: main did not have a baseline before this PR.
+        # After M2 lands, every future PR base contains the file, so editing the
+        # baseline in the same PR cannot hide newly introduced debt.
+        if BASELINE_PATH.exists():
+            print(
+                f"Base ref {baseline_ref} has no architecture debt baseline; "
+                "using the reviewed current-file baseline for one-time bootstrap."
+            )
+            return _parse_baseline(BASELINE_PATH.read_text(encoding="utf-8"), relative)
+
+        raise SystemExit(f"Architecture debt baseline missing from {baseline_ref}:{relative}")
+
     if not BASELINE_PATH.exists():
         raise SystemExit(
-            f"Architecture debt baseline missing: {BASELINE_PATH.relative_to(ROOT)}. "
+            f"Architecture debt baseline missing: {relative}. "
             "Generate it intentionally with --print-baseline, review it, then commit it."
         )
-    data = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
-    if data.get("schema_version") != 1:
-        raise SystemExit("Unsupported architecture debt baseline schema_version.")
-    return {item["id"] for item in data.get("violations", [])}
+    return _parse_baseline(BASELINE_PATH.read_text(encoding="utf-8"), relative)
 
 
-def check() -> int:
+def check(baseline_ref: str | None = None) -> int:
     current = collect_debt()
-    baseline = _load_baseline()
+    baseline = _load_baseline(baseline_ref)
     current_ids = {debt.debt_id for debt in current}
     introduced = sorted(current_ids - baseline)
     removed = sorted(baseline - current_ids)
@@ -212,6 +257,10 @@ def main() -> int:
         action="store_true",
         help="Print the exact reviewed JSON baseline payload instead of enforcing it.",
     )
+    parser.add_argument(
+        "--baseline-ref",
+        help="Read the enforcement baseline from a git ref (used by PR CI to prevent baseline self-approval).",
+    )
     args = parser.parse_args()
 
     debts = collect_debt()
@@ -220,7 +269,7 @@ def main() -> int:
         print(json.dumps(baseline_payload(debts), ensure_ascii=False, indent=2))
         print("__ARCHITECTURE_DEBT_BASELINE_END__")
         return 0
-    return check()
+    return check(args.baseline_ref)
 
 
 if __name__ == "__main__":
