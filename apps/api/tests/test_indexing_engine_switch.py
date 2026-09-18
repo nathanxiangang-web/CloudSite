@@ -53,6 +53,7 @@ class FakeProviderAdapter:
         *,
         cursor: str | None = None,
         limit: int | None = None,
+        on_progress=None,
     ) -> tuple[list[SnapshotEntry], str | None, bool]:
         self.scan_calls.append((category_id, cursor, limit))
         entries = self._catalog.get(category_id, [])
@@ -197,7 +198,7 @@ async def test_run_indexing_v2_detects_removals_when_pagination_complete() -> No
 
 async def test_run_indexing_v2_isolates_per_category_errors() -> None:
     class ExplodingAdapter(FakeProviderAdapter):
-        async def scan_category(self, category_id, *, cursor=None, limit=None):
+        async def scan_category(self, category_id, *, cursor=None, limit=None, on_progress=None):
             if category_id == "bad":
                 raise RuntimeError("boom")
             return await super().scan_category(category_id, cursor=cursor, limit=limit)
