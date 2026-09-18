@@ -31,3 +31,12 @@ test("catalog feature manifest declares the public route", () => {
   assert.equal(manifest.public_entry, "index.ts");
   assert.deepEqual(manifest.routes, ["/catalog"]);
 });
+
+test("legacy catalog model path is a thin feature facade", () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, "src", "lib", "catalog.ts"),
+    "utf8",
+  );
+  assert.match(source, /@\/features\/catalog\/model/);
+  assert.doesNotMatch(source, /export type CatalogStatus/);
+});
