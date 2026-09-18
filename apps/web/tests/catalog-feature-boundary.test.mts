@@ -29,5 +29,5 @@ test("catalog feature manifest declares the public route", () => {
   assert.equal(manifest.name, "catalog");
   assert.equal(manifest.migration_status, "partial");
   assert.equal(manifest.public_entry, "index.ts");
-  assert.deepEqual(manifest.routes, ["/catalog"]);
+  assert.deepEqual(manifest.routes, ["/catalog", "/catalog/[entryId]"]);
 });
