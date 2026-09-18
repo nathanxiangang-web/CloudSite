@@ -112,13 +112,20 @@ M4b-2 also moves the persistence-free resource matching policy into
 copy-vs-move filtering, rolling-scope deferral, rename/move classification,
 and ambiguity decisions to that application core.
 
+M4b-3 moves resource identity persistence behind
+`ResourceIdentityRepository` and `IdentityAuditSink` application ports.
+`SqlAlchemyResourceIdentityRepository` is the module infrastructure adapter,
+while the legacy service supplies an OperationLog audit adapter using the same
+caller transaction. Resource resolution now runs from the module application
+layer and still commits exactly once per complete batch.
+
 Still legacy:
 
-- SQLAlchemy-backed persistence/mutation around resource/folder reconciliation;
+- SQLAlchemy-backed folder identity reconciliation;
 - stable-ID migration/backup orchestration;
 - admin identity diagnostics API;
 - identity side effects that write the shared operation log or mutate
   index-owned Folder/Resource paths.
 
-M4b-3 will introduce repository ports/adapters around reconciliation before
-moving the remaining SQLAlchemy persistence. M4c will move the admin API.
+M4b-4 will migrate folder identity persistence and separate descendant path
+mutation from the Identity owner. M4c will move the admin API.
