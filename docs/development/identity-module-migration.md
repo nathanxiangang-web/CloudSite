@@ -30,15 +30,26 @@ The five identity-owned ORM classes now live in
 bases. `cloudsite.models` is a compatibility re-export only. Database table
 names, columns, constraints, and metadata remain identical.
 
-## M4b-2 — Application and repository ports
+## M4b-2 — Persistence-free matching core
+
+Status: implemented in this change.
+
+Resource fingerprint candidate policy now lives in
+`modules/identity/application/matching.py`, while path normalization/event
+classification lives in the domain layer. The legacy SQLAlchemy service
+delegates matching decisions to this pure code but retains transactions,
+allocation, history writes, and audit side effects.
+
+## M4b-3 — Repository ports and adapters
 
 Next:
 
 - define identity repository/unit-of-work ports inside the module;
-- separate matching decisions from SQLAlchemy persistence;
 - adapt the existing state/index database implementation behind infrastructure;
-- migrate resource/folder resolution without introducing a new
-  module_legacy_import debt ID.
+- move persistence-backed resource/folder resolution incrementally;
+- keep OperationLog and index-owned Folder/Resource mutations behind their
+  owning boundaries rather than importing shared legacy models into identity;
+- do not introduce a new module_legacy_import debt ID.
 
 The architecture debt ratchet must stay at or below its existing baseline.
 
