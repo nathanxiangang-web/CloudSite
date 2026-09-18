@@ -110,7 +110,7 @@ jobs:
   compose:
     runs-on: ubuntu-latest
     env:
-      CLOUDSITE_SECRET_KEY: ci-validation-key
+      CLOUDSITE_SECRET_KEY: ci-validation-key-0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v6
       - name: Validate generic Compose
@@ -140,6 +140,40 @@ jobs:
       - name: Compose down
         if: always()
         run: docker compose -f docker-compose.dev.yml down
+
+  production-docker-smoke:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDSITE_SECRET_KEY: ci-production-secret-key-0123456789abcdef0123456789abcdef
+      CLOUDSITE_SETUP_TOKEN: ci-one-time-setup-token
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build production images from source
+        run: |
+          docker build -t cloudsite-api:ci apps/api
+          docker build -t cloudsite-web:ci apps/web
+      - name: Create production-image override
+        run: |
+          cat > docker-compose.ci.yml <<'YAML'
+          services:
+            api:
+              image: cloudsite-api:ci
+              pull_policy: never
+            web:
+              image: cloudsite-web:ci
+              pull_policy: never
+          YAML
+      - name: Start production Compose and wait for health
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --wait
+      - name: Verify health through Web rewrite
+        run: |
+          curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["status"]=="healthy"; print("api", d["version"])'
+      - name: Verify first-install setup is available
+        run: |
+          curl -fsS http://127.0.0.1:3000/api/admin/setup/status | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["setup_required"] is True; assert d["setup_available"] is True; print(d)'
+      - name: Compose down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down
 
   version-consistency:
     runs-on: ubuntu-latest
@@ -198,7 +232,7 @@ jobs:
 
   publish:
     if: github.event_name != 'pull_request'
-    needs: [backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
+    needs: [backend, frontend, compose, docker-smoke, production-docker-smoke, version-consistency, dependency-audit, backup-hardening]
     permissions:
       contents: read
       packages: write
