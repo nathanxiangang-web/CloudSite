@@ -95,3 +95,10 @@ goes there. All new indexing code goes to `modules/indexing/`. The module
 skeleton with task payload schemas in `public/` is in place. Full replacement
 of rolling sync is a Phase 2-4 milestone; until then both may coexist with
 feature flags selecting the pipeline.
+
+## Descendant Path Mutation Ownership
+
+`ProductionIndexingStore.cascade_descendant_paths()` owns prefix-safe
+Folder/Resource descendant rewrites after a parent-folder rename. This write
+belongs to Indexing because it mutates the production index tables; Identity
+retains only a temporary compatibility facade for the historical helper name.
