@@ -10,7 +10,8 @@ import os
 
 
 def get_indexing_engine() -> str:
-    return os.environ.get("CLOUDSITE_INDEXING_ENGINE", "v1")
+    from cloudsite.config import settings
+    return settings.indexing_engine
 
 
 def use_indexing_v2() -> bool:
