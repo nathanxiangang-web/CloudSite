@@ -120,3 +120,36 @@ async def test_setup_unavailable_without_token(monkeypatch):
             assert response.json()["detail"]["code"] == "SETUP_UNAVAILABLE"
     finally:
         await engine.dispose()
+
+
+async def test_setup_surfaces_alist_error_code(monkeypatch):
+    client, _, engine = await _setup_client(monkeypatch)
+
+    async def failing_alist_test(self):
+        raise setup_routes.AListError(
+            "无法连接 AList，请检查地址和网络",
+            "AL-002",
+            status_code=502,
+        )
+
+    monkeypatch.setattr(setup_routes.AListClient, "test", failing_alist_test)
+
+    try:
+        async with client:
+            response = await client.post(
+                "/api/admin/setup/alist",
+                headers={"X-CloudSite-Setup-Token": settings.setup_token},
+                json={
+                    "base_url": "https://alist.example.com",
+                    "username": "admin",
+                    "password": "secret",
+                    "remember_credentials": True,
+                },
+            )
+            assert response.status_code == 400
+            detail = response.json()["detail"]
+            assert detail["code"] == "ALIST_TEST_FAILED"
+            assert detail["alist_code"] == "AL-002"
+            assert "无法连接 AList" in detail["message"]
+    finally:
+        await engine.dispose()
