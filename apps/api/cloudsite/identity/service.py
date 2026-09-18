@@ -1,9 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Folder, OperationLog, Resource
+from ..models import OperationLog
 from .schemas import FolderIdentityObservation, FolderIdentityResolution, IdentityObservation, IdentityResolution
 from ..modules.identity.application.folder_resolution import (
     resolve_folder_identities as _resolve_folder_identities,
@@ -107,25 +106,17 @@ async def cascade_rename_descendants(
     new_path_prefix: str,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    """Batch UPDATE path prefix for all descendants of a renamed folder.
+    """Compatibility facade for index-owned descendant path mutation.
 
-    只替换开头前缀（substr 拼接新前缀 + 原后缀），LIKE 转义 %/\\/_ 避免
-    通配符误匹配，不全局 replace 路径中后续同名片段（任务 C.6）。
+    ``folder_id`` and ``now`` remain in the legacy signature for callers, but
+    the mutation itself is owned by the Indexing production store.
     """
-    old_seg = old_path_prefix.rstrip("/") + "/"
-    new_seg = new_path_prefix.rstrip("/") + "/"
-    escaped = old_seg.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    old_len = len(old_seg)
-    folders_result = await session.execute(
-        update(Folder)
-        .where(Folder.path.like(escaped + "%", escape="\\"))
-        .values(path=new_seg + func.substr(Folder.path, old_len + 1))
+    from ..modules.indexing.infrastructure.production_store import (
+        ProductionIndexingStore,
     )
-    folders_count = folders_result.rowcount or 0
-    resources_result = await session.execute(
-        update(Resource)
-        .where(Resource.path.like(escaped + "%", escape="\\"))
-        .values(path=new_seg + func.substr(Resource.path, old_len + 1))
+
+    store = ProductionIndexingStore(session)
+    return await store.cascade_descendant_paths(
+        old_path_prefix,
+        new_path_prefix,
     )
-    resources_count = resources_result.rowcount or 0
-    return {"folders_updated": folders_count, "resources_updated": resources_count}
