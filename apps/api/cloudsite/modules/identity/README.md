@@ -107,13 +107,18 @@ The table names, columns, constraints, bases, and metadata registration are
 unchanged. `cloudsite.models` re-exports the exact same classes so legacy
 imports keep working while callers migrate.
 
+M4b-2 also moves the persistence-free resource matching policy into
+`application/matching.py`. The legacy SQLAlchemy service now delegates
+copy-vs-move filtering, rolling-scope deferral, rename/move classification,
+and ambiguity decisions to that application core.
+
 Still legacy:
 
-- SQLAlchemy-backed resource/folder reconciliation service behavior;
+- SQLAlchemy-backed persistence/mutation around resource/folder reconciliation;
 - stable-ID migration/backup orchestration;
 - admin identity diagnostics API;
 - identity side effects that write the shared operation log or mutate
   index-owned Folder/Resource paths.
 
-M4b-2 will introduce explicit application/repository ports around reconciliation
-before moving that service logic. M4c will move the admin API.
+M4b-3 will introduce repository ports/adapters around reconciliation before
+moving the remaining SQLAlchemy persistence. M4c will move the admin API.

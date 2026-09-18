@@ -9,24 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import Folder, FolderIdentity, FolderIdentityHistory, OperationLog, Resource, ResourceIdentity, ResourceIdentityHistory
 from .fingerprint import identity_fingerprint
 from .schemas import FolderIdentityObservation, FolderIdentityResolution, IdentityObservation, IdentityResolution
+from ..modules.identity.application.matching import (
+    ResourceIdentityCandidateView,
+    choose_fingerprint_match,
+)
+from ..modules.identity.domain.rules import (
+    classify_identity_event,
+    normalize_identity_path,
+)
 
 
 TOUCH_INTERVAL = timedelta(hours=6)
 
 
-def _normalize_path(value: str) -> str:
-    parts = [part for part in str(value or "").replace("\\", "/").split("/") if part]
-    return "/" + "/".join(parts) if parts else "/"
-
-
-def _event_type(previous_path: str | None, current_path: str, previous_status: str) -> str:
-    if previous_path is None:
-        return "created"
-    if previous_path == current_path:
-        return "reactivated" if previous_status != "active" else "observed"
-    if PurePosixPath(previous_path).parent == PurePosixPath(current_path).parent:
-        return "rename"
-    return "move"
+# Transitional private aliases keep any legacy test/monkeypatch surface stable.
+_normalize_path = normalize_identity_path
+_event_type = classify_identity_event
 
 
 def _utc(value: datetime) -> datetime:
@@ -102,41 +100,41 @@ async def resolve_resource_identities(
             raise RuntimeError(f"同一 Stable ID 在一次扫描中被多个路径占用：{identity.resource_id}")
 
         if identity is None:
-            unseen_candidates = [
-                candidate
-                for candidate in fingerprint_map.get(fingerprint, [])
-                if candidate.resource_id not in claimed
-                and candidate.current_path
-                and _normalize_path(candidate.current_path) not in normalized_visible
-            ]
-            candidates = [
-                candidate
-                for candidate in unseen_candidates
-                if allowed_candidate_paths is None
-                or _normalize_path(candidate.current_path or "/") in allowed_candidate_paths
-            ]
-            if len(candidates) == 1:
-                identity = candidates[0]
-                match_type = "rename" if PurePosixPath(identity.current_path or "/").parent == PurePosixPath(observation.path).parent else "move"
-            elif not candidates and defer_unseen_candidates and len(unseen_candidates) == 1:
-                pending = unseen_candidates[0]
+            decision = choose_fingerprint_match(
+                observation_path=observation.path,
+                fingerprint_candidates=[
+                    ResourceIdentityCandidateView(
+                        resource_id=candidate.resource_id,
+                        current_path=candidate.current_path,
+                    )
+                    for candidate in fingerprint_map.get(fingerprint, [])
+                ],
+                normalized_visible_paths=normalized_visible,
+                claimed_resource_ids=claimed,
+                allowed_candidate_paths=allowed_candidate_paths,
+                defer_unseen_candidates=defer_unseen_candidates,
+            )
+            match_type = decision.match_type
+            ambiguous = list(decision.ambiguous_resource_ids)
+
+            if match_type in {"rename", "move"}:
+                identity = next(
+                    candidate
+                    for candidate in fingerprint_map.get(fingerprint, [])
+                    if candidate.resource_id == decision.resource_id
+                )
+            elif match_type == "pending_move_or_copy":
                 resolutions.append(
                     IdentityResolution(
                         observation=observation,
-                        resource_id=pending.resource_id,
-                        match_type="pending_move_or_copy",
+                        resource_id=decision.resource_id or "",
+                        match_type=match_type,
                         fingerprint=fingerprint,
-                        previous_path=pending.current_path,
+                        previous_path=decision.previous_path,
                     )
                 )
                 continue
             else:
-                ambiguous_candidates = candidates or unseen_candidates
-                if len(ambiguous_candidates) > 1:
-                    ambiguous = sorted(candidate.resource_id for candidate in ambiguous_candidates)
-                    match_type = "ambiguous_new"
-                else:
-                    match_type = "new"
                 resource_id = await _new_resource_id(session, claimed)
                 identity = ResourceIdentity(
                     resource_id=resource_id,
