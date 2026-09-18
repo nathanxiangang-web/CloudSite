@@ -11,7 +11,7 @@ import {
   type CatalogAssetSummary,
   type CatalogLocation,
   type CatalogReleaseSummary,
-} from "../src/lib/catalog.ts";
+} from "../src/features/catalog/model.ts";
 
 
 function makeRelease(over: Partial<CatalogReleaseSummary> = {}): CatalogReleaseSummary {
