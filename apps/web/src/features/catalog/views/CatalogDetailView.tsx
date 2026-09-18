@@ -3,13 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Boxes, ChevronLeft, Download, Link2 } from "lucide-react";
 import Link from "next/link";
-import { ReactNode, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { formatBytes } from "@/lib/api";
 
 import { fetchCatalogEntry, fetchCatalogRelease } from "../api";
+import { CatalogFollowButton } from "../components/CatalogFollowButton";
 import {
   assetDimensionLabel,
   assetKindLabel,
@@ -24,13 +25,7 @@ import {
 import type { CatalogAssetSummary, CatalogReleaseSummary } from "../types";
 import styles from "../styles/catalog-detail.module.css";
 
-export function CatalogDetailView({
-  entryId,
-  followSlot,
-}: {
-  entryId: string;
-  followSlot?: ReactNode;
-}) {
+export function CatalogDetailView({ entryId }: { entryId: string }) {
   const entry = useQuery({
     queryKey: ["catalog-entry", entryId],
     queryFn: () => fetchCatalogEntry(entryId),
@@ -79,7 +74,7 @@ export function CatalogDetailView({
             更新于 {formatCatalogTimestamp(data.updated_at)}
           </span>
         </div>
-        {followSlot ? <div>{followSlot}</div> : null}
+        <div><CatalogFollowButton entryId={data.entry_id} /></div>
       </header>
 
       {data.summary && <p className={styles.summary}>{data.summary}</p>}

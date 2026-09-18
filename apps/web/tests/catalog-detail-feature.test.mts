@@ -32,5 +32,5 @@ test("catalog detail route is a thin public-entry composition", () => {
   assert.doesNotMatch(source, /@\/features\/catalog\//);
   assert.doesNotMatch(source, /@\/lib\/catalog/);
   assert.doesNotMatch(source, /@tanstack\/react-query/);
-  assert.match(source, /CatalogFollowButton/);
+  assert.doesNotMatch(source, /CatalogFollowButton/);
 });

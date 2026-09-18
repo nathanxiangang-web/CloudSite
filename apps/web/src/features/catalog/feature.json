@@ -5,6 +5,7 @@
   "public_entry": "index.ts",
   "routes": [
     "/catalog",
-    "/catalog/[entryId]"
+    "/catalog/[entryId]",
+    "/account/follows"
   ]
 }

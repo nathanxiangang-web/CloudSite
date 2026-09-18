@@ -96,3 +96,35 @@ export type CatalogEntryDetail = CatalogEntrySummary & {
   releases: CatalogReleaseSummary[];
   relations: CatalogRelation[];
 };
+
+export type CatalogFollowStatus = {
+  favorited: boolean;
+  notify_enabled: boolean;
+};
+
+export type CatalogFollowItem = {
+  entry_id: string;
+  title: string;
+  slug: string;
+  content_type: string;
+  summary: string;
+  favorited_at: string;
+  notify_enabled: boolean;
+  latest_release: {
+    release_id: string;
+    title: string;
+    slug: string;
+    channel: string;
+    published_at: string | null;
+    release_date: string | null;
+    is_recommended: boolean;
+  } | null;
+};
+
+export type CatalogFollowPage = {
+  items: CatalogFollowItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+};

@@ -53,3 +53,14 @@ After moving the detail-owned selectors into
 - M6b baseline: **149,456 bytes**
 - M6b reduction: **2,028 bytes**
 - cumulative reduction from M5 baseline (153,299): **3,843 bytes**
+
+
+## M6c-1 — Follow and account-follows slice
+
+Catalog follow status, follow/unfollow, notification preference, and
+`/account/follows` list behavior now live in the Catalog feature.
+
+`CatalogDetailView` consumes the feature-owned Follow button directly, while
+the old `components/catalog/CatalogFollowButton.tsx` file is reduced to a
+temporary public-entry re-export. The account route becomes shell composition
+only.

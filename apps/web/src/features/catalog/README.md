@@ -23,3 +23,16 @@ Still legacy and deferred:
 
 The shared .catalog-card-unavailable rule remains in globals.css temporarily
 because the not-yet-migrated detail page still consumes that class.
+
+
+## M6c-1 Follow ownership
+
+Catalog follow/subscription now belongs to the feature:
+- components/CatalogFollowButton.tsx;
+- views/CatalogFollowsView.tsx;
+- follow status/list DTOs;
+- follow/unfollow/notification/list API calls;
+- /account/follows route composition.
+
+The legacy components/catalog/CatalogFollowButton.tsx path remains as a
+temporary re-export compatibility seam.

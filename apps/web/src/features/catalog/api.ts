@@ -3,6 +3,8 @@ import { buildCatalogEntriesQuery, buildCatalogSearchQuery } from "./model";
 import type {
   CatalogEntryDetail,
   CatalogEntrySummary,
+  CatalogFollowPage,
+  CatalogFollowStatus,
   CatalogPage,
   CatalogReleaseDetail,
   CatalogSearchResponse,
@@ -43,4 +45,53 @@ export async function fetchCatalogRelease(releaseId: string): Promise<CatalogRel
   return api<CatalogReleaseDetail>(
     `/api/catalog/releases/${encodeURIComponent(releaseId)}`,
   );
+}
+
+export async function fetchCatalogFollowStatus(
+  entryId: string,
+): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(
+    `/api/me/catalog/favorites/${encodeURIComponent(entryId)}`,
+  );
+}
+
+export async function followCatalogEntry(
+  entryId: string,
+): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(
+    `/api/me/catalog/favorites/${encodeURIComponent(entryId)}`,
+    { method: "POST" },
+  );
+}
+
+export async function unfollowCatalogEntry(
+  entryId: string,
+): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(
+    `/api/me/catalog/favorites/${encodeURIComponent(entryId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function updateCatalogSubscription(
+  entryId: string,
+  notifyEnabled: boolean,
+): Promise<CatalogFollowStatus> {
+  return api<CatalogFollowStatus>(
+    `/api/me/catalog/favorites/${encodeURIComponent(entryId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ notify_enabled: notifyEnabled }),
+    },
+  );
+}
+
+export async function fetchMyCatalogFollows(
+  params: { page?: number; page_size?: number } = {},
+): Promise<CatalogFollowPage> {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.page_size) query.set("page_size", String(params.page_size));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return api<CatalogFollowPage>(`/api/me/catalog/favorites${suffix}`);
 }

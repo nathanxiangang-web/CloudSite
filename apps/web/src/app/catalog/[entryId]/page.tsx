@@ -3,7 +3,6 @@
 import { useParams } from "next/navigation";
 
 import { PublicShell } from "@/components/PublicShell";
-import { CatalogFollowButton } from "@/components/catalog/CatalogFollowButton";
 import { CatalogDetailView } from "@/features/catalog";
 
 export default function CatalogEntryPage() {
@@ -11,10 +10,7 @@ export default function CatalogEntryPage() {
 
   return (
     <PublicShell>
-      <CatalogDetailView
-        entryId={entryId}
-        followSlot={<CatalogFollowButton entryId={entryId} />}
-      />
+      <CatalogDetailView entryId={entryId} />
     </PublicShell>
   );
 }

@@ -1,4 +1,6 @@
+export { CatalogFollowButton } from "./components/CatalogFollowButton";
 export { CatalogDetailView } from "./views/CatalogDetailView";
+export { CatalogFollowsView } from "./views/CatalogFollowsView";
 export { CatalogListView } from "./views/CatalogListView";
 export {
   CATALOG_ASSET_KIND_LABELS,
@@ -19,10 +21,15 @@ export {
 } from "./model";
 export {
   fetchCatalogEntries,
+  fetchCatalogFollowStatus,
   fetchCatalogEntry,
   fetchCatalogRelease,
   fetchCatalogSearch,
   fetchCatalogTags,
+  fetchMyCatalogFollows,
+  followCatalogEntry,
+  unfollowCatalogEntry,
+  updateCatalogSubscription,
 } from "./api";
 export type {
   CatalogAssetKind,
@@ -30,6 +37,9 @@ export type {
   CatalogAvailability,
   CatalogEntryDetail,
   CatalogEntrySummary,
+  CatalogFollowItem,
+  CatalogFollowPage,
+  CatalogFollowStatus,
   CatalogPage,
   CatalogRelation,
   CatalogReleaseDetail,
