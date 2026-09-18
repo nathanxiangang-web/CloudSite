@@ -9,6 +9,7 @@ export {
   channelLabel,
   buildCatalogEntriesQuery,
   buildCatalogSearchQuery,
+  catalogAssetDownloadPath,
   catalogEntryHref,
   contentTypeLabel,
   formatCatalogTimestamp,
@@ -17,7 +18,6 @@ export {
   releaseIsRecommended,
 } from "./model";
 export {
-  catalogAssetDownloadPath,
   fetchCatalogEntries,
   fetchCatalogEntry,
   fetchCatalogRelease,

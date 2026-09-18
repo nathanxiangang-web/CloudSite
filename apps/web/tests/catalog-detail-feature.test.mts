@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-import { catalogAssetDownloadPath } from "../src/features/catalog/api.ts";
 import {
   assetDimensionLabel,
+  catalogAssetDownloadPath,
   releaseIsHistorical,
   releaseIsPublished,
   releaseIsRecommended,

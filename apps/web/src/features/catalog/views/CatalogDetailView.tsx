@@ -9,14 +9,11 @@ import remarkGfm from "remark-gfm";
 
 import { formatBytes } from "@/lib/api";
 
-import {
-  catalogAssetDownloadPath,
-  fetchCatalogEntry,
-  fetchCatalogRelease,
-} from "../api";
+import { fetchCatalogEntry, fetchCatalogRelease } from "../api";
 import {
   assetDimensionLabel,
   assetKindLabel,
+  catalogAssetDownloadPath,
   channelLabel,
   contentTypeLabel,
   formatCatalogTimestamp,

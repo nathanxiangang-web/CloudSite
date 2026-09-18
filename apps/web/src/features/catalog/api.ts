@@ -33,10 +33,6 @@ export async function fetchCatalogTags(): Promise<{ items: CatalogTag[] }> {
   return api<{ items: CatalogTag[] }>("/api/catalog/tags");
 }
 
-export function catalogAssetDownloadPath(entryId: string, assetId: string): string {
-  return `/api/catalog/entries/${encodeURIComponent(entryId)}/assets/${encodeURIComponent(assetId)}/download`;
-}
-
 export async function fetchCatalogEntry(entryId: string): Promise<CatalogEntryDetail> {
   return api<CatalogEntryDetail>(
     `/api/catalog/entries/${encodeURIComponent(entryId)}`,

@@ -108,3 +108,7 @@ export function assetDimensionLabel(
   if (!value || value === "unknown") return fallback;
   return value;
 }
+
+export function catalogAssetDownloadPath(entryId: string, assetId: string): string {
+  return `/api/catalog/entries/${encodeURIComponent(entryId)}/assets/${encodeURIComponent(assetId)}/download`;
+}
