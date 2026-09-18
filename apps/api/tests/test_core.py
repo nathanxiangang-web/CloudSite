@@ -386,18 +386,17 @@ async def test_manual_sync_endpoint_returns_before_background_work_finishes(monk
     async def fake_preflight(sync_type: str, force: bool):
         return None
 
-    async def fake_run_sync(sync_type: str, full: bool, force: bool):
+    async def fake_v2_production():
         started.set()
         await release.wait()
-        return {"status": "success"}
-
-    async def fake_rolling_enabled():
-        return False
+        return {"status": "success", "engine": "v2"}
 
     monkeypatch.setattr(main, "manual_sync_task", None)
     monkeypatch.setattr(main, "sync_preflight", fake_preflight)
-    monkeypatch.setattr(main, "rolling_enabled", fake_rolling_enabled)
-    monkeypatch.setattr(main, "run_sync", fake_run_sync)
+    monkeypatch.setattr(
+        "cloudsite.tasks.sync.run_indexing_v2_production",
+        fake_v2_production,
+    )
     result = await main.sync(main.SyncInput(full=False, force=False))
     assert result == {"status": "accepted", "message": "同步任务已启动"}
     await asyncio.wait_for(started.wait(), timeout=1)
