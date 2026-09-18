@@ -1,5 +1,6 @@
 """admin/sync 路由：同步触发与状态。"""
 import asyncio
+import json
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
@@ -29,7 +30,31 @@ async def sync(payload: SyncInput):
 
 
 @router.get("/api/admin/sync/status")
-async def admin_rolling_sync_status():
+async def admin_sync_status():
+    from ... import main as _main
+    from ...modules.indexing.infrastructure.indexing_engine import use_indexing_v2
+    from ...main import StateSession
+
+    if use_indexing_v2():
+        manual_running = bool(
+            _main.manual_sync_task and not _main.manual_sync_task.done()
+        )
+        progress = {}
+        async with StateSession() as session:
+            row = await session.get(SystemSetting, "v2_sync_progress")
+            if row and row.value:
+                try:
+                    progress = json.loads(row.value)
+                except (ValueError, TypeError):
+                    progress = {}
+        return {
+            "engine_version": "v2",
+            "manual_sync_running": manual_running,
+            "status": progress.get("status", "idle"),
+            "categories_done": progress.get("categories_done", 0),
+            "categories_total": progress.get("categories_total", 0),
+            "elapsed_seconds": progress.get("elapsed_seconds", 0),
+        }
     return await rolling_status()
 
 
