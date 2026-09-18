@@ -127,5 +127,10 @@ Still legacy:
 - identity side effects that write the shared operation log or mutate
   index-owned Folder/Resource paths.
 
-M4b-4 will migrate folder identity persistence and separate descendant path
-mutation from the Identity owner. M4c will move the admin API.
+M4b-4a moves folder identity persistence behind `FolderIdentityRepository`.
+The folder application service intentionally has no commit operation, preserving
+the historical caller-owned transaction boundary.
+
+Still outside the module boundary is descendant Folder/Resource path mutation,
+which belongs to the indexing/resource side rather than Identity. M4b-4b will
+move that side effect behind its owning contract. M4c will move the admin API.
