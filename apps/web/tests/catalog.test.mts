@@ -12,7 +12,7 @@ import {
   pickDownloadLocation,
   releaseIsPublished,
   statusLabel,
-} from "../src/lib/catalog.ts";
+} from "../src/features/catalog/model.ts";
 
 
 test("catalog href helpers encode IDs and keep paths under /catalog", () => {

@@ -6,7 +6,7 @@ import {
   catalogEntryHref,
   contentTypeLabel,
   type CatalogSearchResponse,
-} from "../src/lib/catalog.ts";
+} from "../src/features/catalog/model.ts";
 import { normalizeSearchQuery } from "../src/lib/search-query.ts";
 
 

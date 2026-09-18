@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { catalogEntryHref } from "../src/lib/catalog.ts";
+import { catalogEntryHref } from "../src/features/catalog/model.ts";
 
 
 test("catalog detail href is the follow button login next target", () => {
