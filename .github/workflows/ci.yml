@@ -11,6 +11,16 @@ permissions:
   contents: read
 
 jobs:
+  architecture-debt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Generate reviewed architecture debt baseline candidate
+        run: python scripts/check-architecture-debt.py --print-baseline
+
   backend:
     runs-on: ubuntu-latest
     defaults:
