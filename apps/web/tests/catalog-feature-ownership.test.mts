@@ -28,13 +28,13 @@ test("catalog public entry exposes the list contract", () => {
 });
 
 test("catalog list query helpers preserve public API URLs", async () => {
-  const module = await import("../src/features/catalog/model.ts");
-  assert.equal(module.catalogEntryHref("ce_a b/"), "/catalog/ce_a%20b%2F");
-  assert.equal(module.contentTypeLabel("software"), "软件");
-  assert.equal(module.contentTypeLabel("unknown"), "资源");
+  const catalogModel = await import("../src/features/catalog/model.ts");
+  assert.equal(catalogModel.catalogEntryHref("ce_a b/"), "/catalog/ce_a%20b%2F");
+  assert.equal(catalogModel.contentTypeLabel("software"), "软件");
+  assert.equal(catalogModel.contentTypeLabel("unknown"), "资源");
 
   const entries = new URL(
-    module.buildCatalogEntriesQuery({
+    catalogModel.buildCatalogEntriesQuery({
       page: 2,
       page_size: 24,
       content_type: "software",
