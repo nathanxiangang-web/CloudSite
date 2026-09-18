@@ -4,6 +4,7 @@
   "migration_status": "partial",
   "public_entry": "index.ts",
   "routes": [
-    "/catalog"
+    "/catalog",
+    "/catalog/[entryId]"
   ]
 }

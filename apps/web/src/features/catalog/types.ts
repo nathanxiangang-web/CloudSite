@@ -59,3 +59,46 @@ export type CatalogSearchResponse = {
   total_pages: number;
   suggestion: string | null;
 };
+
+export type CatalogAssetKind =
+  | "file"
+  | "document"
+  | "image"
+  | "video"
+  | "archive"
+  | "other";
+
+export type CatalogAssetSummary = {
+  asset_id: string;
+  slug: string;
+  display_name: string;
+  platform: string;
+  kind: CatalogAssetKind;
+  architecture: string;
+  package_type: string;
+  language: string;
+  build_label: string;
+  size: number | null;
+  status: "active" | "disabled";
+  availability: CatalogAvailability;
+  location_count: number;
+};
+
+export type CatalogReleaseDetail = CatalogReleaseSummary & {
+  release_notes: string;
+  assets: CatalogAssetSummary[];
+};
+
+export type CatalogRelation = {
+  relation_id: string;
+  to_entry_id: string;
+  to_title: string;
+  relation_type: string;
+  note: string;
+};
+
+export type CatalogEntryDetail = CatalogEntrySummary & {
+  description: string;
+  releases: CatalogReleaseSummary[];
+  relations: CatalogRelation[];
+};
