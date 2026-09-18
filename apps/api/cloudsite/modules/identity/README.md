@@ -17,14 +17,18 @@ Core duties:
 
 ## Public API
 
-- `generate_resource_id()` - 128-bit random stable ID (URL-safe base32).
-- `fingerprint(path, provider_id, size, mtime)` - deterministic fingerprint.
-- `resolve_identity(provider_id, object_id)` - find existing stable ID.
-- `reconcile_candidate(candidate)` - promote or reject an identity candidate.
-- `migrate_legacy_id(legacy_id)` - map old integer ID to stable ID.
+M4a makes the persistence-free identity core real. New code imports these
+stable exports from `modules/identity/contracts/public.py`:
 
-All exports live in `contracts/public.py`. Other modules must import from
-there only, never from `domain/` or `infrastructure/`.
+- `IdentityObservation` / `IdentityResolution`
+- `FolderIdentityObservation` / `FolderIdentityResolution`
+- `identity_fingerprint(...)`
+- `folder_identity_fingerprint(...)`
+
+Persistence-backed resolution and legacy database migration are intentionally
+not public module contracts yet. They remain behind the pre-2.0
+`cloudsite.identity` compatibility facade until M4b introduces explicit
+repository ports.
 
 ## Domain Model
 
@@ -87,7 +91,20 @@ No dependency on resources, catalog, or shares. Identity is a leaf domain.
 
 ## Current Migration Status
 
-Existing code lives in the top-level `identity/` subpackage. The module
-skeleton under `modules/identity/` is in place with empty layers. Migration to
-`modules/identity/` is scheduled for Phase 3, first in the module move order
-because shares, resources, and catalog all depend on stable IDs.
+**Partial (M4a).**
+
+The pure identity core now lives under `modules/identity/domain/` and is
+exported only through `modules/identity/contracts/public.py`. The legacy
+`cloudsite.identity.fingerprint` and `cloudsite.identity.schemas` modules are
+thin compatibility facades, so existing callers keep the same runtime types and
+fingerprint behavior.
+
+Still legacy and intentionally not moved in M4a:
+
+- SQLAlchemy-backed resource/folder identity reconciliation;
+- stable-ID migration and backup orchestration;
+- admin identity diagnostics API;
+- identity-owned ORM table declarations in the shared models file.
+
+M4b will introduce repository/application ports before moving the SQLAlchemy
+service logic. M4c will move the admin API and complete the module boundary.

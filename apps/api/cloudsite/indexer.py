@@ -16,7 +16,8 @@ from .alist import AListClient, AListError
 from .config import settings
 from .crypto import decrypt_secret
 from .database import IndexSession, StateSession
-from .identity import IdentityObservation, resolve_resource_identities
+from .identity import resolve_resource_identities
+from .modules.identity.contracts.public import IdentityObservation
 from .models import (
     AListConnection,
     ContentRootMapping,
