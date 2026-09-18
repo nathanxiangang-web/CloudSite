@@ -131,6 +131,11 @@ M4b-4a moves folder identity persistence behind `FolderIdentityRepository`.
 The folder application service intentionally has no commit operation, preserving
 the historical caller-owned transaction boundary.
 
-Still outside the module boundary is descendant Folder/Resource path mutation,
-which belongs to the indexing/resource side rather than Identity. M4b-4b will
-move that side effect behind its owning contract. M4c will move the admin API.
+M4b-4b moves descendant Folder/Resource path mutation to the Indexing
+production store, which already owns writes to those index tables. The old
+`cloudsite.identity.service.cascade_rename_descendants` symbol remains only
+as a compatibility facade.
+
+At this point resource and folder identity persistence are module-owned, while
+index-table path mutation is no longer implemented inside Identity. M4c will
+move the admin identity query API.
