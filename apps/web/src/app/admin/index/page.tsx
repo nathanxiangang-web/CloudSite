@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Clock3, Database, File, Folder, Power, RefreshCw, RotateCcw, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Database, File, Folder, RefreshCw, RotateCcw, Search, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Folder as FolderType } from "@/lib/api";
 
@@ -19,43 +19,13 @@ type SyncRun = {
   finished_at: string | null;
   duration_ms: number;
   error_message: string;
+  current_path?: string;
+  roots_completed?: number;
+  roots_total?: number;
 };
 type IndexSummary = { folders: number; resources: number; syncing: boolean; latest_sync: SyncRun | null };
 type Mapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
 type Change = { id: number; object_type: string; change_type: string; old_path: string | null; new_path: string | null; created_at: string };
-type RollingStatus = {
-  engine_version: string;
-  mode: string;
-  migrated_at?: string | null;
-  manual_sync_running?: boolean;
-  recent_changes_summary?: { trigger_source?: string; renamed?: number; skipped_verified?: number; refresh_true_count?: number };
-  cycle: null | {
-    id: number;
-    type: string;
-    status: string;
-    anchor_at: string;
-    windows_total: number;
-    windows_completed: number;
-    next_window_at: string;
-    planned_folder_count: number;
-    completed_folder_count: number;
-    failed_folder_count: number;
-    remaining_folder_count: number;
-    next_window_target: number;
-    alist_list_requests: number;
-    window_list_requests: number;
-    changed_scope_count: number;
-    unchanged_scope_count: number;
-  };
-};
-
-type ManualSyncResponse = { status: "accepted" | "already_running" | "invalid_path"; accepted_paths?: string[]; rejected_paths?: string[]; message?: string };
-
-function manualSyncFeedback(response: ManualSyncResponse): { tone: "success" | "warning" | "error"; text: string } {
-  if (response.status === "accepted") return { tone: "success", text: "已受理，正在排队执行" };
-  if (response.status === "already_running") return { tone: "warning", text: "另一手动同步正在运行" };
-  return { tone: "error", text: "路径不在已配置内容根下" };
-}
 
 const typeNames: Record<string, string> = { software: "软件", image: "图库", video: "视频", document: "教程", file: "普通文件" };
 const syncTypeLabel: Record<string, string> = { full: "全量同步", windowed: "v2 扫描", window: "v2 扫描", rolling_window: "v2 扫描", manual_path: "手动同步", delta: "增量同步", auto: "自动同步" };
@@ -85,20 +55,14 @@ export default function IndexPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [manualPath, setManualPath] = useState("");
-  const [forceRefresh, setForceRefresh] = useState(false);
   const summary = useQuery({ queryKey: ["index-summary"], queryFn: () => api<IndexSummary>("/api/admin/index/summary"), refetchInterval: (query) => query.state.data?.syncing ? 2000 : false });
-  const folders = useQuery({ queryKey: ["admin-folders"], queryFn: () => api<{ items: FolderType[] }>("/api/admin/index/folders") });
+  const folders = useQuery({ queryKey: ["admin-folders/"], queryFn: () => api<{ items: FolderType[] }>("/api/admin/index/folders") });
   const mappings = useQuery({ queryKey: ["mappings"], queryFn: () => api<{ items: Mapping[] }>("/api/admin/root-mappings") });
-  const runs = useQuery({ queryKey: ["sync-runs"], queryFn: () => api<{ items: SyncRun[] }>("/api/admin/sync-runs?limit=8") });
-  const rolling = useQuery({ queryKey: ["rolling-status"], queryFn: () => api<RollingStatus>("/api/admin/sync/status"), refetchInterval: 5000 });
-  const system = useQuery({ queryKey: ["system"], queryFn: () => api<{ automatic_sync: boolean }>("/api/admin/system") });
-  const toggleAutoSync = useMutation({ mutationFn: () => api<{ automatic_sync: boolean }>("/api/admin/sync/auto-toggle", { method: "POST" }), onSuccess: () => client.invalidateQueries({ queryKey: ["system"] }) });
+  const runs = useQuery({ queryKey: ["sync-runs"], queryFn: () => api<{ items: SyncRun[] }>("/api/admin/sync-runs?limit=8"), refetchInterval: summary.data?.syncing ? 3000 : false });
   const detail = useQuery({ queryKey: ["admin-folder", selectedId], queryFn: () => api<FolderType & { direct_resource_count: number }>(`/api/admin/index/folders/${selectedId}`), enabled: Boolean(selectedId) });
   const changes = useQuery({ queryKey: ["sync-changes", selectedRunId], queryFn: () => api<{ items: Change[] }>(`/api/admin/sync-runs/${selectedRunId}/changes?limit=50`), enabled: Boolean(selectedRunId) });
-  const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["sync-runs"] }); client.invalidateQueries({ queryKey: ["rolling-status"] }); };
+  const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["sync-runs"] }); };
   const sync = useMutation({ mutationFn: (full: boolean) => api("/api/admin/sync", { method: "POST", body: JSON.stringify({ full }) }), onSuccess: refresh });
-  const manualSync = useMutation({ mutationFn: () => api<ManualSyncResponse>("/api/admin/sync/path", { method: "POST", body: JSON.stringify({ paths: [manualPath.trim()], force_refresh: forceRefresh }) }), onSuccess: () => { client.invalidateQueries({ queryKey: ["rolling-status"] }); client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["sync-runs"] }); } });
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, FolderType[]>();
@@ -113,32 +77,42 @@ export default function IndexPage() {
   const roots = childrenByParent.get(null) ?? [];
   const filtered = (folders.data?.items ?? []).filter((item) => `${item.name} ${item.path}`.toLowerCase().includes(filter.toLowerCase()));
   const latest = summary.data?.latest_sync;
-  const rollingCycle = rolling.data?.cycle;
-  const isRolling = false;
-  const manualSyncRunning = rolling.data?.manual_sync_running ?? false;
-  const busy = sync.isPending || summary.data?.syncing;
-  const [overdue, setOverdue] = useState(false);
-  const nextWindowAtIso = rollingCycle?.next_window_at ?? null;
-  useEffect(() => {
-    if (!nextWindowAtIso) return;
-    const target = new Date(nextWindowAtIso).getTime();
-    const check = () => setOverdue(Date.now() >= target);
-    const raf = window.requestAnimationFrame(check);
-    const timer = window.setInterval(check, 30_000);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.clearInterval(timer);
-    };
-  }, [nextWindowAtIso]);
+  const syncing = summary.data?.syncing ?? false;
+  const busy = sync.isPending || syncing;
   const toggle = (id: string) => setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
+  const syncStatusIcon = syncing ? <Loader2 className="spin" /> : latest?.status === "success" ? <CheckCircle2 className="ok" /> : latest?.status === "failed" ? <AlertTriangle className="warn" /> : <Database />;
+  const syncStatusText = syncing ? "进行中" : latest ? labelOf(runStatusLabel, latest.status) : "未运行";
+  const syncDetail = latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing && latest ? `已扫描 ${latest.folders_scanned} 目录 / ${latest.resources_scanned} 资源` : "";
+
   return <AdminShell title="内容索引"><div className="admin-page index-admin-page">
-    <section className="index-summary-grid"><article><Database /><span><small>索引资源</small><strong>{summary.data?.resources ?? 0}</strong></span></article><article><Folder /><span><small>目录数量</small><strong>{summary.data?.folders ?? 0}</strong></span></article><article><Clock3 /><span><small>最近同步</small><strong>{latest?.status === "success" ? "已完成" : latest?.status === "failed" ? "失败" : latest?.status === "running" ? "进行中" : "未运行"}</strong></span></article></section>
-    <section className="panel index-control-panel"><div><h2>Indexing v2</h2><p>扫描 AList 目录并同步到索引数据库，支持新增、变更和移除检测。</p></div><div className="index-actions"><button type="button" className="primary" disabled={busy} onClick={() => sync.mutate(false)}><RefreshCw className={busy ? "spin" : ""} />立即同步</button><button type="button" className={system.data?.automatic_sync ? "danger" : ""} disabled={toggleAutoSync.isPending} onClick={() => toggleAutoSync.mutate()} title={system.data?.automatic_sync ? "关闭后停止按间隔自动同步" : "开启后按间隔自动同步 AList 变化"}><Power />{system.data?.automatic_sync ? "关闭自动同步" : "启用自动同步"}</button><button type="button" className="primary" disabled={busy} onClick={() => sync.mutate(true)}><RotateCcw />完整重建</button></div>{sync.error && <p className="form-error">{sync.error.message}</p>}{manualSyncRunning && <b className="sync-status running">手动同步进行中</b>}<div className="manual-sync-entry"><input type="text" value={manualPath} onChange={(e) => setManualPath(e.target.value)} placeholder="发生变化内容所在的父目录，例如 /软件/子目录" /><label className="check"><input type="checkbox" checked={forceRefresh} onChange={(e) => setForceRefresh(e.target.checked)} />强制刷新该目录 AList 缓存</label><button type="button" disabled={!manualPath.trim() || manualSync.isPending || manualSyncRunning} onClick={() => manualSync.mutate()}><RefreshCw />手动同步</button>{manualSync.isSuccess && manualSync.data && (() => { const feedback = manualSyncFeedback(manualSync.data); return <p className={feedback.tone === "success" ? "form-success" : feedback.tone === "error" ? "form-error" : "form-warning"}>{feedback.text}</p>; })()}{manualSync.isError && <p className="form-error">{manualSync.error.message}</p>}</div></section>
-    {isRolling && rollingCycle && <section className="panel sync-history-panel"><div className="panel-toolbar"><div><h2>Rolling 周期 #{rollingCycle.id}</h2><p>已完成 {rollingCycle.completed_folder_count} / {rollingCycle.planned_folder_count} 个目录{rollingCycle.next_window_at ? ` · 下次到期 ${overdue ? "已逾期，可立即补扫" : new Date(rollingCycle.next_window_at).toLocaleString("zh-CN")}` : ""}</p></div><b className={`sync-status ${rollingCycle.status}`}>{labelOf(runStatusLabel, rollingCycle.status)}</b></div><section className="index-summary-grid"><article><Folder /><span><small>本轮完成</small><strong>{rollingCycle.completed_folder_count} / {rollingCycle.planned_folder_count}</strong></span></article><article><Clock3 /><span><small>剩余目录</small><strong>{rollingCycle.remaining_folder_count}</strong></span></article><article><RefreshCw /><span><small>本轮 List 请求</small><strong>{rollingCycle.window_list_requests}</strong><small className="sub-note">周期累计 {rollingCycle.alist_list_requests}</small></span></article></section></section>}
-    <section className="index-workspace"><article className="panel folder-tree-panel"><div className="panel-toolbar"><div><h2>目录树</h2><p>{mappings.data?.items.filter((item) => item.enabled).map((item) => `${item.display_name} ${item.alist_path}`).join(" · ") || "尚未配置内容根目录"}</p></div><label className="small-search"><Search /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="筛选已索引目录" /></label></div>
-      <div className="folder-tree">{filter ? filtered.map((item) => <button type="button" className={selectedId === item.id ? "filter-result selected" : "filter-result"} key={item.id} onClick={() => setSelectedId(item.id)}><Folder /><span><strong>{item.name}</strong><small>{item.path}</small></span></button>) : roots.length ? <ul>{roots.map((root) => <TreeNode key={root.id} node={root} childrenByParent={childrenByParent} expanded={expanded} selectedId={selectedId} toggle={toggle} select={setSelectedId} />)}</ul> : <div className="empty">暂无索引目录，请先配置映射并执行同步。</div>}</div>
-    </article><aside className="panel folder-detail-panel"><h2>目录详情</h2>{detail.data ? <dl><div><dt>名称</dt><dd>{detail.data.name}</dd></div><div><dt>真实路径</dt><dd>{detail.data.path}</dd></div><div><dt>内容类型</dt><dd>{typeNames[detail.data.content_type] ?? detail.data.content_type}</dd></div><div><dt>目录深度</dt><dd>{detail.data.depth}</dd></div><div><dt>子目录</dt><dd>{detail.data.child_folder_count}</dd></div><div><dt>直接资源</dt><dd>{detail.data.direct_resource_count}</dd></div><div><dt>最近修改</dt><dd>{detail.data.modified_at ? new Date(detail.data.modified_at).toLocaleString("zh-CN") : "上游未提供"}</dd></div><div><dt>索引状态</dt><dd className="ok-text">已激活</dd></div></dl> : <div className="empty compact">从左侧选择目录查看详情</div>}</aside></section>
-    <section className="panel sync-history-panel"><div className="panel-toolbar"><div><h2>同步记录与变化</h2><p>选择一次同步查看新增、修改和移除的索引对象。</p></div></div><div className="sync-history-layout"><div className="sync-run-list">{runs.data?.items.map((run) => <button type="button" className={selectedRunId === run.id ? "selected" : ""} key={run.id} onClick={() => setSelectedRunId(run.id)}><span><strong>#{run.id} · {labelOf(syncTypeLabel, run.sync_type)}</strong><small>{new Date(run.started_at).toLocaleString("zh-CN")} · {(run.duration_ms / 1000).toFixed(1)} 秒</small></span><b className={`sync-status ${run.status}`}>{labelOf(runStatusLabel, run.status)}</b><em>+{run.added_count} / ~{run.updated_count} / -{run.removed_count}</em></button>)}</div><div className="sync-change-list">{selectedRunId ? changes.isLoading ? <div className="empty compact">正在读取变化…</div> : changes.data?.items.length ? changes.data.items.map((change) => <div key={change.id}><span className={`change-type ${change.change_type}`}>{labelOf(changeTypeLabel, change.change_type)}</span>{change.object_type === "folder" ? <Folder /> : <File />}<p>{change.new_path || change.old_path}</p></div>) : <div className="empty compact">本次同步没有索引变化</div> : <div className="empty compact">选择左侧同步记录</div>}</div></div></section>
+    <section className="index-summary-grid">
+      <article><Database /><span><small>索引资源</small><strong>{summary.data?.resources ?? 0}</strong></span></article>
+      <article><Folder /><span><small>目录数量</small><strong>{summary.data?.folders ?? 0}</strong></span></article>
+      <article>{syncStatusIcon}<span><small>最近同步</small><strong>{syncStatusText}</strong><small>{syncDetail}</small></span></article>
+    </section>
+    <section className="panel index-control-panel">
+      <div className="index-control-info"><h2>Indexing v2</h2><p>扫描 AList 目录并同步到索引数据库</p></div>
+      <div className="index-actions">
+        <button type="button" className="primary" disabled={busy} onClick={() => sync.mutate(false)}><RefreshCw className={busy ? "spin" : ""} />{syncing ? "同步中…" : "立即同步"}</button>
+        <button type="button" disabled={busy} onClick={() => sync.mutate(true)}><RotateCcw />完整重建</button>
+      </div>
+      {sync.error && <p className="form-error">{sync.error.message}</p>}
+      {syncing && latest && <div className="sync-progress-bar"><div className="sync-progress-info"><span>正在扫描：{latest.current_path || "初始化…"}</span><span>{latest.roots_completed} / {latest.roots_total} 根目录</span></div></div>}
+    </section>
+    <section className="index-workspace">
+      <article className="panel folder-tree-panel">
+        <div className="panel-toolbar"><div><h2>目录树</h2><p>{mappings.data?.items.filter((item) => item.enabled).map((item) => `${item.display_name} ${item.alist_path}`).join(" · ") || "尚未配置内容根目录"}</p></div><label className="small-search"><Search /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="筛选已索引目录" /></label></div>
+        <div className="folder-tree">{filter ? filtered.map((item) => <button type="button" className={selectedId === item.id ? "filter-result selected" : "filter-result"} key={item.id} onClick={() => setSelectedId(item.id)}><Folder /><span><strong>{item.name}</strong><small>{item.path}</small></span></button>) : roots.length ? <ul>{roots.map((root) => <TreeNode key={root.id} node={root} childrenByParent={childrenByParent} expanded={expanded} selectedId={selectedId} toggle={toggle} select={setSelectedId} />)}</ul> : <div className="empty">暂无索引目录，请先配置映射并执行同步。</div>}</div>
+      </article>
+      <aside className="panel folder-detail-panel"><h2>目录详情</h2>{detail.data ? <dl><div><dt>名称</dt><dd>{detail.data.name}</dd></div><div><dt>真实路径</dt><dd>{detail.data.path}</dd></div><div><dt>内容类型</dt><dd>{typeNames[detail.data.content_type] ?? detail.data.content_type}</dd></div><div><dt>目录深度</dt><dd>{detail.data.depth}</dd></div><div><dt>子目录</dt><dd>{detail.data.child_folder_count}</dd></div><div><dt>直接资源</dt><dd>{detail.data.direct_resource_count}</dd></div><div><dt>最近修改</dt><dd>{detail.data.modified_at ? new Date(detail.data.modified_at).toLocaleString("zh-CN") : "上游未提供"}</dd></div><div><dt>索引状态</dt><dd className="ok-text">已激活</dd></div></dl> : <div className="empty compact">从左侧选择目录查看详情</div>}</aside>
+    </section>
+    <section className="panel sync-history-panel">
+      <div className="panel-toolbar"><div><h2>同步记录与变化</h2><p>选择一次同步查看新增、修改和移除的索引对象。</p></div></div>
+      <div className="sync-history-layout">
+        <div className="sync-run-list">{runs.data?.items.map((run) => <button type="button" className={selectedRunId === run.id ? "selected" : ""} key={run.id} onClick={() => setSelectedRunId(run.id)}><span><strong>#{run.id} · {labelOf(syncTypeLabel, run.sync_type)}</strong><small>{new Date(run.started_at).toLocaleString("zh-CN")} · {(run.duration_ms / 1000).toFixed(1)} 秒</small></span><b className={`sync-status ${run.status}`}>{labelOf(runStatusLabel, run.status)}</b><em>+{run.added_count} / ~{run.updated_count} / -{run.removed_count}</em></button>)}</div>
+        <div className="sync-change-list">{selectedRunId ? changes.isLoading ? <div className="empty compact">正在读取变化…</div> : changes.data?.items.length ? changes.data.items.map((change) => <div key={change.id}><span className={`change-type ${change.change_type}`}>{labelOf(changeTypeLabel, change.change_type)}</span>{change.object_type === "folder" ? <Folder /> : <File />}<p>{change.new_path || change.old_path}</p></div>) : <div className="empty compact">本次同步没有索引变化</div> : <div className="empty compact">选择左侧同步记录</div>}</div>
+      </div>
+    </section>
   </div></AdminShell>;
 }
