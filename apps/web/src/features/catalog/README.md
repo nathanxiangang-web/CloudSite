@@ -2,20 +2,24 @@
 
 Migration status: partial.
 
-M6a moves the public /catalog list route into the feature boundary while
-preserving its existing API calls, React Query behavior, markup, and CSS class
-names.
+M6a establishes real ownership for the public /catalog list slice.
 
-Current ownership:
-- views/CatalogListView.tsx: public catalog list UI
-- index.ts: public feature entry
+Owned here:
+- views/CatalogListView.tsx — public list UI
+- api.ts — list/search/tag requests
+- model.ts — list URL/query/label helpers
+- types.ts — list-oriented DTOs
+- styles/catalog-list.module.css — list-specific styles
+- index.ts — the only public feature entry
 
-Still legacy and intentionally deferred:
-- lib/catalog.ts types/helpers
-- lib/catalog-client.ts public/admin/follow API calls
-- components/catalog/CatalogFollowButton.tsx
-- /catalog/[entryId] detail route
-- /admin/catalog routes
-- existing catalog-specific rules inside app/globals.css
+The route stays thin and imports only @/features/catalog.
 
-Those slices move incrementally in M6b/M6c rather than being rewritten at once.
+Still legacy and deferred:
+- public detail/release/asset view
+- follow/subscription UI
+- aggregate search Catalog integration
+- admin Catalog CRUD/editor
+- remaining src/lib/catalog.ts and catalog-client.ts callers
+
+The shared .catalog-card-unavailable rule remains in globals.css temporarily
+because the not-yet-migrated detail page still consumes that class.
