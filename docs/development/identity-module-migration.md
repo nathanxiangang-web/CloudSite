@@ -40,15 +40,25 @@ classification lives in the domain layer. The legacy SQLAlchemy service
 delegates matching decisions to this pure code but retains transactions,
 allocation, history writes, and audit side effects.
 
-## M4b-3 — Repository ports and adapters
+## M4b-3 — Resource repository port and adapter
+
+Status: implemented in this change.
+
+Resource identity resolution now runs from the module application layer through
+`ResourceIdentityRepository` and `IdentityAuditSink` ports. The SQLAlchemy
+adapter owns module ORM access. The legacy compatibility service injects an
+OperationLog audit sink backed by the caller's same AsyncSession, preserving
+single-transaction history/audit writes and the resolver's one final commit.
+
+## M4b-4 — Folder persistence and path-mutation boundary
 
 Next:
 
-- define identity repository/unit-of-work ports inside the module;
-- adapt the existing state/index database implementation behind infrastructure;
-- move persistence-backed resource/folder resolution incrementally;
-- keep OperationLog and index-owned Folder/Resource mutations behind their
-  owning boundaries rather than importing shared legacy models into identity;
+- migrate folder identity persistence through module-owned repository ports;
+- keep the folder resolver's caller-owned commit behavior;
+- move descendant Folder/Resource path mutation behind the owning indexing/
+  resource boundary rather than importing those shared legacy models into
+  identity;
 - do not introduce a new module_legacy_import debt ID.
 
 The architecture debt ratchet must stay at or below its existing baseline.
