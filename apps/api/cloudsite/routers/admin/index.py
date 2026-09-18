@@ -31,16 +31,60 @@ def sync_run_dict(row: SyncRun) -> dict:
 
 @router.get("/api/admin/index/summary")
 async def admin_index_summary():
-    from ...main import IndexSession
+    import json
+
+    from ...main import IndexSession, StateSession
+    from ...modules.indexing.infrastructure.indexing_engine import use_indexing_v2
+    from ...models import SystemSetting
 
     async with IndexSession() as session:
         latest = await session.scalar(select(SyncRun).order_by(desc(SyncRun.id)).limit(1))
+        folders = int(await session.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0)
+        resources = int(await session.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0)
+
+    if use_indexing_v2():
+        from ... import main as _main
+
+        v2_running = bool(_main.manual_sync_task and not _main.manual_sync_task.done())
+        v2_progress: dict = {}
+        async with StateSession() as state:
+            row = await state.get(SystemSetting, "v2_sync_progress")
+            if row and row.value:
+                try:
+                    v2_progress = json.loads(row.value)
+                except (ValueError, TypeError):
+                    v2_progress = {}
+        v2_status = v2_progress.get("status", "idle")
         return {
-            "folders": int(await session.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0),
-            "resources": int(await session.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0),
-            "latest_sync": sync_run_dict(latest) if latest else None,
-            "syncing": bool(latest and latest.status == "running"),
+            "folders": folders,
+            "resources": resources,
+            "syncing": v2_running,
+            "latest_sync": {
+                "id": 0,
+                "sync_type": "windowed",
+                "status": v2_status if not v2_running else "running",
+                "folders_scanned": v2_progress.get("categories_done", 0),
+                "resources_scanned": 0,
+                "added_count": 0,
+                "updated_count": 0,
+                "removed_count": 0,
+                "started_at": None,
+                "finished_at": None,
+                "duration_ms": v2_progress.get("elapsed_seconds", 0) * 1000,
+                "error_message": "",
+                "current_path": "",
+                "roots_total": v2_progress.get("categories_total", 0),
+                "roots_completed": v2_progress.get("categories_done", 0),
+                "roots_failed": 0,
+            } if v2_progress or v2_running else (sync_run_dict(latest) if latest else None),
         }
+
+    return {
+        "folders": folders,
+        "resources": resources,
+        "latest_sync": sync_run_dict(latest) if latest else None,
+        "syncing": bool(latest and latest.status == "running"),
+    }
 
 
 @router.get("/api/admin/index/folders")
