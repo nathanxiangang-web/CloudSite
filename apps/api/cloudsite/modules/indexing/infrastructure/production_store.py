@@ -163,6 +163,42 @@ class ProductionIndexingStore:
         resource_result = await self._session.execute(resource_stmt)
         return (folder_result.rowcount or 0) + (resource_result.rowcount or 0)
 
+    async def cascade_descendant_paths(
+        self,
+        old_path_prefix: str,
+        new_path_prefix: str,
+    ) -> dict[str, int]:
+        """Rewrite descendant Folder/Resource paths after a parent rename.
+
+        Only the leading prefix is replaced. SQL LIKE wildcards in the old
+        prefix are escaped so unrelated paths are never mutated.
+        """
+        from sqlalchemy import func
+
+        old_seg = old_path_prefix.rstrip("/") + "/"
+        new_seg = new_path_prefix.rstrip("/") + "/"
+        escaped = (
+            old_seg.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        old_len = len(old_seg)
+
+        folders_result = await self._session.execute(
+            update(Folder)
+            .where(Folder.path.like(escaped + "%", escape="\\"))
+            .values(path=new_seg + func.substr(Folder.path, old_len + 1))
+        )
+        resources_result = await self._session.execute(
+            update(Resource)
+            .where(Resource.path.like(escaped + "%", escape="\\"))
+            .values(path=new_seg + func.substr(Resource.path, old_len + 1))
+        )
+        return {
+            "folders_updated": folders_result.rowcount or 0,
+            "resources_updated": resources_result.rowcount or 0,
+        }
+
     async def touch_unchanged(self, resource_ids: list[str]) -> int:
         if not resource_ids:
             return 0
