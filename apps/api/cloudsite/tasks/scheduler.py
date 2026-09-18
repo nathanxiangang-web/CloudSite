@@ -11,7 +11,7 @@ from contextlib import suppress
 from sqlalchemy import select
 
 from ..models import SystemSetting
-from ..modules.indexing.infrastructure.indexing_engine import use_indexing_v2
+
 from ..modules.indexing.infrastructure.legacy_bridge import run_indexing_v2_production
 
 SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
@@ -79,14 +79,7 @@ async def scheduler_loop() -> None:
         if not values["automatic_sync"]:
             continue
         try:
-            if use_indexing_v2():
-                await run_indexing_v2_production()
-            elif await main.migrate_existing_index_to_rolling():
-                await main.run_due_rolling_window()
-            elif await main.automatic_sync_due(values["sync_interval_minutes"]):
-                # Freeze the existing first-index bootstrap path.  Rolling 1.1
-                # is enabled only after this legacy full sync succeeds.
-                await main.run_sync("scheduled")
+            await run_indexing_v2_production()
         except asyncio.CancelledError:
             raise
         except Exception as exc:

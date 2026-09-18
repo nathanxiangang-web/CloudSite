@@ -2,13 +2,12 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from sqlalchemy import select
 
 from ...indexer import log_operation, sync_preflight
 from ...models import ContentRootMapping, SystemSetting
 from ...schemas import PathSyncInput, SyncInput
-from ...sync.rolling import rolling_enabled, rolling_status
 
 router = APIRouter()
 
@@ -32,30 +31,27 @@ async def sync(payload: SyncInput):
 @router.get("/api/admin/sync/status")
 async def admin_sync_status():
     from ... import main as _main
-    from ...modules.indexing.infrastructure.indexing_engine import use_indexing_v2
     from ...main import StateSession
 
-    if use_indexing_v2():
-        manual_running = bool(
-            _main.manual_sync_task and not _main.manual_sync_task.done()
-        )
-        progress = {}
-        async with StateSession() as session:
-            row = await session.get(SystemSetting, "v2_sync_progress")
-            if row and row.value:
-                try:
-                    progress = json.loads(row.value)
-                except (ValueError, TypeError):
-                    progress = {}
-        return {
-            "engine_version": "v2",
-            "manual_sync_running": manual_running,
-            "status": progress.get("status", "idle"),
-            "categories_done": progress.get("categories_done", 0),
-            "categories_total": progress.get("categories_total", 0),
-            "elapsed_seconds": progress.get("elapsed_seconds", 0),
-        }
-    return await rolling_status()
+    manual_running = bool(
+        _main.manual_sync_task and not _main.manual_sync_task.done()
+    )
+    progress = {}
+    async with StateSession() as session:
+        row = await session.get(SystemSetting, "v2_sync_progress")
+        if row and row.value:
+            try:
+                progress = json.loads(row.value)
+            except (ValueError, TypeError):
+                progress = {}
+    return {
+        "engine_version": "v2",
+        "manual_sync_running": manual_running,
+        "status": progress.get("status", "idle"),
+        "categories_done": progress.get("categories_done", 0),
+        "categories_total": progress.get("categories_total", 0),
+        "elapsed_seconds": progress.get("elapsed_seconds", 0),
+    }
 
 
 @router.post("/api/admin/sync/path", status_code=202)
@@ -88,21 +84,3 @@ async def toggle_auto_sync():
         session.add(row)
         await session.commit()
         return {"ok": True, "automatic_sync": not current}
-
-
-@router.post("/api/admin/sync/window/run", status_code=202)
-async def admin_run_rolling_window():
-    from ... import main as _main
-
-    if not await rolling_enabled():
-        raise HTTPException(409, "首次完整索引尚未完成，不能进入 Rolling 1.1")
-    if _main.manual_sync_task and not _main.manual_sync_task.done():
-        return {"status": "already_running"}
-    preflight = await _main.sync_preflight("rolling", False)
-    if preflight:
-        return preflight
-    _main.manual_sync_task = asyncio.create_task(
-        _main._run_manual_sync_in_background(False, False),
-        name="cloudsite-rolling-window",
-    )
-    return {"status": "accepted", "message": "Rolling Window 已启动"}

@@ -30,10 +30,7 @@ async def lifespan(_: FastAPI):
     await main.recover_search_index_if_dirty()
     await main.recover_interrupted_sync_runs()
     await main.migrate_stable_resource_ids()
-    await main.recover_rolling_state()
-    await main.migrate_existing_index_to_rolling()
-    if await main.resolve_rolling_mode() == "INDEX_RECOVERY_REQUIRED":
-        await main.prepare_index_recovery()
+
     async with main.StateSession() as session:
         if not await session.get(SiteSettings, 1):
             session.add(SiteSettings(id=1))

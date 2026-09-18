@@ -20,7 +20,6 @@ from .indexer import (
     automatic_sync_due,
     log_operation,
     recover_interrupted_sync_runs,
-    run_sync,
     sync_preflight,
 )
 from .infrastructure.security import (
@@ -31,14 +30,6 @@ from .infrastructure.security import (
 from .search import recover_search_index_if_dirty
 from .sessions import SESSION_CLEANUP_SECONDS, cleanup_expired_user_sessions
 from .shares.service import cleanup_share_verify_attempts, cleanup_terminal_shares
-from .sync.rolling import (
-    migrate_existing_index_to_rolling,
-    prepare_index_recovery,
-    recover_rolling_state,
-    resolve_rolling_mode,
-    rolling_enabled,
-    run_due_rolling_window,
-)
 from .tasks.scheduler import SYNC_INTERVAL_OPTIONS, _run_cleanup_job, get_system_values, scheduler_loop
 from .tasks.sync import _run_manual_sync_in_background, _safe_startup_sync
 from .infrastructure.lifespan import lifespan
