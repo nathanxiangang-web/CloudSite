@@ -28,11 +28,11 @@ CLOUDSITE_SETUP_TOKEN=replace-with-a-one-time-setup-token
 CLOUDSITE_IMAGE_TAG=v1.0.0
 ```
 
-Generate suitable values on any machine with Python:
+Generate suitable values on any machine with Python. `CLOUDSITE_SECRET_KEY` must be at least 32 characters; `CLOUDSITE_SETUP_TOKEN` is a separate one-time value used only during first setup:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -c "import secrets; print(secrets.token_urlsafe(48))"  # CLOUDSITE_SECRET_KEY
+python -c "import secrets; print(secrets.token_urlsafe(32))"  # CLOUDSITE_SETUP_TOKEN
 ```
 
 Start and verify CloudSite:
@@ -48,12 +48,14 @@ Open `http://SERVER_IP:3000`. The default Compose file exposes Web on port `3000
 
 ## Initial configuration
 
-1. Open the administration console.
-2. Use the one-time setup token to save the AList connection.
-3. Add one or more content roots and assign their content types.
-4. Run the initial synchronization and wait for it to finish successfully.
-5. Configure site identity, registration, collections, and sharing defaults.
-6. Remove `CLOUDSITE_SETUP_TOKEN` from `.env` and restart the services.
+1. Open `/admin/setup` on the CloudSite Web address.
+2. Enter the AList URL, AList administrator username/password, and the exact `CLOUDSITE_SETUP_TOKEN` from `.env`. Do not enter `CLOUDSITE_SECRET_KEY` in the setup-token field.
+3. If initialization fails, the page reports the AList diagnostic code when available (for example `AL-002` for connectivity failures).
+4. After setup succeeds, sign in at `/admin/login` with the AList administrator credentials.
+5. Add one or more content roots and assign their content types.
+6. Run the initial synchronization and wait for it to finish successfully.
+7. Configure site identity, registration, collections, and sharing defaults.
+8. Remove `CLOUDSITE_SETUP_TOKEN` from `.env` and restart the services.
 
 Do not change `CLOUDSITE_SECRET_KEY` or `CLOUDSITE_MASTER_KEY` after AList credentials have been saved. The encrypted password cannot be recovered with a different key.
 
