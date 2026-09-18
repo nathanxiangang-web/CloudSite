@@ -2,37 +2,40 @@
 
 Migration status: partial.
 
-M6a establishes real ownership for the public /catalog list slice.
+## Owned by this feature
 
-Owned here:
-- views/CatalogListView.tsx — public list UI
-- api.ts — list/search/tag requests
-- model.ts — list URL/query/label helpers
-- types.ts — list-oriented DTOs
-- styles/catalog-list.module.css — list-specific styles
-- index.ts — the only public feature entry
+Public routes:
+- `/catalog` — list/search/filter view
+- `/catalog/[entryId]` — detail/release/asset/download view
+- `/account/follows` — signed-in Catalog follows list
 
-The route stays thin and imports only @/features/catalog.
+Feature-owned code:
+- `views/CatalogListView.tsx`
+- `views/CatalogDetailView.tsx`
+- `views/CatalogFollowsView.tsx`
+- `components/CatalogFollowButton.tsx`
+- `api.ts` — public Catalog and follow/subscription requests
+- `model.ts` — pure URL, label, release, and asset helpers
+- `types.ts` — Catalog list/detail/follow DTOs
+- `styles/catalog-list.module.css`
+- `styles/catalog-detail.module.css`
+- `index.ts` — the only public feature entry
 
-Still legacy and deferred:
-- public detail/release/asset view
-- follow/subscription UI
-- aggregate search Catalog integration
-- admin Catalog CRUD/editor
-- remaining src/lib/catalog.ts and catalog-client.ts callers
+Application routes should compose the feature through `@/features/catalog`
+rather than importing feature internals.
 
-The shared .catalog-card-unavailable rule remains in globals.css temporarily
-because the not-yet-migrated detail page still consumes that class.
+## Compatibility seams
 
+`src/components/catalog/CatalogFollowButton.tsx` remains temporarily as a
+re-export of the feature-owned component so old imports can be removed
+incrementally.
 
-## M6c-1 Follow ownership
+## Still legacy / next slices
 
-Catalog follow/subscription now belongs to the feature:
-- components/CatalogFollowButton.tsx;
-- views/CatalogFollowsView.tsx;
-- follow status/list DTOs;
-- follow/unfollow/notification/list API calls;
-- /account/follows route composition.
+- aggregate `/search` Catalog integration still imports `src/lib/catalog*`
+- admin Catalog CRUD/editor still imports `src/lib/catalog*`
+- account/search/admin call sites must move before the legacy Catalog libs can
+  be retired
 
-The legacy components/catalog/CatalogFollowButton.tsx path remains as a
-temporary re-export compatibility seam.
+M6c-2 should migrate aggregate search. M6d should migrate Admin Catalog, then
+the remaining legacy Catalog helper/client surfaces can be deleted.
