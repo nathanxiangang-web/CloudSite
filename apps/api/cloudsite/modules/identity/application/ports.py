@@ -5,7 +5,23 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from ..domain.records import ResourceIdentityHistoryRecord, ResourceIdentityRecord
+from ..domain.records import (
+    FolderIdentityHistoryRecord,
+    FolderIdentityRecord,
+    ResourceIdentityHistoryRecord,
+    ResourceIdentityRecord,
+)
+
+
+@runtime_checkable
+class FolderIdentityRepository(Protocol):
+    async def list_active(self) -> list[FolderIdentityRecord]: ...
+
+    async def add(self, record: FolderIdentityRecord) -> None: ...
+
+    async def save(self, record: FolderIdentityRecord) -> None: ...
+
+    async def add_history(self, record: FolderIdentityHistoryRecord) -> None: ...
 
 
 @runtime_checkable
@@ -50,6 +66,7 @@ class NullIdentityAuditSink:
 
 
 __all__ = [
+    "FolderIdentityRepository",
     "IdentityAuditSink",
     "NullIdentityAuditSink",
     "ResourceIdentityRepository",

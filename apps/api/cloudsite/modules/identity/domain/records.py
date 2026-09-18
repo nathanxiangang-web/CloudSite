@@ -4,6 +4,32 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+
+@dataclass(slots=True)
+class FolderIdentityRecord:
+    folder_id: str
+    current_path: str
+    root_mapping_id: int | None
+    status: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+    last_name: str = ""
+    identity_fingerprint: str | None = None
+    fingerprint_version: int = 1
+    created_from: str = "new_folder"
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FolderIdentityHistoryRecord:
+    folder_id: str
+    path: str
+    event_type: str
+    from_path: str | None = None
+    to_path: str | None = None
+    cycle_id: int | None = None
+
+
 @dataclass(slots=True)
 class ResourceIdentityRecord:
     resource_id: str
@@ -38,4 +64,9 @@ class ResourceIdentityHistoryRecord:
     created_at: datetime
 
 
-__all__ = ["ResourceIdentityHistoryRecord", "ResourceIdentityRecord"]
+__all__ = [
+    "FolderIdentityHistoryRecord",
+    "FolderIdentityRecord",
+    "ResourceIdentityHistoryRecord",
+    "ResourceIdentityRecord",
+]

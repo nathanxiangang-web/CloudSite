@@ -50,15 +50,22 @@ adapter owns module ORM access. The legacy compatibility service injects an
 OperationLog audit sink backed by the caller's same AsyncSession, preserving
 single-transaction history/audit writes and the resolver's one final commit.
 
-## M4b-4 — Folder persistence and path-mutation boundary
+## M4b-4a — Folder repository port and adapter
+
+Status: implemented in this change.
+
+Folder identity resolution now runs through `FolderIdentityRepository` and a
+module-owned SQLAlchemy adapter. The port deliberately exposes no commit method,
+so the legacy caller still owns the transaction exactly as before.
+
+## M4b-4b — Descendant path-mutation boundary
 
 Next:
 
-- migrate folder identity persistence through module-owned repository ports;
-- keep the folder resolver's caller-owned commit behavior;
 - move descendant Folder/Resource path mutation behind the owning indexing/
   resource boundary rather than importing those shared legacy models into
   identity;
+- preserve prefix-only rename behavior and LIKE escaping;
 - do not introduce a new module_legacy_import debt ID.
 
 The architecture debt ratchet must stay at or below its existing baseline.
