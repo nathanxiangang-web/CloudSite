@@ -5,6 +5,25 @@ from datetime import datetime
 
 
 
+@dataclass(frozen=True, slots=True)
+class IdentityCandidateRecord:
+    id: int
+    cycle_id: int | None
+    observed_path: str
+    matched_resource_id: str | None
+    candidate_resource_ids_json: str
+    match_type: str
+    confidence: float
+    status: str
+    size: int
+    modified_at: datetime | None
+    extension: str
+    mime_type: str
+    fingerprint: str
+    created_at: datetime
+    resolved_at: datetime | None
+
+
 @dataclass(slots=True)
 class FolderIdentityRecord:
     folder_id: str
@@ -67,6 +86,7 @@ class ResourceIdentityHistoryRecord:
 __all__ = [
     "FolderIdentityHistoryRecord",
     "FolderIdentityRecord",
+    "IdentityCandidateRecord",
     "ResourceIdentityHistoryRecord",
     "ResourceIdentityRecord",
 ]

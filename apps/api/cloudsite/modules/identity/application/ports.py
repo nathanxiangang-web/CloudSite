@@ -8,9 +8,25 @@ from typing import Protocol, runtime_checkable
 from ..domain.records import (
     FolderIdentityHistoryRecord,
     FolderIdentityRecord,
+    IdentityCandidateRecord,
     ResourceIdentityHistoryRecord,
     ResourceIdentityRecord,
 )
+
+
+@runtime_checkable
+class IdentityAdminQueryRepository(Protocol):
+    async def identity_counts(self) -> tuple[int, int]: ...
+
+    async def history_counts(self) -> dict[str, int]: ...
+
+    async def candidate_status_counts(self) -> dict[str, int]: ...
+
+    async def list_candidates(
+        self,
+        statuses: set[str],
+        limit: int,
+    ) -> list[IdentityCandidateRecord]: ...
 
 
 @runtime_checkable
@@ -67,6 +83,7 @@ class NullIdentityAuditSink:
 
 __all__ = [
     "FolderIdentityRepository",
+    "IdentityAdminQueryRepository",
     "IdentityAuditSink",
     "NullIdentityAuditSink",
     "ResourceIdentityRepository",

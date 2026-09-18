@@ -74,15 +74,33 @@ the existing Folder/Resource ORM dependency.
 
 The architecture debt ratchet must stay at or below its existing baseline.
 
-## M4c — API and persistence ownership
+## M4c-1 — Admin query boundary
+
+Status: implemented in this change.
+
+Admin identity stats and candidate queries now run through an Identity
+application service, repository port, and SQLAlchemy adapter. The legacy Router
+keeps only authentication and HTTP parameter validation.
+
+This removes the two tracked Router ORM debt IDs for
+`routers/admin/identities.py`, allowing the architecture baseline to shrink
+from 90 to 88.
+
+## M4c-2 — Admin API/auth ownership
+
+Next:
+
+- introduce a real platform/security admin-auth contract;
+- move the physical admin identities Router into the Identity API layer;
+- preserve the existing paths, status validation, and ADMIN_REQUIRED behavior.
+
+## M4d — Legacy migration/facade retirement
 
 Then:
 
-- move admin identity diagnostics behind identity application queries;
-- move identity-owned ORM declarations out of the shared model surface when
-  metadata/migration compatibility permits;
-- switch all consumers to modules/identity/contracts;
-- retire cloudsite.identity compatibility facades only after callers are gone.
+- move stable-ID migration/backup orchestration behind module/application ports;
+- switch remaining consumers to module contracts;
+- retire `cloudsite.identity` compatibility facades only after callers are gone.
 
 ## Invariants
 
