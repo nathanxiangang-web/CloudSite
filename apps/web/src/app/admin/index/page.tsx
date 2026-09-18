@@ -63,6 +63,7 @@ export default function IndexPage() {
   const changes = useQuery({ queryKey: ["sync-changes", selectedRunId], queryFn: () => api<{ items: Change[] }>(`/api/admin/sync-runs/${selectedRunId}/changes?limit=50`), enabled: Boolean(selectedRunId) });
   const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["sync-runs"] }); };
   const sync = useMutation({ mutationFn: (full: boolean) => api("/api/admin/sync", { method: "POST", body: JSON.stringify({ full }) }), onSuccess: refresh });
+  const cancelSync = useMutation({ mutationFn: () => api("/api/admin/sync/cancel", { method: "POST" }), onSuccess: refresh });
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, FolderType[]>();
@@ -83,7 +84,7 @@ export default function IndexPage() {
 
   const syncStatusIcon = syncing ? <Loader2 className="spin" /> : latest?.status === "success" ? <CheckCircle2 className="ok" /> : latest?.status === "failed" ? <AlertTriangle className="warn" /> : <Database />;
   const syncStatusText = syncing ? "进行中" : latest ? labelOf(runStatusLabel, latest.status) : "未运行";
-  const syncDetail = latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing && latest ? `已扫描 ${latest.folders_scanned} 目录 / ${latest.resources_scanned} 资源` : "";
+  const syncDetail = latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing && latest ? `${latest.roots_completed} / ${latest.roots_total} 根目录 · ${latest.resources_scanned} 资源 · ${(latest.duration_ms / 1000).toFixed(0)}s` : "";
 
   return <AdminShell title="内容索引"><div className="admin-page index-admin-page">
     <section className="index-summary-grid">
@@ -94,11 +95,13 @@ export default function IndexPage() {
     <section className="panel index-control-panel">
       <div className="index-control-info"><h2>Indexing v2</h2><p>扫描 AList 目录并同步到索引数据库</p></div>
       <div className="index-actions">
-        <button type="button" className="primary" disabled={busy} onClick={() => sync.mutate(false)}><RefreshCw className={busy ? "spin" : ""} />{syncing ? "同步中…" : "立即同步"}</button>
-        <button type="button" disabled={busy} onClick={() => sync.mutate(true)}><RotateCcw />完整重建</button>
+        {syncing ? <button type="button" className="danger" disabled={cancelSync.isPending} onClick={() => cancelSync.mutate()}><AlertTriangle />取消同步</button> : <>
+          <button type="button" className="primary" disabled={sync.isPending} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>
+          <button type="button" disabled={sync.isPending} onClick={() => sync.mutate(true)}><RotateCcw />完整重建</button>
+        </>}
       </div>
       {sync.error && <p className="form-error">{sync.error.message}</p>}
-      {syncing && latest && <div className="sync-progress-bar"><div className="sync-progress-info"><span>正在扫描：{latest.current_path || "初始化…"}</span><span>{latest.roots_completed} / {latest.roots_total} 根目录</span></div></div>}
+      {syncing && latest && <div className="sync-progress-bar"><div className="sync-progress-info"><span>{latest.current_path ? `扫描中：${latest.current_path}` : "处理中…"}</span><span>{latest.roots_completed} / {latest.roots_total} 根目录 · {latest.resources_scanned} 资源</span></div></div>}
     </section>
     <section className="index-workspace">
       <article className="panel folder-tree-panel">

@@ -28,6 +28,16 @@ async def sync(payload: SyncInput):
     return {"status": "accepted", "message": "同步任务已启动"}
 
 
+@router.post("/api/admin/sync/cancel")
+async def cancel_sync():
+    from ... import main as _main
+
+    if not _main.manual_sync_task or _main.manual_sync_task.done():
+        return {"status": "not_running"}
+    _main.manual_sync_task.cancel()
+    return {"status": "cancelled", "message": "同步任务已取消"}
+
+
 @router.get("/api/admin/sync/status")
 async def admin_sync_status():
     from ... import main as _main
@@ -51,6 +61,8 @@ async def admin_sync_status():
         "categories_done": progress.get("categories_done", 0),
         "categories_total": progress.get("categories_total", 0),
         "elapsed_seconds": progress.get("elapsed_seconds", 0),
+        "current_path": progress.get("current_path", ""),
+        "entries_scanned": progress.get("entries_scanned", 0),
     }
 
 

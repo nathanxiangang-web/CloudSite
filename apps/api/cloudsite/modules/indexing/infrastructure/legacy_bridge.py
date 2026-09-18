@@ -102,6 +102,7 @@ async def run_indexing_v2_production() -> dict[str, Any]:
     and runs scan+reconcile for every enabled content type. Writes go
     to the folders/resources tables so the frontend sees the data.
     """
+    import asyncio
     import time
 
     from cloudsite.database import IndexSession, StateSession
@@ -114,65 +115,78 @@ async def run_indexing_v2_production() -> dict[str, Any]:
 
     t0 = time.time()
     await log_operation("sync", "v2_sync_started", "v2 indexing sync started")
-    await _update_v2_sync_status("running", 0, 0, 0)
+    await _update_v2_sync_status("running", 0, 0, 0, "", 0)
 
     connections = await load_all_connections_and_roots()
     if not connections:
-        await _update_v2_sync_status("skipped", 0, 0, 0)
+        await _update_v2_sync_status("skipped", 0, 0, 0, "", 0)
         return {"status": "skipped", "engine": "v2", "reason": "no_connections"}
 
-    all_category_ids: list[str] = []
+    all_roots: list = []
     for _conn, _client, roots in connections:
         for root in roots:
-            if root.content_type not in all_category_ids:
-                all_category_ids.append(root.content_type)
+            if root not in all_roots:
+                all_roots.append(root)
 
     total_summary = V2IndexingSummary()
+    total_categories = len(all_roots)
     categories_done = 0
-    total_categories = len(all_category_ids)
+    entries_scanned = 0
+
     for _conn, client, roots in connections:
         adapter = AListProviderAdapter(client, roots)
-        root_labels = ", ".join(f"{r.alist_path}({r.content_type})" for r in roots)
-        await log_operation(
-            "sync", "v2_category_started",
-            f"Scanning categories: {root_labels}",
-        )
-        async with IndexSession() as session:
-            store = ProductionIndexingStore(session)
-            result = await run_indexing_v2(
-                adapter=adapter,
-                store=store,
-                category_ids=[r.content_type for r in roots],
+        for root in roots:
+            root_label = f"{root.alist_path}({root.content_type})"
+            await _update_v2_sync_status(
+                "running", categories_done, total_categories,
+                int(time.time() - t0), root.alist_path, entries_scanned,
             )
-            await session.commit()
-        categories_done += len(roots)
-        await _update_v2_sync_status(
-            "running",
-            categories_done,
-            total_categories,
-            int(time.time() - t0),
-        )
-        if result.get("status") == "success":
-            total_summary.categories_scanned += result.get("categories_scanned", 0)
-            total_summary.pages_fetched += result.get("pages_fetched", 0)
+            await log_operation(
+                "sync", "v2_category_started",
+                f"Scanning: {root_label}",
+            )
+            try:
+                async with IndexSession() as session:
+                    store = ProductionIndexingStore(session)
+                    result = await run_indexing_v2(
+                        adapter=adapter,
+                        store=store,
+                        category_ids=[root.content_type],
+                    )
+                    await session.commit()
+            except asyncio.CancelledError:
+                await _update_v2_sync_status(
+                    "cancelled", categories_done, total_categories,
+                    int(time.time() - t0), root.alist_path, entries_scanned,
+                )
+                raise
+            categories_done += 1
             writes = result.get("writes", {})
-            total_summary.writes.added += writes.get("added", 0)
-            total_summary.writes.changed += writes.get("changed", 0)
-            total_summary.writes.removed += writes.get("removed", 0)
-            total_summary.writes.unchanged += writes.get("unchanged", 0)
-            await log_operation(
-                "sync", "v2_category_completed",
-                f"Categories done: {root_labels} | "
-                f"added={writes.get('added', 0)} changed={writes.get('changed', 0)} "
-                f"removed={writes.get('removed', 0)} unchanged={writes.get('unchanged', 0)}",
+            entries_scanned += writes.get("added", 0) + writes.get("changed", 0) + writes.get("unchanged", 0)
+            await _update_v2_sync_status(
+                "running", categories_done, total_categories,
+                int(time.time() - t0), "", entries_scanned,
             )
-        elif result.get("status") == "partial":
-            total_summary.errors.extend(result.get("errors", []))
-            await log_operation(
-                "sync", "v2_category_partial",
-                f"Partial: {root_labels} | errors: {result.get('errors', [])}",
-                level="WARNING",
-            )
+            if result.get("status") == "success":
+                total_summary.categories_scanned += result.get("categories_scanned", 0)
+                total_summary.pages_fetched += result.get("pages_fetched", 0)
+                total_summary.writes.added += writes.get("added", 0)
+                total_summary.writes.changed += writes.get("changed", 0)
+                total_summary.writes.removed += writes.get("removed", 0)
+                total_summary.writes.unchanged += writes.get("unchanged", 0)
+                await log_operation(
+                    "sync", "v2_category_completed",
+                    f"Done: {root_label} | "
+                    f"added={writes.get('added', 0)} changed={writes.get('changed', 0)} "
+                    f"removed={writes.get('removed', 0)} unchanged={writes.get('unchanged', 0)}",
+                )
+            elif result.get("status") == "partial":
+                total_summary.errors.extend(result.get("errors", []))
+                await log_operation(
+                    "sync", "v2_category_partial",
+                    f"Partial: {root_label} | errors: {result.get('errors', [])}",
+                    level="WARNING",
+                )
 
     elapsed = int(time.time() - t0)
     if total_summary.errors:
@@ -182,7 +196,7 @@ async def run_indexing_v2_production() -> dict[str, Any]:
             f"v2 sync completed with errors in {elapsed}s: {total_summary.errors[:3]}",
             level="ERROR",
         )
-        await _update_v2_sync_status("failed", categories_done, total_categories, elapsed)
+        await _update_v2_sync_status("failed", categories_done, total_categories, elapsed, "", entries_scanned)
     else:
         await log_operation(
             "sync", "v2_sync_completed",
@@ -193,7 +207,7 @@ async def run_indexing_v2_production() -> dict[str, Any]:
             f"removed={total_summary.writes.removed} "
             f"unchanged={total_summary.writes.unchanged}",
         )
-        await _update_v2_sync_status("completed", categories_done, total_categories, elapsed)
+        await _update_v2_sync_status("completed", categories_done, total_categories, elapsed, "", entries_scanned)
     return total_summary.to_dict()
 
 
@@ -202,6 +216,8 @@ async def _update_v2_sync_status(
     categories_done: int,
     categories_total: int,
     elapsed_seconds: int,
+    current_path: str = "",
+    entries_scanned: int = 0,
 ) -> None:
     """Persist v2 sync progress to SystemSetting for status endpoint."""
     import json
@@ -214,6 +230,8 @@ async def _update_v2_sync_status(
         "categories_done": categories_done,
         "categories_total": categories_total,
         "elapsed_seconds": elapsed_seconds,
+        "current_path": current_path,
+        "entries_scanned": entries_scanned,
     })
     async with StateSession() as session:
         row = await session.get(SystemSetting, "v2_sync_progress") or SystemSetting(key="v2_sync_progress")
