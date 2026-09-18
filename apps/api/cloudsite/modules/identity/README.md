@@ -139,3 +139,17 @@ as a compatibility facade.
 At this point resource and folder identity persistence are module-owned, while
 index-table path mutation is no longer implemented inside Identity. M4c will
 move the admin identity query API.
+
+
+## M4c Admin Query Boundary
+
+Admin identity statistics and candidate listing now flow through
+domain/admin_views.py, application/admin_queries.py, the module-owned
+SQLAlchemy query adapter, and api/admin_queries.py wiring.
+
+The legacy routers/admin/identities.py file now owns only admin authentication,
+HTTP parameter validation, and response dispatch. It no longer imports
+SQLAlchemy, shared ORM models, or cloudsite.main session factories.
+
+This removes two router ORM architecture-debt entries while preserving the
+existing endpoints and response shape.

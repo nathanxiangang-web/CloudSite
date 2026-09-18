@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import main
+import cloudsite.platform.db.session as platform_db_session
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.identity import IdentityObservation, identity_fingerprint, resolve_resource_identities
 from cloudsite.identity import migration
@@ -271,6 +272,8 @@ async def test_identity_diagnostics_require_real_admin_session(monkeypatch):
         )
     monkeypatch.setattr(main, "StateSession", state_sessions)
     monkeypatch.setattr(main, "IndexSession", index_sessions)
+    monkeypatch.setattr(platform_db_session, "StateSession", state_sessions)
+    monkeypatch.setattr(platform_db_session, "IndexSession", index_sessions)
 
     async with state_sessions() as session:
         session.add(SystemSetting(key="setup_completed", value="true", value_type="string"))

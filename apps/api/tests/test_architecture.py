@@ -207,6 +207,20 @@ class TestCompositionRoot:
         assert "app.include_router(" in source
 
 
+class TestIdentityAdminRouterBoundary:
+    """Identity admin HTTP routes must not own persistence queries."""
+
+    def test_identity_admin_router_has_no_orm_or_main_dependency(self):
+        router_file = CLOUDSITE / "routers" / "admin" / "identities.py"
+        source = router_file.read_text(encoding="utf-8")
+
+        assert "sqlalchemy" not in source
+        assert "from ...models" not in source
+        assert "from ...main" not in source
+        assert "identity_stats_payload" in source
+        assert "identity_candidates_payload" in source
+
+
 class TestModuleStructure:
     """Validate that each module has the required minimum structure."""
 
