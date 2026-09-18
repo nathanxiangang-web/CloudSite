@@ -175,6 +175,62 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down
 
+  runtime-backend-routing-smoke:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDSITE_SECRET_KEY: ci-runtime-routing-secret-0123456789abcdef0123456789abcdef
+      CLOUDSITE_SETUP_TOKEN: ci-runtime-routing-setup-token
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build API and Web images
+        run: |
+          docker build -t cloudsite-api:runtime-ci apps/api
+          docker build -t cloudsite-web:runtime-ci apps/web
+      - name: Create custom-service-name Compose
+        run: |
+          cat > docker-compose.runtime-ci.yml <<'YAML'
+          services:
+            backend:
+              image: cloudsite-api:runtime-ci
+              pull_policy: never
+              environment:
+                CLOUDSITE_SECRET_KEY: ${CLOUDSITE_SECRET_KEY}
+                CLOUDSITE_SETUP_TOKEN: ${CLOUDSITE_SETUP_TOKEN}
+                CLOUDSITE_DATA_DIR: /data
+              healthcheck:
+                test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+                interval: 5s
+                timeout: 3s
+                retries: 10
+              networks: [runtime-ci]
+
+            web:
+              image: cloudsite-web:runtime-ci
+              pull_policy: never
+              environment:
+                API_INTERNAL_URL: http://backend:8000
+                HOSTNAME: 0.0.0.0
+              depends_on:
+                backend:
+                  condition: service_healthy
+              ports:
+                - "3000:3000"
+              networks: [runtime-ci]
+
+          networks:
+            runtime-ci:
+              driver: bridge
+          YAML
+      - name: Start stack with non-default backend hostname
+        run: docker compose -f docker-compose.runtime-ci.yml up -d --wait
+      - name: Verify runtime API routing
+        run: |
+          curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["status"]=="healthy"; print(d)'
+          curl -fsS http://127.0.0.1:3000/api/admin/setup/status | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["setup_required"] is True; assert d["setup_available"] is True; print(d)'
+      - name: Compose down
+        if: always()
+        run: docker compose -f docker-compose.runtime-ci.yml down
+
   version-consistency:
     runs-on: ubuntu-latest
     steps:
@@ -232,7 +288,7 @@ jobs:
 
   publish:
     if: github.event_name != 'pull_request'
-    needs: [backend, frontend, compose, docker-smoke, production-docker-smoke, version-consistency, dependency-audit, backup-hardening]
+    needs: [backend, frontend, compose, docker-smoke, production-docker-smoke, runtime-backend-routing-smoke, version-consistency, dependency-audit, backup-hardening]
     permissions:
       contents: read
       packages: write
