@@ -14,7 +14,9 @@
     "e2e": "playwright test --config=e2e/playwright.config.ts",
     "e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
     "e2e:report": "playwright show-report e2e/e2e-report",
-    "e2e:install": "playwright install chromium"
+    "e2e:install": "playwright install chromium",
+    "arch": "node scripts/check-feature-boundaries.mjs",
+    "arch:test": "node scripts/check-feature-boundaries.mjs --self-test"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",
