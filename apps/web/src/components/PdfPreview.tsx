@@ -10,18 +10,23 @@ export default function PdfPreview({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    let blobUrl = "";
     (async () => {
       try {
         const result = await api<{ url: string }>(`/api/resources/${id}/pdf-preview`);
-        if (!cancelled) { setUrl(result.url); setLoading(false); }
+        const response = await fetch(result.url, { credentials: "same-origin" });
+        if (!response.ok) throw new Error(`PDF 加载失败 (${response.status})`);
+        const blob = await response.blob();
+        blobUrl = URL.createObjectURL(blob);
+        if (!cancelled) { setUrl(blobUrl); setLoading(false); }
       } catch (err) {
         if (!cancelled) { setError(err instanceof Error ? err.message : "PDF 加载失败"); setLoading(false); }
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [id]);
 
   if (loading) return <div className="loading">正在加载 PDF…</div>;
   if (error) return <div className="preview-fallback"><strong>PDF 预览失败</strong><span>{error}</span></div>;
-  return <iframe title="PDF 预览" src={url} />;
+  return <iframe title="PDF 预览" src={url} style={{ border: "none", width: "100%", height: "100%", minHeight: "520px" }} />;
 }
