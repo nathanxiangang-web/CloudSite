@@ -113,28 +113,28 @@ def _entry(rid: str, name: str = "f") -> SnapshotEntry:
     )
 
 
-def test_default_engine_is_v1(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CLOUDSITE_INDEXING_ENGINE", raising=False)
-    assert get_indexing_engine() == "v1"
-    assert use_indexing_v2() is False
-
-
-def test_engine_switches_to_v2_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLOUDSITE_INDEXING_ENGINE", "v2")
+def test_default_engine_is_v2(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "v2")
     assert get_indexing_engine() == "v2"
     assert use_indexing_v2() is True
 
 
-def test_engine_switches_back_to_v1_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLOUDSITE_INDEXING_ENGINE", "v1")
+def test_engine_switches_to_v1_via_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "v1")
     assert get_indexing_engine() == "v1"
     assert use_indexing_v2() is False
 
 
-def test_unknown_engine_value_falls_back_to_v1_behavior(
+def test_engine_switches_to_v2_via_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "v2")
+    assert get_indexing_engine() == "v2"
+    assert use_indexing_v2() is True
+
+
+def test_unknown_engine_value_is_not_v2(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("CLOUDSITE_INDEXING_ENGINE", "experimental")
+    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "experimental")
     assert get_indexing_engine() == "experimental"
     assert use_indexing_v2() is False
 
