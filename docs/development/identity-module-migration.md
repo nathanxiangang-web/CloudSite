@@ -21,7 +21,16 @@ Legacy import paths remain facades pointing at the exact same classes/functions.
 No database table, transaction, ID assignment, matching, or migration behavior
 changes in M4a.
 
-## M4b — Application and repository ports
+## M4b-1 — ORM ownership
+
+Status: implemented in this change.
+
+The five identity-owned ORM classes now live in
+`modules/identity/infrastructure/models.py` and use the shared platform DB
+bases. `cloudsite.models` is a compatibility re-export only. Database table
+names, columns, constraints, and metadata remain identical.
+
+## M4b-2 — Application and repository ports
 
 Next:
 
