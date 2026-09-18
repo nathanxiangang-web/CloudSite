@@ -11,13 +11,13 @@ import { PublicShell } from "@/components/PublicShell";
 import { formatBytes } from "@/lib/api";
 
 import {
-  catalogAssetDownloadPath,
   fetchCatalogEntry,
   fetchCatalogRelease,
 } from "../api";
 import {
   assetDimensionLabel,
   assetKindLabel,
+  catalogAssetDownloadPath,
   channelLabel,
   contentTypeLabel,
   formatCatalogTimestamp,

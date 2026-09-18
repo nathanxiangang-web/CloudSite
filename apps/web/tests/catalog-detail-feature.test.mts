@@ -30,14 +30,13 @@ test("catalog detail view owns its API model and styles", () => {
 
 test("catalog detail helpers preserve legacy delivery behavior", async () => {
   const catalogModel = await import("../src/features/catalog/model.ts");
-  const catalogApi = await import("../src/features/catalog/api.ts");
 
   assert.equal(catalogModel.assetKindLabel("archive"), "压缩包");
   assert.equal(catalogModel.assetDimensionLabel("unknown", "未知"), "未知");
   assert.equal(catalogModel.releaseIsPublished({ status: "published" }), true);
   assert.equal(catalogModel.releaseIsHistorical({ channel: "historical" }), true);
   assert.equal(
-    catalogApi.catalogAssetDownloadPath("ce a", "ca/1"),
+    catalogModel.catalogAssetDownloadPath("ce a", "ca/1"),
     "/api/catalog/entries/ce%20a/assets/ca%2F1/download",
   );
 });

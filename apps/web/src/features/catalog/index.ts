@@ -4,6 +4,7 @@ export {
   CATALOG_CONTENT_TYPE_LABELS,
   buildCatalogEntriesQuery,
   buildCatalogSearchQuery,
+  catalogAssetDownloadPath,
   catalogEntryHref,
   contentTypeLabel,
   assetDimensionLabel,
@@ -15,7 +16,6 @@ export {
   releaseIsRecommended,
 } from "./model";
 export {
-  catalogAssetDownloadPath,
   fetchCatalogEntries,
   fetchCatalogEntry,
   fetchCatalogRelease,

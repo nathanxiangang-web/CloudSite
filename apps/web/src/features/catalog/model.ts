@@ -43,6 +43,13 @@ export function catalogEntryHref(entryId: string): string {
   return `/catalog/${encodeURIComponent(entryId)}`;
 }
 
+export function catalogAssetDownloadPath(
+  entryId: string,
+  assetId: string,
+): string {
+  return `/api/catalog/entries/${encodeURIComponent(entryId)}/assets/${encodeURIComponent(assetId)}/download`;
+}
+
 export function contentTypeLabel(contentType: string): string {
   return CATALOG_CONTENT_TYPE_LABELS[contentType] ?? "资源";
 }
