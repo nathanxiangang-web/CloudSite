@@ -259,7 +259,7 @@ async def test_office_preview_uses_connection_two(tmp_path, monkeypatch):
         async with _authed_client(transport, ctx["user_token"]) as client:
             resp = await client.get("/api/resources/r-conn2-docx/office-preview")
             assert resp.status_code == 200, resp.text
-            assert resp.json()["url"] == "/office-files/r-conn2-docx.docx"
+            assert resp.json()["url"].startswith("/office-files/r-conn2-docx.docx?ticket=")
         assert captured["office_connection_id"] == 2
     finally:
         await ctx["state_engine"].dispose()
@@ -275,7 +275,7 @@ async def test_pdf_preview_uses_connection_two(tmp_path, monkeypatch):
         async with _authed_client(transport, ctx["user_token"]) as client:
             resp = await client.get("/api/resources/r-conn2-pdf/pdf-preview")
             assert resp.status_code == 200, resp.text
-            assert resp.json()["url"] == "/office-files/r-conn2-pdf.pdf"
+            assert resp.json()["url"].startswith("/office-files/r-conn2-pdf.pdf?ticket=")
         assert captured["office_connection_id"] == 2
     finally:
         await ctx["state_engine"].dispose()
