@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authRedirectTarget } from "./lib/navigation";
+import { backendPathFor } from "./lib/backend-route";
 
-const apiOrigin = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
 const SESSION_COOKIE = "cloudsite_user_session";
 
 type SessionStatus = { authenticated: boolean; code: string };
@@ -29,6 +29,14 @@ async function getSessionStatus(request: NextRequest): Promise<SessionStatus> {
 
 export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  const backendPath = backendPathFor(pathname);
+  if (backendPath) {
+    const apiOrigin = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
+    const target = new URL(backendPath, apiOrigin);
+    target.search = search;
+    return NextResponse.rewrite(target);
+  }
+
   const session = await getSessionStatus(request);
   const target = authRedirectTarget(
     pathname,
@@ -41,5 +49,5 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|d/|s/.+/d|p/|office-files/|admin|_next/static|_next/image|assets/|favicon.ico|icon.svg).*)"],
+  matcher: ["/((?!admin|_next/static|_next/image|assets/|favicon.ico|icon.svg).*)"],
 };
