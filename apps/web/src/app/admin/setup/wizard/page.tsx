@@ -77,7 +77,7 @@ export default function SetupWizardPage() {
     return <main className="login-page"><section className="login-card"><Brand admin /><p>正在加载向导…</p></section></main>;
   }
   if (wizard.error) {
-    return <main className="login-page"><section className="login-card"><Brand admin /><p className="form-error">无法连接后台服务</p><Link href="/admin/setup">返回</Link></section></main>;
+    return <main className="login-page"><section className="login-card"><Brand admin /><p className="form-error">无法连接后台服务：{wizard.error.message}</p><button type="button" onClick={() => wizard.refetch()}>重试</button><Link href="/admin/setup">返回</Link></section></main>;
   }
 
   const state = wizard.data;
@@ -137,7 +137,7 @@ export default function SetupWizardPage() {
         ))}
       </ol>
 
-      {error && <p className="form-error">{error}</p>}
+      {(error || skipMutation.error) && <p className="form-error">{error || skipMutation.error?.message}</p>}
 
       {currentStep === "connect" && (
         <form className="form-stack" onSubmit={handleConnectSubmit}>
@@ -156,16 +156,18 @@ export default function SetupWizardPage() {
         <form className="form-stack" onSubmit={handleScopeSubmit}>
           <h2>选择启用范围</h2>
           <p className="panel-intro">选择要在站点上启用的内容根目录。</p>
-          {(rootMappings.data?.items ?? []).map((m) => (
-            <label key={m.id} className="checkbox-label">
-              <input type="checkbox" checked={scopeEnabled[m.id] ?? m.enabled} onChange={(e) => setScopeEnabled({ ...scopeEnabled, [m.id]: e.target.checked })} />
-              {m.display_name} <small>{m.content_type} · {m.alist_path}</small>
-            </label>
-          ))}
-          {(rootMappings.data?.items ?? []).length === 0 && <p className="empty">暂无内容根目录映射，可跳过此步。</p>}
+          {rootMappings.isLoading ? <p className="loading">正在读取内容根目录…</p> : rootMappings.error ? <div className="empty error-state">内容根目录加载失败：{rootMappings.error.message}<button type="button" onClick={() => rootMappings.refetch()}>重试</button></div> : <>
+            {(rootMappings.data?.items ?? []).map((m) => (
+              <label key={m.id} className="checkbox-label">
+                <input type="checkbox" checked={scopeEnabled[m.id] ?? m.enabled} onChange={(e) => setScopeEnabled({ ...scopeEnabled, [m.id]: e.target.checked })} />
+                {m.display_name} <small>{m.content_type} · {m.alist_path}</small>
+              </label>
+            ))}
+            {(rootMappings.data?.items ?? []).length === 0 && <p className="empty">暂无内容根目录映射，可跳过此步。</p>}
+          </>}
           <div className="form-actions">
             <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
-            <button className="primary" disabled={stepMutation.isPending}><ArrowRight />下一步</button>
+            <button className="primary" disabled={stepMutation.isPending || rootMappings.isLoading || Boolean(rootMappings.error)}><ArrowRight />下一步</button>
           </div>
         </form>
       )}

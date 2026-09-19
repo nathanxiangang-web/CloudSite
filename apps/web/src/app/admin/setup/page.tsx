@@ -18,7 +18,10 @@ export default function AdminSetupPage() {
 
   useEffect(() => {
     fetch("/api/admin/setup/status")
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) throw new Error("setup status unavailable");
+        return response.json();
+      })
       .then((status) => {
         if (!status.setup_required) {
           window.location.replace("/admin/login");
@@ -29,7 +32,6 @@ export default function AdminSetupPage() {
       })
       .catch(() => {
         setError("暂时无法连接后台服务，请检查网络后刷新重试");
-        setReady(true);
       });
   }, []);
 
@@ -72,6 +74,7 @@ export default function AdminSetupPage() {
         <label className="checkbox-label"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /> 记住登录凭据</label>
         <label>一次性初始化令牌<input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" required /></label>
         {error && <p className="form-error">{error}</p>}
+        {!ready && error && <button type="button" onClick={() => window.location.reload()}>重新检查后台状态</button>}
         <button className="primary login-submit" disabled={loading || !ready || !setupAvailable}><LogIn />{loading ? "正在初始化…" : "完成初始化"}</button>
       </form>
       <Link href="/admin/setup/wizard">使用建站向导（推荐）</Link>
