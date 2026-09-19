@@ -2,7 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from cloudsite.services.resource_name_parser import UNKNOWN, parse_resource_name
+from cloudsite.modules.automation.domain.resource_name_parser import UNKNOWN, parse_resource_name
 
 
 @pytest.mark.parametrize(
