@@ -4,8 +4,6 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, select
-
 from ...catalog_schemas import (
     CatalogAssetCreateInput,
     CatalogAssetUpdateInput,
@@ -23,16 +21,13 @@ from ...catalog_schemas import (
     CatalogReleaseCreateInput,
     CatalogReleaseUpdateInput,
 )
-from ...models import CatalogAsset, CatalogEntry, CatalogLocation, CatalogRelease, Resource
-from ...services.catalog_views import catalog_asset_view, catalog_entry_view, catalog_release_view
+from ...modules.catalog.contracts import public as catalog_api
 
 router = APIRouter()
 
 
 def _catalog_service():
-    from ...services import catalog  # noqa: PLC0415
-
-    return catalog
+    return catalog_api
 
 
 def _translate_catalog_error(exc: Exception) -> HTTPException:
@@ -62,100 +57,6 @@ def _translate_catalog_error(exc: Exception) -> HTTPException:
 def _slugify(title: str) -> str:
     slug = re.sub(r"[^a-z0-9_-]+", "-", title.lower()).strip("-")
     return slug or "entry"
-
-
-def _entry_to_summary(entry: CatalogEntry) -> CatalogEntrySummary:
-    return CatalogEntrySummary(
-        entry_id=entry.entry_id,
-        title=entry.title,
-        summary=entry.summary,
-        content_type=entry.content_type,
-        status=entry.status,
-        revision=entry.revision,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-        published_at=entry.published_at,
-    )
-
-
-def _resource_available(resource: Resource | None, roots: set[int], content_type: str) -> bool:
-    return bool(
-        resource is not None
-        and resource.status == "active"
-        and resource.root_mapping_id is not None
-        and resource.root_mapping_id in roots
-        and resource.content_type == content_type
-    )
-
-
-def _location_to_summary(
-    location: CatalogLocation,
-    asset: CatalogAsset,
-    resource: Resource | None,
-    available: bool,
-) -> CatalogLocationSummary:
-    return CatalogLocationSummary(
-        location_id=location.location_id,
-        asset_id=location.asset_id,
-        display_name=asset.display_name,
-        sort_order=asset.sort_order,
-        available=available,
-        content_type=resource.content_type if resource is not None else "",
-        extension=resource.extension if resource is not None else "",
-        size=(resource.size or 0) if resource is not None else 0,
-    )
-
-
-async def _build_entry_detail(state, index, entry: CatalogEntry, *, published_only: bool) -> CatalogEntryDetail:
-    service = _catalog_service()
-    roots = await service.enabled_root_ids(state)
-    releases = list(
-        (
-            await state.scalars(
-                select(CatalogRelease).where(CatalogRelease.entry_id == entry.entry_id)
-            )
-        ).all()
-    )
-    locations: list[CatalogLocationSummary] = []
-    for release in releases:
-        if published_only and release.status != "published":
-            continue
-        assets = list(
-            (
-                await state.scalars(
-                    select(CatalogAsset).where(CatalogAsset.release_id == release.release_id)
-                )
-            ).all()
-        )
-        for asset in assets:
-            if published_only and asset.status != "active":
-                continue
-            rows = list(
-                (
-                    await state.scalars(
-                        select(CatalogLocation).where(CatalogLocation.asset_id == asset.asset_id)
-                    )
-                ).all()
-            )
-            for location in rows:
-                resource = await index.get(Resource, location.resource_id)
-                available = bool(
-                    asset.status == "active"
-                    and location.status == "active"
-                    and _resource_available(resource, roots, entry.content_type)
-                )
-                if published_only and not available:
-                    continue
-                locations.append(_location_to_summary(location, asset, resource, available))
-    return CatalogEntryDetail(
-        **_entry_to_summary(entry).model_dump(),
-        description=entry.description,
-        locations=locations,
-    )
-
-
-def _total_pages(total: int, page_size: int) -> int:
-    return max(1, (total + page_size - 1) // page_size)
 
 
 @router.get("/api/admin/catalog", response_model=CatalogEntryListOutput)
