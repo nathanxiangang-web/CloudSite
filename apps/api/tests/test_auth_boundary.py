@@ -5,7 +5,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import auth, main, site_assets
 from cloudsite.database import StateBase
-from cloudsite.models import AListConnection, SiteSettings, SystemSetting, User, utcnow
+from cloudsite.models import (
+    AListConnection,
+    SiteSettings,
+    SystemSetting,
+    User,
+    UserSession,
+    utcnow,
+)
 from cloudsite.preview import PREVIEW_TICKET_TTL_SECONDS, create_preview_ticket
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
@@ -161,7 +168,7 @@ async def test_valid_forged_and_expired_sessions(monkeypatch):
         assert valid.status_code == 200
         assert valid.json()["user"]["username"] == "boundary_user"
         async with factory() as session:
-            stored = await session.get(type(row), row.id)
+            stored = await session.get(UserSession, row.id)
             stored.expires_at = utcnow() - timedelta(seconds=1)
             await session.commit()
         expired = await client.get("/api/auth/me", cookies={USER_SESSION_COOKIE: token})
