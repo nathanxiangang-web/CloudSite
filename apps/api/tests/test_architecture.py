@@ -258,14 +258,43 @@ class TestResourcesRouterSqlBoundary:
 
 
 class TestPreviewProviderBoundary:
-    """Legacy preview facades may not own provider credentials or clients."""
+    """Resources-owned preview helpers may not own provider credentials or clients."""
 
     def test_preview_helpers_use_providers_contract_only(self):
-        for relative in ("preview.py", "office.py"):
-            source = (CLOUDSITE / relative).read_text(encoding="utf-8")
+        helper_files = (
+            CLOUDSITE / "modules" / "resources" / "infrastructure" / "preview.py",
+            CLOUDSITE
+            / "modules"
+            / "resources"
+            / "infrastructure"
+            / "office_preview.py",
+        )
+        for helper_file in helper_files:
+            source = helper_file.read_text(encoding="utf-8")
             assert "AListClient" not in source
             assert "decrypt_secret" not in source
             assert "modules.providers.contracts" in source
+
+
+class TestPreviewCompatibilityFacades:
+    """Legacy top-level preview modules must remain implementation-free facades."""
+
+    def test_preview_and_office_are_thin_facades(self):
+        for relative in ("preview.py", "office.py"):
+            path = CLOUDSITE / relative
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+
+            assert "modules.resources.infrastructure" in source
+            implementations = [
+                node
+                for node in tree.body
+                if isinstance(
+                    node,
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+                )
+            ]
+            assert implementations == []
 
 
 class TestPreviewRouterBoundary:

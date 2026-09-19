@@ -148,9 +148,35 @@ architecture debt from 84 to 83.
 
 ### R4c — preview helper ownership cleanup
 
-Move the remaining compatibility helper implementation from top-level
-`preview.py` / `office.py` into Resources domain/application/infrastructure
-packages while preserving their import facades.
+Status: implemented in this change.
+
+The remaining implementation in top-level `cloudsite.preview` and
+`cloudsite.office` now lives under Resources:
+
+- `modules/resources/infrastructure/preview.py`;
+- `modules/resources/infrastructure/office_preview.py`.
+
+The top-level modules remain compatibility-only re-export facades so existing
+imports keep exact class/function/cache/settings object identity.
+
+CI enforces that:
+
+- the top-level facades contain no function/class implementation;
+- provider credentials and AList clients do not return to Resources preview
+  helpers;
+- preview/provider access continues through `modules/providers/contracts`.
+
+This slice intentionally does not change the debt count: top-level
+`preview.py` / `office.py` were legacy ownership debt but not one of the
+ratchet's tracked ORM/shared-core IDs. The important change is that there is now
+one authoritative implementation path.
+
+### R4d — download/provider runtime composition
+
+Next, migrate download resource lookup and provider entry resolution onto
+Resources + Providers contracts so `routers/downloads.py` and Delivery no
+longer coordinate shared Resource ORM, legacy connection resolution, credential
+decryption, or direct AList clients.
 
 Delivery continues to own redirect preparation plus download event/diagnostic
 tracking. Providers owns storage backend access and credentials.
