@@ -17,6 +17,10 @@ from ..domain.views import (
     DiagnosticResourceView,
     ParserResourceView,
     ResourceReferenceView,
+    SearchDocumentView,
+    SearchFolderView,
+    SearchObjectBatchView,
+    SearchResourceView,
 )
 from ..infrastructure.rate_limit import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
@@ -80,6 +84,10 @@ class ResourceInventoryPort(Protocol):
 
 
 __all__ = [
+    "SearchObjectBatchView",
+    "SearchFolderView",
+    "SearchResourceView",
+    "SearchDocumentView",
     "DiagnosticResourceView",
     "AdminIndexFolderView",
     "AdminIndexCountsView",
