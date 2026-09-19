@@ -94,3 +94,13 @@ Users is now **partial** rather than a skeleton.
   (`id`, `username`, `status`) for business modules such as Submissions.
 - Authentication, user/admin sessions, favorites, history, playback progress,
   and the legacy admin user routes remain follow-up migration work.
+
+## Role Policy Ownership
+
+Users now owns team role and permission policy in `domain/roles.py` and
+role persistence workflows in `application/role_management.py`.
+
+- role validation, hierarchy and permission mapping are Users domain policy;
+- admin user-role listing and role updates are Users application workflows;
+- `services/roles.py` is a compatibility shim for legacy callers;
+- `routers/admin/roles.py` contains no direct ORM/SQLAlchemy access.
