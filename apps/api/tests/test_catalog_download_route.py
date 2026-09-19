@@ -95,7 +95,12 @@ async def _setup(monkeypatch):
 
 
 def _allow_download(monkeypatch, url=_ALLOWED_DOWNLOAD_URL):
-    async def _fake_resolve(resource, connection):
+    async def _fake_resolve(resource, runtime):
+        assert resource.id == _RESOURCE_ID
+        assert resource.__class__.__module__ == "cloudsite.modules.resources.domain.views"
+        assert not hasattr(resource, "__table__")
+        assert hasattr(runtime, "download_entry")
+        assert not hasattr(runtime, "__table__")
         return DownloadResolution(url=url, target_host="download.cloudsite.example", base_path="/software", has_sign=True, steps=[])
 
     async def _fake_rate(address, now=None):
