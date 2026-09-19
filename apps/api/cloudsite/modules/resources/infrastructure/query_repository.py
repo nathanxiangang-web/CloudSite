@@ -185,6 +185,76 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             for row in rows
         }
 
+    async def browse_resources(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        status: str,
+        content_type: str | None,
+        page: int,
+        page_size: int,
+    ) -> ResourcePageView:
+        if not enabled_root_ids:
+            return ResourcePageView(
+                items=(),
+                total=0,
+                page=page,
+                page_size=page_size,
+            )
+        scope = (
+            Resource.status == status,
+            Resource.root_mapping_id.in_(enabled_root_ids),
+        )
+        query = select(Resource).where(*scope)
+        count_query = select(func.count()).select_from(Resource).where(*scope)
+        if content_type:
+            query = query.where(Resource.content_type == content_type)
+            count_query = count_query.where(
+                Resource.content_type == content_type
+            )
+        total = int(await self._session.scalar(count_query) or 0)
+        rows = list(
+            (
+                await self._session.scalars(
+                    query.order_by(desc(Resource.modified_at), Resource.id)
+                    .offset((page - 1) * page_size)
+                    .limit(page_size)
+                )
+            ).all()
+        )
+        return ResourcePageView(
+            items=tuple(self._resource_view(row) for row in rows),
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    async def browse_resource_counts(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        status: str,
+        content_types: tuple[str, ...],
+    ) -> dict[str, int]:
+        if not enabled_root_ids or not content_types:
+            return {}
+        rows = (
+            await self._session.execute(
+                select(Resource.content_type, func.count())
+                .select_from(Resource)
+                .where(
+                    Resource.status == status,
+                    Resource.root_mapping_id.in_(enabled_root_ids),
+                    Resource.content_type.in_(content_types),
+                )
+                .group_by(Resource.content_type)
+            )
+        ).all()
+        return {
+            str(content_type): int(count or 0)
+            for content_type, count in rows
+        }
+
     async def list_resources(
         self,
         *,
