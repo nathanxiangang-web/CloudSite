@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Database, Folder, RefreshCw, Search, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Folder as FolderType } from "@/lib/api";
 
@@ -58,6 +58,16 @@ export default function IndexPage() {
   const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["admin-folder"] }); };
   const sync = useMutation({ mutationFn: (full: boolean) => api("/api/admin/sync", { method: "POST", body: JSON.stringify({ full }) }), onSuccess: refresh });
   const cancelSync = useMutation({ mutationFn: () => api("/api/admin/sync/cancel", { method: "POST" }), onSuccess: refresh });
+  const wasSyncing = useRef(false);
+
+  useEffect(() => {
+    const currentSyncing = summary.data?.syncing ?? false;
+    if (wasSyncing.current && !currentSyncing) {
+      void client.invalidateQueries({ queryKey: ["admin-folders"] });
+      void client.invalidateQueries({ queryKey: ["admin-folder"] });
+    }
+    wasSyncing.current = currentSyncing;
+  }, [client, summary.data?.syncing]);
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, FolderType[]>();
