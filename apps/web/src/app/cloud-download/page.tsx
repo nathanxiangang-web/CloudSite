@@ -79,7 +79,9 @@ export default function CloudDownloadPage() {
   return <PublicShell><div className="page cloud-download-page">
     <header className="submit-hero"><span><CloudDownload /></span><div><h1>{"\u4e91\u4e0b\u8f7d"}</h1><p>{"\u8f93\u5165\u8d44\u6e90\u94fe\u63a5\uff0c\u7cfb\u7edf\u4f1a\u5728\u540e\u53f0\u62c9\u53d6\u5e76\u7f13\u5b58\u5230\u4e91\u7aef\u3002\u53ef\u67e5\u770b\u5f53\u524d\u8d26\u53f7\u7684\u4e0b\u8f7d\u4efb\u52a1\u53ca\u5176\u8fdb\u5ea6\u3002"}</p></div></header>
 
-    {!authenticated ? <section className="panel cloud-download-auth"><h2><LogIn />{"\u9700\u8981\u767b\u5f55"}</h2><p>{"\u4e91\u4e0b\u8f7d\u9700\u8981\u767b\u5f55 CloudSite \u8d26\u53f7\u540e\u4f7f\u7528\u3002"}</p><Link className="button primary" href="/login">{"\u524d\u5f80\u767b\u5f55"}</Link></section> : <>
+    {auth.isLoading ? <section className="panel cloud-download-auth"><div className="loading">正在读取账号状态…</div></section>
+      : auth.error ? <section className="panel cloud-download-auth"><div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div></section>
+      : !authenticated ? <section className="panel cloud-download-auth"><h2><LogIn />{"\u9700\u8981\u767b\u5f55"}</h2><p>{"\u4e91\u4e0b\u8f7d\u9700\u8981\u767b\u5f55 CloudSite \u8d26\u53f7\u540e\u4f7f\u7528\u3002"}</p><Link className="button primary" href="/login">{"\u524d\u5f80\u767b\u5f55"}</Link></section> : <>
       <div className="submit-layout">
         <form className="submit-form cloud-download-form" onSubmit={onSubmit}>
           <label className="wide">{"\u8d44\u6e90\u94fe\u63a5 *"}<input required maxLength={2048} value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://... / magnet:? / ed2k://" /></label>
@@ -99,7 +101,7 @@ export default function CloudDownloadPage() {
       <section className="panel cloud-download-tasks-panel">
         <h2><RefreshCw />{"\u6211\u7684\u4e0b\u8f7d\u4efb\u52a1"}</h2>
         {tasks.isLoading ? <div className="loading">{"\u6b63\u5728\u52a0\u8f7d\u4efb\u52a1\u2026"}</div>
-          : tasks.error ? <div className="empty error-state">{"\u52a0\u8f7d\u5931\u8d25\uff1a"}{tasks.error.message}</div>
+          : tasks.error ? <div className="empty error-state">{"\u52a0\u8f7d\u5931\u8d25\uff1a"}{tasks.error.message}<button type="button" onClick={() => tasks.refetch()}>重试</button></div>
           : items.length === 0 ? <div className="empty">{"\u8fd8\u6ca1\u6709\u4e0b\u8f7d\u4efb\u52a1\u3002\u8f93\u5165\u94fe\u63a5\u63d0\u4ea4\u7b2c\u4e00\u4e2a\u4efb\u52a1\u5427\u3002"}</div>
           : <div className="cloud-download-task-list">{items.map((task) => <article className="cloud-download-task-item" key={task.id}>
             <div className="cloud-download-task-copy"><strong>{task.name}</strong><small>{formatTime(task.created_at)}</small></div>
