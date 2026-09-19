@@ -65,12 +65,6 @@ export function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open || userId === null) return;
-    setLastReadAt(userId, new Date().toISOString());
-    notifyLastReadListeners();
-  }, [open, userId]);
-
-  useEffect(() => {
     if (!open) return;
     function onClick(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
@@ -86,6 +80,19 @@ export function NotificationBell() {
     staleTime: 60_000,
     retry: false,
   });
+  useEffect(() => {
+    if (!open || userId === null || !query.data?.items.length) return;
+    const latestTimestamp = query.data.items.reduce((latest, item) => {
+      const timestamp = new Date(item.published_at).getTime();
+      return Number.isNaN(timestamp) ? latest : Math.max(latest, timestamp);
+    }, 0);
+    if (!latestTimestamp) return;
+    const previousTimestamp = lastReadAt ? new Date(lastReadAt).getTime() : 0;
+    if (!Number.isNaN(previousTimestamp) && previousTimestamp >= latestTimestamp) return;
+    setLastReadAt(userId, new Date(latestTimestamp).toISOString());
+    notifyLastReadListeners();
+  }, [lastReadAt, open, query.data, userId]);
+
   const remove = useMutation({
     mutationFn: (id: number) => api<{ ok: boolean }>(`/api/notifications/${id}`, { method: "DELETE" }),
     onSuccess: () => client.invalidateQueries({ queryKey: ["notifications", userId] }),
@@ -104,7 +111,7 @@ export function NotificationBell() {
     {open && <div className="notification-popover" role="dialog" aria-label="站内通知">
       <div className="notification-popover-head"><span>站内通知</span>{unreadCount > 0 && <small>{unreadCount} 条未读</small>}</div>
       {query.isLoading ? <div className="notification-empty">加载中…</div>
-        : query.error ? <div className="notification-empty">未能获取通知</div>
+        : query.error ? <div className="notification-empty">未能获取通知<button type="button" onClick={() => query.refetch()}>重试</button></div>
         : items.length === 0 ? <div className="notification-empty">暂无通知</div>
         : <ul className="notification-list">
           {items.map((item) => {
@@ -121,6 +128,7 @@ export function NotificationBell() {
             </li>;
           })}
         </ul>}
+      {remove.error && <div className="notification-empty">删除失败：{remove.error.message}</div>}
     </div>}
   </div>;
 }
