@@ -2,10 +2,11 @@
 
 覆盖 /api/admin/setup/wizard：
 - 初始状态查询
-- 七步推进（connect/scope/preset/samples/brand/preview/publish）
+- 五步真实流程（connect/scope/preset/brand/publish）
+- 旧 samples/preview 进度兼容
 - 跳过向导
 - 回退到上一步
-- 迁移幂等（空库与已有 v15 库）
+- 预设保存与发布启用语义
 """
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -17,6 +18,7 @@ from cloudsite.models import (
     ContentRootMapping,
     SiteSettings,
     SitePresentation,
+    SetupWizardState,
     SystemSetting,
     utcnow,
 )
@@ -72,6 +74,48 @@ async def test_wizard_initial_state(monkeypatch):
         await state_engine.dispose()
 
 
+async def test_wizard_legacy_progress_is_normalized(monkeypatch):
+    state_engine = await _wizard_setup(monkeypatch)
+    transport = httpx.ASGITransport(app=main.app)
+    try:
+        async with main.StateSession() as state:
+            state.add(
+                SetupWizardState(
+                    id=1,
+                    current_step="samples",
+                    completed_steps_json='["connect", "scope", "preset"]',
+                    connect_done=True,
+                    scope_done=True,
+                    preset_done=True,
+                    started_at="legacy",
+                )
+            )
+            await state.commit()
+
+        async with _wizard_client(transport) as client:
+            samples = await client.get("/api/admin/setup/wizard")
+            assert samples.status_code == 200, samples.text
+            assert samples.json()["current_step"] == "brand"
+            assert samples.json()["samples_done"] is True
+            assert samples.json()["completed_steps"] == ["connect", "scope", "preset", "samples"]
+
+            async with main.StateSession() as state:
+                row = await state.get(SetupWizardState, 1)
+                assert row is not None
+                row.current_step = "preview"
+                row.brand_done = True
+                row.completed_steps_json = '["connect", "scope", "preset", "samples", "brand"]'
+                await state.commit()
+
+            preview = await client.get("/api/admin/setup/wizard")
+            assert preview.status_code == 200, preview.text
+            assert preview.json()["current_step"] == "publish"
+            assert preview.json()["preview_done"] is True
+            assert preview.json()["completed_steps"] == ["connect", "scope", "preset", "samples", "brand", "preview"]
+    finally:
+        await state_engine.dispose()
+
+
 async def test_wizard_full_flow(monkeypatch):
     state_engine = await _wizard_setup(monkeypatch)
     transport = httpx.ASGITransport(app=main.app)
@@ -100,14 +144,11 @@ async def test_wizard_full_flow(monkeypatch):
             )
             assert preset.status_code == 200, preset.text
             assert preset.json()["state"]["preset_done"] is True
-            assert preset.json()["state"]["current_step"] == "samples"
-
-            samples = await client.post(
-                "/api/admin/setup/wizard/step",
-                json={"step": "samples", "data": {}},
-            )
-            assert samples.status_code == 200, samples.text
-            assert samples.json()["state"]["samples_done"] is True
+            assert preset.json()["state"]["current_step"] == "brand"
+            async with main.StateSession() as state:
+                pres = await state.get(SitePresentation, 1)
+                assert pres is not None
+                assert pres.enabled is False
 
             brand = await client.post(
                 "/api/admin/setup/wizard/step",
@@ -115,14 +156,7 @@ async def test_wizard_full_flow(monkeypatch):
             )
             assert brand.status_code == 200, brand.text
             assert brand.json()["state"]["brand_done"] is True
-
-            preview = await client.post(
-                "/api/admin/setup/wizard/step",
-                json={"step": "preview", "data": {}},
-            )
-            assert preview.status_code == 200, preview.text
-            assert preview.json()["state"]["preview_done"] is True
-            assert preview.json()["result"]["site_name"] == "我的软件站"
+            assert brand.json()["state"]["current_step"] == "publish"
 
             publish = await client.post(
                 "/api/admin/setup/wizard/step",
@@ -131,10 +165,14 @@ async def test_wizard_full_flow(monkeypatch):
             assert publish.status_code == 200, publish.text
             assert publish.json()["state"]["wizard_completed"] is True
             assert publish.json()["state"]["publish_done"] is True
+            async with main.StateSession() as state:
+                pres = await state.get(SitePresentation, 1)
+                assert pres is not None
+                assert pres.enabled is True
 
             final = await client.get("/api/admin/setup/wizard")
             assert final.json()["wizard_completed"] is True
-            assert final.json()["completed_steps"] == ["connect", "scope", "preset", "samples", "brand", "preview", "publish"]
+            assert final.json()["completed_steps"] == ["connect", "scope", "preset", "brand", "publish"]
     finally:
         await state_engine.dispose()
 
@@ -204,6 +242,6 @@ async def test_wizard_preset_persists(monkeypatch):
                 pres = await state.get(SitePresentation, 1)
                 assert pres is not None
                 assert pres.preset == "tutorial"
-                assert pres.enabled is True
+                assert pres.enabled is False
     finally:
         await state_engine.dispose()
