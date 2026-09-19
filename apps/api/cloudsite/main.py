@@ -17,12 +17,7 @@ from .database import IndexSession, StateSession, init_databases, validate_datab
 from .download import resolve_download_entry
 from .download_rate_limit import DOWNLOAD_RATE_CLEANUP_SECONDS, check_download_rate, cleanup_download_rate_limits
 from .identity import backup_stable_id_databases, migrate_stable_resource_ids
-from .indexer import (
-    automatic_sync_due,
-    log_operation,
-    recover_interrupted_sync_runs,
-    sync_preflight,
-)
+from .indexer import log_operation, recover_interrupted_sync_runs
 from .infrastructure.security import (
     create_session_token,
     validate_production_secrets,
