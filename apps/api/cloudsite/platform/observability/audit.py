@@ -2,10 +2,44 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import text
+from sqlalchemy import DateTime, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@dataclass(frozen=True, slots=True)
+class OperationLogView:
+    level: str
+    message: str
+    created_at: datetime
+
+
+async def recent_operation_logs(
+    session: AsyncSession,
+    *,
+    limit: int = 6,
+) -> list[OperationLogView]:
+    statement = text(
+        "SELECT level, message, created_at "
+        "FROM operation_logs "
+        "ORDER BY id DESC LIMIT :limit"
+    ).columns(created_at=DateTime(timezone=True))
+    rows = (
+        await session.execute(
+            statement,
+            {"limit": max(int(limit), 0)},
+        )
+    ).mappings().all()
+    return [
+        OperationLogView(
+            level=str(row["level"]),
+            message=str(row["message"]),
+            created_at=row["created_at"],
+        )
+        for row in rows
+    ]
 
 
 async def write_operation_log(
@@ -38,4 +72,8 @@ async def write_operation_log(
     )
 
 
-__all__ = ["write_operation_log"]
+__all__ = [
+    "OperationLogView",
+    "recent_operation_logs",
+    "write_operation_log",
+]

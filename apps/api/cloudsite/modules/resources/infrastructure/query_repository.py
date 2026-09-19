@@ -14,6 +14,7 @@ from ..domain.errors import (
 )
 from ..domain.views import (
     AdminIndexCountsView,
+    AdminOverviewInventoryView,
     AdminIndexFolderView,
     CatalogResourceView,
     DiagnosticResourceView,
@@ -283,6 +284,53 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
         return SearchObjectBatchView(
             resources=resources,
             folders=folders,
+        )
+
+    async def admin_overview_inventory(
+        self,
+    ) -> AdminOverviewInventoryView:
+        resources = int(
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Resource)
+                .where(Resource.status == "active")
+            )
+            or 0
+        )
+        folders = int(
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Folder)
+                .where(Folder.status == "active")
+            )
+            or 0
+        )
+        rows = (
+            await self._session.execute(
+                select(Resource.content_type, func.count())
+                .select_from(Resource)
+                .where(Resource.status == "active")
+                .group_by(Resource.content_type)
+            )
+        ).all()
+        type_counts = {
+            kind: 0
+            for kind in (
+                "software",
+                "image",
+                "video",
+                "document",
+                "file",
+            )
+        }
+        for content_type, count in rows:
+            key = str(content_type)
+            if key in type_counts:
+                type_counts[key] = int(count or 0)
+        return AdminOverviewInventoryView(
+            resources=resources,
+            folders=folders,
+            type_counts=type_counts,
         )
 
     async def admin_index_counts(self) -> AdminIndexCountsView:

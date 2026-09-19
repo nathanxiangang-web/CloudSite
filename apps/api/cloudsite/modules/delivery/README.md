@@ -115,3 +115,8 @@ Delivery now owns the admin download-diagnostic workflow in
   `DownloadDiagnostic`, and exposes diagnostic history;
 - `routers/admin/diagnostics.py` is ORM/SQLAlchemy-free and keeps only the
   historical `download_diagnostic_dict` compatibility symbol.
+
+## D4 Overview Read Boundary
+
+Delivery exposes a narrow failed-download count for the admin overview.
+Dashboard code no longer reads `DownloadEvent` ORM directly.

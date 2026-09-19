@@ -12,6 +12,7 @@ from ..domain.errors import (
 )
 from ..domain.views import (
     AdminIndexCountsView,
+    AdminOverviewInventoryView,
     AdminIndexFolderView,
     CatalogResourceView,
     DiagnosticResourceView,
@@ -84,6 +85,7 @@ class ResourceInventoryPort(Protocol):
 
 
 __all__ = [
+    "AdminOverviewInventoryView",
     "SearchObjectBatchView",
     "SearchFolderView",
     "SearchResourceView",

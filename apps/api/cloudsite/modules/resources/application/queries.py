@@ -6,6 +6,7 @@ from typing import Protocol, runtime_checkable
 
 from ..domain.views import (
     AdminIndexCountsView,
+    AdminOverviewInventoryView,
     AdminIndexFolderView,
     CatalogResourceView,
     DiagnosticResourceView,
@@ -24,6 +25,10 @@ from ..domain.views import (
 
 @runtime_checkable
 class ResourceQueryRepository(Protocol):
+    async def admin_overview_inventory(
+        self,
+    ) -> AdminOverviewInventoryView: ...
+
     async def search_documents(self) -> list[SearchDocumentView]: ...
 
     async def search_objects(
@@ -150,6 +155,11 @@ class ResourceQueryRepository(Protocol):
 class ResourceQueries:
     def __init__(self, repository: ResourceQueryRepository) -> None:
         self._repository = repository
+
+    async def admin_overview_inventory(
+        self,
+    ) -> AdminOverviewInventoryView:
+        return await self._repository.admin_overview_inventory()
 
     async def search_documents(self) -> list[SearchDocumentView]:
         return await self._repository.search_documents()
