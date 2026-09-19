@@ -8,6 +8,7 @@ from ..domain.views import (
     CatalogResourceView,
     FolderDetailView,
     FolderSummaryView,
+    ParserResourceView,
     ResourceDetailView,
     ResourceDownloadView,
     ResourcePageView,
@@ -22,6 +23,12 @@ class ResourceQueryRepository(Protocol):
         *,
         resource_id: str,
     ) -> CatalogResourceView | None: ...
+
+    async def parser_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> ParserResourceView | None: ...
 
     async def list_resources(
         self,
@@ -87,6 +94,15 @@ class ResourceQueries:
         resource_id: str,
     ) -> CatalogResourceView | None:
         return await self._repository.catalog_resource(
+            resource_id=resource_id,
+        )
+
+    async def parser_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> ParserResourceView | None:
+        return await self._repository.parser_resource(
             resource_id=resource_id,
         )
 
