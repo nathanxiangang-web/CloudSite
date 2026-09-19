@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import CatalogEntry, Resource
 from cloudsite.modules.automation.contracts import public as automation_api
+from cloudsite.modules.automation.application import suggestion_generator as suggestion_generator_impl
 
 
 @pytest.fixture
@@ -189,6 +190,6 @@ async def test_revert_produces_new_revision(sessions):
 
     async with StateSession() as state:
         from sqlalchemy import select
-        entry = await state.scalar(select(CatalogEntry).where(CatalogEntry.slug == automation_api._slugify(resource.name)))
+        entry = await state.scalar(select(CatalogEntry).where(CatalogEntry.slug == suggestion_generator_impl._slugify(resource.name)))
         if entry is not None:
             assert entry.status == "archived"
