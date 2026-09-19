@@ -64,7 +64,6 @@ from .routers.home import (
 from .routers.admin.diagnostics import download_diagnostic_dict
 from .routers.admin.sync import sync
 from .routers.admin.index import sync_run_dict
-from .routers.admin.site import site_settings_dict
 from .plugins import PluginRegistry
 
 
