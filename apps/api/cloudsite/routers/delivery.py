@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
+from ..platform.observability import write_operation_log
 from ..delivery_schemas import (
     DeliveryFeedbackRequest,
     PackageDetailResponse,
@@ -85,18 +86,18 @@ async def view_delivery(access_token: str, code: str | None = None):
 @router.post("/api/delivery/{access_token}/feedback")
 async def submit_feedback(access_token: str, body: DeliveryFeedbackRequest, code: str | None = None):
     from ..main import StateSession
-    from ..models import OperationLog
 
     service = _delivery_service()
     async with StateSession() as state:
         try:
             package = await service.verify_access(state, access_token, access_code=code)
-            state.add(OperationLog(
+            await write_operation_log(
+                state,
                 level="INFO",
                 module="delivery",
                 action="feedback",
                 message=f"Package {package.package_id}: {body.kind} - {body.message}",
-            ))
+            )
             await state.commit()
             return {"ok": True}
         except Exception as exc:
