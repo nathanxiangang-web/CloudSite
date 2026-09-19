@@ -23,25 +23,37 @@ covered by a persistence regression test.
 
 ## D2 — Rate-limit ownership correction
 
-Next, move `DownloadRateLimit` behavior from Delivery infrastructure into
-Resources. The table is already declared as Resources-owned.
+Status: implemented.
 
-Target:
+Persistent download rate limiting now lives in:
 
 ```text
-download router
-  -> Resources rate-limit contract/API
-      -> Resources rate-limit infrastructure
-          -> DownloadRateLimit ORM
+modules/resources/infrastructure/rate_limit.py
 ```
 
-Delivery may retain a compatibility re-export temporarily, but it must not own
-the table or import Resources infrastructure internals.
+The Resources public contract exports the existing rate-limit API, while:
 
-This should remove the two remaining Delivery rate-limit legacy debt IDs:
+- `modules/delivery/infrastructure/rate_limit.py` is a contracts-only
+  compatibility facade;
+- `cloudsite.download_rate_limit` points to the Resources contract;
+- Resources uses `platform/db.state_session()` and its own
+  `DownloadRateLimit` ORM model;
+- Delivery no longer imports legacy `cloudsite.database` or
+  `cloudsite.models` for rate limiting.
 
-- `cloudsite.database`
-- `cloudsite.models`
+The migration preserves the existing striped in-process locks,
+`BEGIN IMMEDIATE` SQLite serialization, commit behavior, restart persistence,
+cleanup rules, trusted-proxy handling, and public payload shape.
+
+This removes two tracked module debt IDs and ratchets architecture debt from
+81 to 79.
+
+## D3 — Delivery package legacy service boundary
+
+Next, move delivery-package service/model ownership out of
+`services/delivery.py` and thin the admin/public delivery routers. Keep this
+separate from the download redirect path so package behavior can be migrated
+without destabilizing public downloads.
 
 ## Invariants
 

@@ -292,6 +292,51 @@ class TestDeliveryPackageInitialization:
         assert imports == []
 
 
+class TestRateLimitOwnershipBoundary:
+    """Download rate limiting is Resources-owned, not Delivery-owned."""
+
+    def test_resources_rate_limit_has_no_legacy_database_or_shared_model_imports(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "resources"
+            / "infrastructure"
+            / "rate_limit.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "cloudsite.database" not in source
+        assert "from ....database" not in source
+        assert "cloudsite.models" not in source
+        assert "from ....models" not in source
+        assert "platform.db" in source
+        assert "from .models import DownloadRateLimit" in source
+
+    def test_delivery_rate_limit_is_resources_contract_facade(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "delivery"
+            / "infrastructure"
+            / "rate_limit.py"
+        )
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        assert "modules.resources.contracts" in source
+        assert "cloudsite.database" not in source
+        assert "cloudsite.models" not in source
+        implementations = [
+            node
+            for node in tree.body
+            if isinstance(
+                node,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+            )
+        ]
+        assert implementations == []
+
+
 class TestDeliveryOrmBoundary:
     """Delivery application code may not depend on shared ORM."""
 

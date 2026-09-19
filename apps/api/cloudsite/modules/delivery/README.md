@@ -98,6 +98,8 @@ lifecycle events and resources owning rate limit events.
 - `cloudsite.models` remains a compatibility re-export for legacy callers.
 - Download-event writes now import the Delivery-owned ORM directly.
 - Existing event commit semantics are preserved.
-- Next: move download rate limiting to Resources, the declared owner of
-  `download_rate_limits`, removing the remaining two Delivery legacy-import
-  debt IDs.
+- D2 rate-limit ownership: persistent download rate limiting now lives in
+  Resources, the declared owner of `download_rate_limits`.
+- Delivery keeps only a compatibility re-export of the Resources rate-limit
+  contract; it no longer imports shared database/model layers for rate limiting.
+- Next: migrate the delivery-package legacy service/router boundary.

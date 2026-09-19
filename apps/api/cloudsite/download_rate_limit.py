@@ -1,4 +1,4 @@
-from .modules.delivery.infrastructure.rate_limit import (
+from .modules.resources.contracts.public import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
     DOWNLOAD_RATE_CLEANUP_SECONDS,
     DOWNLOAD_RATE_MAX_ATTEMPTS,
