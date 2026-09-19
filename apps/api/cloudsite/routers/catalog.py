@@ -3,7 +3,6 @@ import time
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import func, select
 
 from ..catalog_schemas import CatalogEntryDetail, CatalogEntryListOutput
 from ..download import DownloadError, resolve_download_entry
@@ -54,13 +53,9 @@ async def public_catalog_list(
             limit=page_size,
             offset=(page - 1) * page_size,
         )
-        total = int(
-            await state.scalar(
-                select(func.count())
-                .select_from(CatalogEntry)
-                .where(CatalogEntry.status == "published")
-            )
-            or 0
+        total = await service.count_catalog_entries(
+            state,
+            status="published",
         )
         return CatalogEntryListOutput(
             items=[_entry_to_summary(entry) for entry in entries],

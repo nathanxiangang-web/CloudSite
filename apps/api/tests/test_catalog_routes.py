@@ -208,6 +208,7 @@ async def test_real_create_bind_publish_and_public_read(monkeypatch):
         listing = await reader.get("/api/catalog")
         assert listing.status_code == 200, listing.text
         assert [item["entry_id"] for item in listing.json()["items"]] == [entry_id]
+        assert listing.json()["total"] == 1
         detail = await reader.get(f"/api/catalog/{entry_id}")
         assert detail.status_code == 200, detail.text
         assert detail.json()["locations"][0]["asset_id"] == asset.asset.asset_id

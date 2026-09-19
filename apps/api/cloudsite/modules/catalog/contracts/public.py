@@ -16,6 +16,7 @@ from ..application.automation_facade import (
     revert_automation_target,
 )
 from ..application.catalog_entry import (
+    count_catalog_entries,
     CatalogAssetNotDownloadable,
     CatalogEntryNotFound,
     CatalogError,
@@ -47,6 +48,7 @@ __all__ = [
     "CatalogLocationInvalid",
     "CatalogPublishValidationFailed",
     "CatalogAssetNotDownloadable",
+    "count_catalog_entries",
     "CreateCatalogEntryResult",
     "CreateCatalogReleaseResult",
     "CreateCatalogAssetResult",
