@@ -9,7 +9,7 @@ from ..domain.download import (
     validate_resource_id,
 )
 from ..application.download_event import _download_event
-from ..infrastructure.rate_limit import (
+from cloudsite.modules.resources.contracts.public import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
     DOWNLOAD_RATE_CLEANUP_SECONDS,
     DOWNLOAD_RATE_MAX_ATTEMPTS,

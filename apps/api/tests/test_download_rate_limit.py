@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -12,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import download_rate_limit, main
-from cloudsite.modules.delivery.infrastructure import rate_limit as rate_limit_impl
+from cloudsite.modules.resources.infrastructure import rate_limit as rate_limit_impl
 from cloudsite.database import StateBase
 from cloudsite.download_rate_limit import (
     DownloadRateDecision,
@@ -22,10 +23,19 @@ from cloudsite.download_rate_limit import (
     normalize_ip,
     rate_limit_payload,
 )
-from cloudsite.models import DownloadRateLimit, Resource
+from cloudsite.modules.resources.infrastructure.models import DownloadRateLimit
 
 
 BASE_TIME = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+
+
+def _state_session_scope(factory):
+    @asynccontextmanager
+    async def scoped():
+        async with factory() as session:
+            yield session
+
+    return scoped
 
 
 async def rate_store(tmp_path, monkeypatch, name="rate.db"):
@@ -33,7 +43,7 @@ async def rate_store(tmp_path, monkeypatch, name="rate.db"):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(StateBase.metadata.create_all)
-    monkeypatch.setattr(rate_limit_impl, "StateSession", factory)
+    monkeypatch.setattr(rate_limit_impl, "state_session", _state_session_scope(factory))
     return engine, factory
 
 
@@ -143,7 +153,7 @@ async def test_api_restart_keeps_rate_limit_state(tmp_path, monkeypatch):
 
     restarted_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'rate.db'}")
     restarted_factory = async_sessionmaker(restarted_engine, expire_on_commit=False)
-    monkeypatch.setattr(rate_limit_impl, "StateSession", restarted_factory)
+    monkeypatch.setattr(rate_limit_impl, "state_session", _state_session_scope(restarted_factory))
     after_restart = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=55))
     assert after_restart.allowed is False
     assert after_restart.blocked_until == blocked.blocked_until

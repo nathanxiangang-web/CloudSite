@@ -4,6 +4,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from ..infrastructure.rate_limit import (
+    DOWNLOAD_RATE_BLOCK_SECONDS,
+    DOWNLOAD_RATE_CLEANUP_SECONDS,
+    DOWNLOAD_RATE_MAX_ATTEMPTS,
+    DOWNLOAD_RATE_WINDOW_SECONDS,
+    DownloadRateDecision,
+    check_download_rate,
+    cleanup_download_rate_limits,
+    get_effective_client_ip,
+    hash_ip,
+    rate_limit_payload,
+)
+
 
 @dataclass(slots=True)
 class ResourceInventoryRecord:
@@ -52,4 +65,17 @@ class ResourceInventoryPort(Protocol):
     ) -> dict[str, int]: ...
 
 
-__all__ = ["ResourceInventoryPort", "ResourceInventoryRecord"]
+__all__ = [
+    "ResourceInventoryPort",
+    "ResourceInventoryRecord",
+    "DOWNLOAD_RATE_MAX_ATTEMPTS",
+    "DOWNLOAD_RATE_WINDOW_SECONDS",
+    "DOWNLOAD_RATE_BLOCK_SECONDS",
+    "DOWNLOAD_RATE_CLEANUP_SECONDS",
+    "DownloadRateDecision",
+    "get_effective_client_ip",
+    "hash_ip",
+    "check_download_rate",
+    "cleanup_download_rate_limits",
+    "rate_limit_payload",
+]
