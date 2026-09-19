@@ -2,34 +2,10 @@
   "schema_version": 1,
   "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
   "counts": {
-    "module_legacy_import": 12,
+    "module_legacy_import": 4,
     "router_orm_import": 55
   },
   "violations": [
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_batch.py::cloudsite.services"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_runner.py::cloudsite.services"
-    },
     {
       "rule": "module_legacy_import",
       "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_seeding.py",
@@ -38,33 +14,9 @@
     },
     {
       "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_candidates.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidates.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_candidates.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidates.py::cloudsite.services"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_evaluation.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_evaluation.py::cloudsite.services"
-    },
-    {
-      "rule": "module_legacy_import",
       "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
       "target": "cloudsite.models",
       "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.services"
     },
     {
       "rule": "module_legacy_import",
