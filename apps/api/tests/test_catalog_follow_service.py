@@ -21,7 +21,7 @@ from cloudsite.models import (
     Resource,
     User,
 )
-from cloudsite.services.catalog import (
+from cloudsite.modules.catalog.contracts.public import (
     create_catalog_asset,
     create_catalog_entry,
     create_catalog_release,
@@ -71,7 +71,7 @@ async def _make_published_entry(sf, ix, slug="myapp"):
         release = result.release
         asset = await create_catalog_asset(state, release_id=release.release_id, slug="pkg", display_name="package")
         await state.commit()
-        from cloudsite.services.catalog import attach_catalog_location
+        from cloudsite.modules.catalog.contracts.public import attach_catalog_location
         await attach_catalog_location(state, index, asset_id=asset.asset.asset_id, resource_id="r_soft_1", is_primary=True)
         await state.commit()
         await publish_catalog_entry(state, index, entry_id=entry.entry_id, expected_revision=entry.revision)
