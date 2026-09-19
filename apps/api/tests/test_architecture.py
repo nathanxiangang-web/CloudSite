@@ -292,6 +292,48 @@ class TestDeliveryPackageInitialization:
         assert imports == []
 
 
+class TestCatalogModuleCoreBoundary:
+    """Catalog core application depends on module models and public contracts."""
+
+    def test_catalog_application_has_no_shared_core_imports(self):
+        paths = [
+            CLOUDSITE / "modules" / "catalog" / "application" / "catalog_entry.py",
+            CLOUDSITE / "modules" / "catalog" / "application" / "catalog_release.py",
+        ]
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            assert "cloudsite.models" not in source
+            assert "from ....models" not in source
+            assert "cloudsite.services" not in source
+            assert "from ....services" not in source
+            assert "index.get(Resource" not in source
+            assert "providers.contracts.public" in source
+            assert "resources.contracts.public" in source
+            assert "from ..infrastructure.models import" in source
+
+    def test_catalog_release_notifications_use_notifications_contract(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "catalog"
+            / "application"
+            / "release_notifications.py"
+        )
+        source = path.read_text(encoding="utf-8")
+        assert "notifications.contracts.public" in source
+        assert "cloudsite.models" not in source
+        assert "from ...notifications.infrastructure" not in source
+
+    def test_catalog_orm_is_module_owned(self):
+        path = CLOUDSITE / "modules" / "catalog" / "infrastructure" / "models.py"
+        source = path.read_text(encoding="utf-8")
+        imports = _extract_imports(source)
+
+        assert "cloudsite.models" not in imports
+        assert "models" not in imports
+        assert "platform.db" in source
+
+
 class TestNotificationsModuleBoundary:
     """Notifications owns notification persistence and router ORM work."""
 

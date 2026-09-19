@@ -42,22 +42,26 @@ entry and release schemas.
 
 ## Database Tables
 
+Catalog-owned state tables:
 - `catalog_entries`, `catalog_releases`, `catalog_assets`, `catalog_locations`
 - `catalog_tags`, `catalog_tag_assignments`, `catalog_relations`
 - `catalog_revisions` - metadata revision history.
-- `catalog_search_outbox` - projection outbox for search.
-- `catalog_search_projection_state` - projection watermark.
+- `catalog_search_outbox` - Catalog-owned projection outbox.
 - `catalog_favorites`, `catalog_subscriptions` - user engagement.
-- `catalog_release_notifications` - pending release notifications.
-- `catalog_suggestions` - AI-generated metadata suggestions.
+- `catalog_release_notifications` - release-notification dedup records.
+
+`catalog_search_projection_state` is Search-owned. `catalog_suggestions` is
+Automation-owned. Catalog does not claim either table.
 
 ## Dependencies
 
 - platform/db
-- platform/tasks (for metadata extraction and projection jobs)
-- modules/resources (via contracts) - source resource for an entry.
-- modules/search (via contracts) - to trigger projection updates.
-- modules/notifications (via contracts) - for release notifications.
+- platform/tasks
+- modules/resources (via contracts) - resource state validation.
+- modules/providers (via contracts) - enabled publication roots.
+- modules/notifications (via contracts) - release notifications.
+
+Search consumes the Catalog-owned outbox; Catalog does not depend on Search.
 
 ## Events/Tasks
 
@@ -95,8 +99,18 @@ entry and release schemas.
 
 ## Current Migration Status
 
-Code is currently in `services/catalog*.py` (46.8KB, the largest service
-file). This is a prime candidate for splitting. Migration to `modules/catalog/`
-is scheduled for Phase 3. The module skeleton with schemas in `public/` is in
-place. The 46.8KB file will split into entry, metadata, release, follow, and
-projection services during migration.
+Migration status: partial.
+
+C5a moved the 12 Catalog-owned state ORM declarations into
+`modules/catalog/infrastructure/models.py`; `cloudsite.models` keeps exact
+compatibility re-exports.
+
+`catalog_entry.py` and `catalog_release.py` no longer import shared
+`cloudsite.models` or `cloudsite.services`. Resource state comes through
+Resources contracts, enabled publication roots through Providers contracts,
+and release notifications through Notifications contracts.
+
+Revision writes, search-outbox enqueue, and release-subscriber notification
+write-side helpers now live in the Catalog module. Legacy `services/catalog*`
+read/search/follow compatibility surfaces and the public/admin Catalog routers
+remain migration work; Catalog should not yet be described as isolated.

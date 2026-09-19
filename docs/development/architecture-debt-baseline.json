@@ -2,7 +2,7 @@
   "schema_version": 1,
   "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
   "counts": {
-    "module_legacy_import": 16,
+    "module_legacy_import": 12,
     "router_orm_import": 55
   },
   "violations": [
@@ -77,30 +77,6 @@
       "file": "apps/api/cloudsite/modules/automation/application/suggestion_review.py",
       "target": "cloudsite.services",
       "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_review.py::cloudsite.services"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/catalog/application/catalog_entry.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_entry.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/catalog/application/catalog_entry.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_entry.py::cloudsite.services"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/catalog/application/catalog_release.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_release.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/catalog/application/catalog_release.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_release.py::cloudsite.services"
     },
     {
       "rule": "router_orm_import",
