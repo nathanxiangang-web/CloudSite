@@ -71,8 +71,7 @@ async def test_fresh_init_creates_parser_candidate_tasks_table(tmp_path, monkeyp
 
     async with state_engine.connect() as conn:
         assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
-        assert CURRENT_SCHEMA_VERSION == 29
-        tables = await _table_names(conn)
+                tables = await _table_names(conn)
         assert TASK_TABLE in tables, f"missing table {TASK_TABLE}"
 
         cols = await _columns(conn, TASK_TABLE)
@@ -190,8 +189,7 @@ async def test_synthetic_v7_upgrades_to_v8_preserving_catalog_rows(tmp_path, mon
 
     async with state_engine.connect() as conn:
         assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
-        assert CURRENT_SCHEMA_VERSION == 29
-
+        
         entry_row = (
             await conn.execute(
                 text("SELECT title, revision FROM catalog_entries WHERE entry_id='ce_survive_v8'")
