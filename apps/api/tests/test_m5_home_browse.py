@@ -3,7 +3,7 @@
 覆盖：
 1. schema v15->v16 迁移添加 popular_strategy/home_order/featured 列，幂等。
 2. /api/home 返回 type_entries 与 popular_strategy，popular 不再按 size 排序。
-3. /api/browse 全类型浏览路由返回正确结构，支持 type 筛选。
+3. /api/browse 全类型浏览路由返回正确结构，支持 type 筛选与排序。
 """
 import httpx
 from sqlalchemy import inspect, text
@@ -209,6 +209,38 @@ async def test_browse_with_type_filter(monkeypatch):
         await state_engine.dispose()
         await index_engine.dispose()
 
+
+
+
+async def test_browse_name_sort_is_real(monkeypatch):
+    """/api/browse?sort=name changes the resource order instead of being UI-only."""
+    state_engine, index_engine, user_token = await _setup_home_store(monkeypatch)
+    try:
+        async with _client(user_token) as client:
+            resp = await client.get("/api/browse?sort=name")
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            assert body["sort"] == "name"
+            assert body["order"] == "asc"
+            assert [item["id"] for item in body["items"]] == [
+                "r_big_old",
+                "r_small_new",
+            ]
+    finally:
+        await state_engine.dispose()
+        await index_engine.dispose()
+
+
+async def test_browse_rejects_unknown_sort(monkeypatch):
+    """Browse sort is allow-listed instead of reaching repository column lookup."""
+    state_engine, index_engine, user_token = await _setup_home_store(monkeypatch)
+    try:
+        async with _client(user_token) as client:
+            resp = await client.get("/api/browse?sort=unknown")
+            assert resp.status_code == 422
+    finally:
+        await state_engine.dispose()
+        await index_engine.dispose()
 
 async def test_browse_empty_type_returns_zero(monkeypatch):
     """/api/browse?type=image with no images returns empty items."""
