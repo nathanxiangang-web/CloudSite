@@ -129,3 +129,17 @@ to Delivery's download resolver; it no longer passes an `AListConnection` ORM
 object into a `ProviderRuntimePort` API.
 
 The authenticated public Catalog router now has zero tracked ORM-import debt.
+
+## Publication Scope Ownership
+
+Catalog now owns publication visibility in
+`application/publication_scope.py`.
+
+- admin publication-scope list/toggle operations are module-owned;
+- public Catalog DTO generation is module-owned and excludes management fields;
+- publication-scope audit logging is written through platform observability;
+- sitemap helpers and cache state live with Catalog;
+- `services/publication_scope.py` is a compatibility shim for the existing
+  sitemap route and legacy tests;
+- `routers/admin/publication_scope.py` contains no direct ORM/SQLAlchemy
+  access.
