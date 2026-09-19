@@ -165,12 +165,9 @@ async def test_wizard_fresh_scope_creates_real_root_mappings(monkeypatch):
             scope_state = await client.get("/api/admin/setup/wizard")
             assert scope_state.status_code == 200, scope_state.text
             body = scope_state.json()
-            assert body["root_mappings"] == []
-            assert [item["path"] for item in body["root_directories"]] == [
-                "/software",
-                "/photos",
-            ]
-            assert body["scope_error"] == ""
+            assert body["has_root_mappings"] is False
+            assert "root_mappings" not in body
+            assert "root_directories" not in body
 
             scope = await client.post(
                 "/api/admin/setup/wizard/step",
