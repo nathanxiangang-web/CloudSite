@@ -86,8 +86,11 @@ Exports live in `contracts/public.py`.
 
 ## Current Migration Status
 
-Code is currently split across `auth.py`, `users.py`, `userdata.py`,
-`sessions.py`, and `admin_auth.py` at the top level. These consolidate into
-`modules/users/` in Phase 3. The module skeleton exists with empty layers.
-Favorite and playback tables may later split into a separate `engagement`
-module, but stay here until that decision is made.
+Users is now **partial** rather than a skeleton.
+
+- `User` ORM ownership moved to `infrastructure/models.py`.
+- `cloudsite.models.User` remains an exact compatibility re-export.
+- `contracts/public.py` exposes persistence-neutral batch user references
+  (`id`, `username`, `status`) for business modules such as Submissions.
+- Authentication, user/admin sessions, favorites, history, playback progress,
+  and the legacy admin user routes remain follow-up migration work.
