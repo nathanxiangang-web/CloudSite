@@ -15,6 +15,7 @@ from .modules.site.contracts.public import registration_enabled
 from .request_context import request_host, request_scheme
 from .schemas import UserLoginInput, UserPasswordChangeInput, UserRegisterInput
 from .sessions import (
+    AuthenticatedUserView,
     USER_SESSION_COOKIE,
     clear_user_session_cookie,
     create_user_session,
@@ -54,7 +55,7 @@ def verify_password(value: str, encoded: str) -> bool:
         return False
 
 
-def user_dict(user: User) -> dict:
+def user_dict(user: User | AuthenticatedUserView) -> dict:
     return {
         "id": user.id,
         "username": user.username,
@@ -92,7 +93,10 @@ def validate_request_origin(request: Request) -> None:
         raise auth_error(403, "CSRF_ORIGIN_INVALID", "请求来源校验失败")
 
 
-async def require_user(session: AsyncSession, request: Request) -> tuple[object, User]:
+async def require_user(
+    session: AsyncSession,
+    request: Request,
+) -> tuple[object, AuthenticatedUserView]:
     try:
         return await validate_user_session(session, request.cookies.get(USER_SESSION_COOKIE))
     except SessionValidationError as exc:
@@ -186,16 +190,42 @@ async def change_password(payload: UserPasswordChangeInput, request: Request, re
     if new_password != payload.new_password_confirm:
         raise auth_error(400, "PASSWORD_CONFIRM_MISMATCH", "两次输入的新密码不一致")
     async with StateSession() as session:
-        _, user = await require_user(session, request)
-        if not verify_password(payload.current_password, user.password_hash):
-            raise auth_error(400, "CURRENT_PASSWORD_INVALID", "当前密码错误")
+        _, authenticated = await require_user(session, request)
+        user = await session.get(User, authenticated.id)
+        if user is None or user.deleted_at is not None:
+            raise auth_error(
+                401,
+                "USER_DELETED",
+                "账号不存在或已被删除",
+            )
+        if not verify_password(
+            payload.current_password,
+            user.password_hash,
+        ):
+            raise auth_error(
+                400,
+                "CURRENT_PASSWORD_INVALID",
+                "当前密码错误",
+            )
         now = utcnow()
         user.password_hash = password_hash.hash(new_password)
         user.password_changed_at = now
         user.updated_at = now
         await revoke_user_sessions(session, user.id, now)
-        _, token = await create_user_session(session, user.id, now, request)
-        session.add(OperationLog(level="INFO", module="auth", action="password_changed", message=f"用户 {user.username} 修改密码"))
+        _, token = await create_user_session(
+            session,
+            user.id,
+            now,
+            request,
+        )
+        session.add(
+            OperationLog(
+                level="INFO",
+                module="auth",
+                action="password_changed",
+                message=f"用户 {user.username} 修改密码",
+            )
+        )
         await session.commit()
     set_user_session_cookie(request, response, token)
     return {"ok": True}
