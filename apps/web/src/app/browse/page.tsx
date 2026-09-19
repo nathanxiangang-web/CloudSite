@@ -84,13 +84,15 @@ export default function BrowsePage() {
   const data = browse.data;
   const label = activeType && activeType in typeMeta ? typeMeta[activeType as keyof typeof typeMeta].label : "全类型";
   const total = data?.total ?? 0;
+  const totalText = data ? `${formatCount(total)} 个资源` : browse.isLoading ? "正在读取资源…" : "资源数量不可用";
+  const allTypeCount = data ? `${formatCount(Object.values(data.counts).reduce((a, b) => a + b, 0))} 个资源` : browse.isLoading ? "正在读取…" : "数量不可用";
 
   return <PublicShell><div className="page library-page"><div className="breadcrumb">资源库 <span>›</span> {label}</div>
-    <section className="library-hero"><span className="library-folder type-file"><Grid2X2 /></span><div><h1>{label}浏览</h1><p>浏览所有类型的资源，支持按类型筛选。页面不会实时读取或暴露底层网盘路径。</p><div className="meta">{total} 个资源</div></div></section>
+    <section className="library-hero"><span className="library-folder type-file"><Grid2X2 /></span><div><h1>{label}浏览</h1><p>浏览所有类型的资源，支持按类型筛选。页面不会实时读取或暴露底层网盘路径。</p><div className="meta">{totalText}</div></div></section>
 
     <div className="library-toolbar"><h2>类型筛选</h2></div>
     <section className="category-grid">
-      <Link href={browseHref("")} className={`category-card${!activeType ? " active" : ""}`}><span className="category-icon type-file"><Grid2X2 /></span><span><strong>全类型</strong><small>{formatCount(Object.values(data?.counts ?? {}).reduce((a, b) => a + b, 0))} 个资源</small></span></Link>
+      <Link href={browseHref("")} className={`category-card${!activeType ? " active" : ""}`}><span className="category-icon type-file"><Grid2X2 /></span><span><strong>全类型</strong><small>{allTypeCount}</small></span></Link>
       {(data?.type_entries ?? []).map((entry) => {
         const meta = entry.type in typeMeta ? typeMeta[entry.type as keyof typeof typeMeta] : typeMeta.file;
         const Icon = meta.icon;
@@ -101,7 +103,7 @@ export default function BrowsePage() {
     {data && data.catalog_entries.length > 0 && <><h2 className="subheading">推荐条目</h2><section className="resource-grid">{data.catalog_entries.map((entry) => <Link href={catalogEntryHref(entry.entry_id)} className="popular-card" key={entry.entry_id}><strong title={entry.title}>{entry.title}</strong><small>{entry.summary}</small>{entry.featured && <span className="type-pill type-software">精选</span>}</Link>)}</section></>}
 
     <div className="library-toolbar"><h2>全部资源</h2><div><label className="library-sort">排序<select value={sort} onChange={(event) => navigate({ sort: normalizeSort(event.target.value), page: 1 })}><option value="modified_at">最近更新</option><option value="name">名称</option></select></label><button className="selected" aria-label="网格视图"><Grid2X2 /></button></div></div>
-    <section className={activeType === "image" ? "gallery-grid" : "resource-grid"}>{browse.isLoading ? <div className="loading">正在加载资源索引…</div> : browse.error ? <div className="empty error-state">加载失败：{browse.error.message}</div> : data && data.items.length ? data.items.map((item) => activeType === "image" ? <GalleryCard key={item.id} item={item} /> : <ResourceCard key={item.id} item={item} />) : <div className="empty">当前筛选条件下暂无资源。完成 AList 配置和同步后会自动显示。</div>}</section>
+    <section className={activeType === "image" ? "gallery-grid" : "resource-grid"}>{browse.isLoading ? <div className="loading">正在加载资源索引…</div> : browse.error ? <div className="empty error-state">加载失败：{browse.error.message}<button type="button" onClick={() => browse.refetch()}>重试</button></div> : data && data.items.length ? data.items.map((item) => activeType === "image" ? <GalleryCard key={item.id} item={item} /> : <ResourceCard key={item.id} item={item} />) : <div className="empty">当前筛选条件下暂无资源。完成 AList 配置和同步后会自动显示。</div>}</section>
     {(data?.total_pages ?? 0) > 1 && <nav className="pagination" aria-label="资源分页"><button type="button" disabled={page <= 1 || browse.isFetching} onClick={() => navigate({ page: page - 1 })}>上一页</button><span>第 {page} / {data?.total_pages} 页</span><button type="button" disabled={page >= (data?.total_pages ?? 1) || browse.isFetching} onClick={() => navigate({ page: page + 1 })}>下一页</button></nav>}
   </div></PublicShell>;
 }
