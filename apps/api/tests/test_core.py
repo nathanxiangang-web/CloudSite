@@ -16,36 +16,10 @@ from cloudsite.modules.providers.contracts.public import (
 from cloudsite.alist import AListClient, AListError, AListUrlBuilder
 from cloudsite.crypto import decrypt_secret, encrypt_secret
 from cloudsite.download import DownloadError, DownloadUrlCache, map_alist_error, resolve_download_entry, validate_download_url, validate_resource_id
-from cloudsite.indexer import advance_missing_candidate, join_path, mass_change_guard_triggered, normalize_path, preserve_existing_ids, scan_roots, should_ignore, stable_id, times_equal
 from cloudsite.main import breadcrumbs_for, create_session_token, folder_dict, resource_dict, verify_session_token
 from cloudsite.schemas import SystemInput
 from cloudsite.search import build_fts_query, classify_match, escape_like, normalize_search_query
 from cloudsite.preview import PreviewError, preview_capability, resolve_preview_url, validate_download_url
-
-
-def test_stable_ids_are_deterministic():
-    assert stable_id("resource", "/Apps/test.zip") == stable_id("resource", "/Apps/test.zip")
-    assert stable_id("resource", "/Apps/test.zip") != stable_id("folder", "/Apps/test.zip")
-    assert stable_id("resource", "/Apps/test.zip").startswith("r_")
-    assert stable_id("folder", "/Apps").startswith("f_")
-
-
-def test_join_path_normalizes_slashes():
-    assert join_path("/Apps/", "Tools") == "/Apps/Tools"
-
-
-def test_path_normalization_and_ignore_rule():
-    assert normalize_path(" //软件///装机工具/ ") == "/软件/装机工具"
-    assert normalize_path("\\Docs\\Manuals") == "/Docs/Manuals"
-    assert should_ignore("/.cloudsite/settings.json") is True
-    assert should_ignore("/软件/.cloudsite/cache") is True
-    assert should_ignore("/软件/cloudsite.txt") is False
-
-
-def test_index_time_comparison_normalizes_sqlite_timezone():
-    from datetime import datetime, timezone
-
-    assert times_equal(datetime(2026, 8, 28, 0, 0), datetime(2026, 8, 28, 0, 0, tzinfo=timezone.utc))
 
 
 def test_public_serializers_do_not_leak_storage_paths_or_upstream_urls():
@@ -229,153 +203,6 @@ async def test_alist_preview_entry_reuses_native_entry(monkeypatch):
     assert entry.url == "https://alist.test/d/%E5%9B%BE%E7%89%87/%E9%A2%84%E8%A7%88%E5%9B%BE.jpg?sign=current-sign"
 
 
-async def test_dynamic_scanner_builds_deep_tree_and_ignores_metadata():
-    tree = {
-        "/软件": [{"name": "装机工具", "is_dir": True}, {"name": ".cloudsite", "is_dir": True}],
-        "/软件/装机工具": [{"name": "浏览器", "is_dir": True}],
-        "/软件/装机工具/浏览器": [{"name": "Chrome.exe", "is_dir": False, "size": 2048, "modified": "2026-08-28T00:00:00Z"}],
-    }
-
-    class FakeClient:
-        async def list_path(self, path: str):
-            return tree.get(path, [])
-
-    root = SimpleNamespace(id=7, alist_path="/软件/", display_name="软件", content_type="software")
-    folders, resources = await scan_roots(FakeClient(), [root])
-    assert {item.path for item in folders.values()} == {"/软件", "/软件/装机工具", "/软件/装机工具/浏览器"}
-    assert {item.path for item in resources.values()} == {"/软件/装机工具/浏览器/Chrome.exe"}
-    browser = next(item for item in folders.values() if item.name == "浏览器")
-    assert browser.depth == 2
-    assert browser.resource_count == 1
-    resource = next(iter(resources.values()))
-    assert resource.root_mapping_id == 7
-    assert resource.content_type == "software"
-
-    legacy_folder = SimpleNamespace(id="legacy-folder-id", path="/软件/装机工具/浏览器")
-    legacy_resource = SimpleNamespace(id="legacy-resource-id", path="/软件/装机工具/浏览器/Chrome.exe")
-    folders, resources = preserve_existing_ids(
-        folders,
-        resources,
-        {legacy_folder.id: legacy_folder},
-        {legacy_resource.id: legacy_resource},
-    )
-    assert "legacy-folder-id" in folders
-    assert "legacy-resource-id" in resources
-    assert resources["legacy-resource-id"].parent_id == "legacy-folder-id"
-
-
-async def test_dynamic_scanner_propagates_upstream_failure_without_partial_diff():
-    class BrokenClient:
-        async def list_path(self, path: str):
-            raise AListError("temporary unavailable", "AL-002")
-
-    root = SimpleNamespace(id=1, alist_path="/Apps", display_name="Apps", content_type="software")
-    with pytest.raises(AListError):
-        await scan_roots(BrokenClient(), [root])
-
-
-async def test_dynamic_scanner_rate_limits_every_directory_request():
-    tree = {
-        "/软件": [{"name": "A", "is_dir": True}],
-        "/软件/A": [{"name": "B", "is_dir": True}],
-        "/软件/A/B": [],
-    }
-
-    class FakeClient:
-        async def list_path(self, path: str):
-            return tree[path]
-
-    class FakeLimiter:
-        calls = 0
-
-        async def wait(self):
-            self.calls += 1
-
-    limiter = FakeLimiter()
-    root = SimpleNamespace(id=1, alist_path="/软件", display_name="软件", content_type="software")
-    await scan_roots(FakeClient(), [root], rate_limiter=limiter)
-    assert limiter.calls == 3
-
-
-def test_missing_requires_two_independent_complete_scans():
-    from datetime import datetime, timezone
-
-    row = SimpleNamespace(status="active", missing_streak=0, missing_candidate_at=None, indexed_at=None)
-    now = datetime.now(timezone.utc)
-    assert advance_missing_candidate(row, now, 2) is False
-    assert row.status == "suspected_missing"
-    assert row.missing_streak == 1
-    assert row.missing_candidate_at == now
-    assert advance_missing_candidate(row, now, 2) is True
-    assert row.status == "missing"
-    assert row.missing_streak == 2
-
-
-def test_missing_confirmation_can_be_configured_for_one_scan():
-    from datetime import datetime, timezone
-
-    row = SimpleNamespace(status="active", missing_streak=0, missing_candidate_at=None, indexed_at=None)
-    assert advance_missing_candidate(row, datetime.now(timezone.utc), 1) is True
-    assert row.status == "missing"
-
-
-def test_mass_change_guard_blocks_large_or_high_ratio_missing(monkeypatch):
-    from cloudsite.indexer import settings as indexer_settings
-
-    monkeypatch.setattr(indexer_settings, "sync_mass_change_min_items", 100)
-    monkeypatch.setattr(indexer_settings, "sync_mass_change_ratio", 0.10)
-    assert mass_change_guard_triggered(5, 5, 100) is False
-    assert mass_change_guard_triggered(5, 11, 100) is True
-    assert mass_change_guard_triggered(100, 100, 1000) is True
-
-
-async def test_mass_change_guard_keeps_entire_root_unchanged(monkeypatch):
-    from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from cloudsite.database import IndexBase
-    from cloudsite.indexer import ScannedFolder, _commit_root, settings as indexer_settings
-    from cloudsite.models import Folder, SyncRootResult, SyncRun
-
-    monkeypatch.setattr(indexer_settings, "sync_mass_change_min_items", 2)
-    monkeypatch.setattr(indexer_settings, "sync_mass_change_ratio", 1.0)
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with engine.begin() as connection:
-        await connection.run_sync(IndexBase.metadata.create_all)
-
-    async with session_factory() as session:
-        session.add_all(
-            [
-                Folder(id="old-1", name="A", path="/旧/A", parent_id=None, content_type="software", root_mapping_id=1, status="active"),
-                Folder(id="old-2", name="B", path="/旧/B", parent_id=None, content_type="software", root_mapping_id=1, status="active"),
-            ]
-        )
-        run = SyncRun(sync_type="manual", status="running")
-        session.add(run)
-        await session.commit()
-        await session.refresh(run)
-        root = SimpleNamespace(id=1, alist_path="/新")
-        scanned = {
-            "new-1": ScannedFolder("new-1", "A", "/新/A", None, "software", 1, 0, None),
-            "new-2": ScannedFolder("new-2", "B", "/新/B", None, "software", 1, 0, None),
-        }
-
-        result = await _commit_root(session, run, root, scanned, {})
-        assert result == (0, 0, 0, True)
-        rows = list((await session.scalars(select(Folder).order_by(Folder.id))).all())
-        assert [(row.id, row.path, row.status) for row in rows] == [
-            ("old-1", "/旧/A", "active"),
-            ("old-2", "/旧/B", "active"),
-        ]
-        audit = await session.scalar(select(SyncRootResult))
-        assert audit is not None
-        assert audit.status == "suspicious_churn"
-        assert (audit.added_count, audit.removed_count) == (2, 2)
-
-    await engine.dispose()
-
-
 def test_sync_interval_only_accepts_supported_hours():
     for minutes in (180, 360, 720, 1440):
         assert SystemInput(sync_interval_minutes=minutes).sync_interval_minutes == minutes
@@ -387,16 +214,12 @@ async def test_manual_sync_endpoint_returns_before_background_work_finishes(monk
     started = asyncio.Event()
     release = asyncio.Event()
 
-    async def fake_preflight(sync_type: str, force: bool):
-        return None
-
     async def fake_v2_production():
         started.set()
         await release.wait()
         return {"status": "success", "engine": "v2"}
 
     monkeypatch.setattr(main, "manual_sync_task", None)
-    monkeypatch.setattr(main, "sync_preflight", fake_preflight)
     monkeypatch.setattr(
         "cloudsite.tasks.sync.run_indexing_v2_production",
         fake_v2_production,
@@ -408,17 +231,6 @@ async def test_manual_sync_endpoint_returns_before_background_work_finishes(monk
     assert not main.manual_sync_task.done()
     release.set()
     await asyncio.wait_for(main.manual_sync_task, timeout=1)
-
-
-async def test_manual_sync_endpoint_returns_preflight_status_without_starting(monkeypatch):
-    async def fake_preflight(sync_type: str, force: bool):
-        return {"status": "cooldown", "retry_after_seconds": 120}
-
-    monkeypatch.setattr(main, "manual_sync_task", None)
-    monkeypatch.setattr(main, "sync_preflight", fake_preflight)
-    result = await main.sync(main.SyncInput(full=False, force=False))
-    assert result == {"status": "cooldown", "retry_after_seconds": 120}
-    assert main.manual_sync_task is None
 
 
 def test_search_query_normalization_and_length_input_are_deterministic():
