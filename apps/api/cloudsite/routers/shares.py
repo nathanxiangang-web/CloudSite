@@ -51,7 +51,7 @@ from ..shares.service import (
     verify_attempt_failed,
 )
 from ..shares.ticket import create_share_ticket, share_cookie_name, validate_share_ticket
-from ..site import (
+from ..modules.site.contracts.public import (
     share_page_image_name as get_share_page_image_name,
     share_page_settings_payload as get_share_page_settings_payload,
 )

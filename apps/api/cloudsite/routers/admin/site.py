@@ -3,8 +3,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from ...auth import validate_request_origin
 from ...schemas import SiteSettingsUpdate
-from ...site import (
-    admin_site_settings_payload,
+from ...modules.site.contracts.public import (
     clear_share_page_image_name,
     get_admin_site_settings,
     replace_share_page_image_name,
@@ -13,10 +12,6 @@ from ...site import (
 from ...site_assets import SHARE_IMAGE_MAX_BYTES, remove_share_image, save_share_image
 
 router = APIRouter()
-
-# Compatibility re-export for cloudsite.main/tests; no ORM ownership remains here.
-site_settings_dict = admin_site_settings_payload
-
 
 
 @router.get("/api/admin/site")

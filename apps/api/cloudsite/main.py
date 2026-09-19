@@ -1,3 +1,4 @@
+from .site import admin_site_settings_payload as site_settings_dict
 """CloudSite API 应用入口。
 
 本模块仅负责组装 FastAPI 应用：注册生命周期、中间件、异常处理器与路由。
@@ -64,7 +65,6 @@ from .routers.home import (
 from .routers.admin.diagnostics import download_diagnostic_dict
 from .routers.admin.sync import sync
 from .routers.admin.index import sync_run_dict
-from .routers.admin.site import site_settings_dict
 from .plugins import PluginRegistry
 
 

@@ -19,6 +19,7 @@
 | `delivery` | Delivery preparation, redirect | — | `services/delivery.py`, `routers/delivery.py`, `delivery_schemas.py` |
 | `presentation` | Site presentation presets, theme/navigation/home blocks, revisions and rollback | — | `modules/presentation/`, legacy `services/presentation.py`, `routers/admin/presentation.py` |
 | `setup` | First-run setup workflow progress and cross-module onboarding orchestration | — | `modules/setup/`, `routers/admin/setup.py` |
+| `site` | Site identity/settings, registration policy, Home limits, and share-page branding state | — | `modules/site/`, compatibility `site.py`, `routers/admin/site.py` |
 
 ## Platform layer
 
