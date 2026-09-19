@@ -17,7 +17,7 @@ from cloudsite.models import (
     User,
     utcnow,
 )
-from cloudsite.services.catalog import create_catalog_asset
+from cloudsite.modules.catalog.contracts.public import create_catalog_asset
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
 
