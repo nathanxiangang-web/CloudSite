@@ -86,7 +86,7 @@ function ReleasePicker({ entryId, releases }: { entryId: string; releases: Array
     </div>
     {current?.published_at && <p className="catalog-release-published">发布于 {formatCatalogTimestamp(current.published_at)}{current.release_date ? `（版本日期 ${formatCatalogTimestamp(current.release_date)}）` : ""}</p>}
     {release.isLoading ? <div className="loading">正在加载版本资源…</div>
-      : release.error ? <div className="empty error-state">版本暂时不可用：{release.error.message}</div>
+      : release.error ? <div className="empty error-state">版本暂时不可用：{release.error.message}<button type="button" onClick={() => release.refetch()}>重试</button></div>
       : release.data?.assets.length ? <AssetList entryId={entryId} assets={release.data.assets} />
       : <div className="empty">该版本暂无可用资源。</div>}
   </section>;
