@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from ...modules.indexing.contracts.public import (
-    indexing_v2_enabled,
     legacy_sync_queries,
     read_v2_sync_progress,
 )
@@ -46,63 +45,42 @@ async def admin_index_summary():
         runs = await legacy_sync_queries(index).list_runs(limit=1)
         latest = runs[0] if runs else None
 
-    if indexing_v2_enabled():
-        v2_running = bool(
-            _main.manual_sync_task
-            and not _main.manual_sync_task.done()
-        )
-        async with StateSession() as state:
-            v2_progress = await read_v2_sync_progress(state)
-        v2_status = str(v2_progress.get("status", "idle"))
-        latest_sync = None
-        if v2_progress or v2_running:
-            latest_sync = {
-                "id": 0,
-                "sync_type": "windowed",
-                "status": v2_status if not v2_running else "running",
-                "folders_scanned": int(
-                    v2_progress.get("categories_done", 0) or 0
-                ),
-                "resources_scanned": int(
-                    v2_progress.get("entries_scanned", 0) or 0
-                ),
-                "added_count": 0,
-                "updated_count": 0,
-                "removed_count": 0,
-                "started_at": None,
-                "finished_at": None,
-                "duration_ms": int(
-                    v2_progress.get("elapsed_seconds", 0) or 0
-                )
-                * 1000,
-                "error_message": "",
-                "current_path": str(
-                    v2_progress.get("current_path", "") or ""
-                ),
-                "roots_total": int(
-                    v2_progress.get("categories_total", 0) or 0
-                ),
-                "roots_completed": int(
-                    v2_progress.get("categories_done", 0) or 0
-                ),
-                "roots_failed": 0,
-            }
-        elif latest is not None:
-            latest_sync = latest.to_dict()
-        return {
-            "folders": counts.folders,
-            "resources": counts.resources,
-            "syncing": v2_running,
-            "latest_sync": latest_sync,
+    v2_running = bool(
+        _main.manual_sync_task
+        and not _main.manual_sync_task.done()
+    )
+    async with StateSession() as state:
+        v2_progress = await read_v2_sync_progress(state)
+    v2_status = str(v2_progress.get("status", "idle"))
+    latest_sync = None
+    if v2_progress or v2_running:
+        latest_sync = {
+            "id": 0,
+            "sync_type": "windowed",
+            "status": v2_status if not v2_running else "running",
+            "folders_scanned": int(v2_progress.get("categories_done", 0) or 0),
+            "resources_scanned": int(v2_progress.get("entries_scanned", 0) or 0),
+            "added_count": 0,
+            "updated_count": 0,
+            "removed_count": 0,
+            "started_at": None,
+            "finished_at": None,
+            "duration_ms": int(v2_progress.get("elapsed_seconds", 0) or 0) * 1000,
+            "error_message": "",
+            "current_path": str(v2_progress.get("current_path", "") or ""),
+            "roots_total": int(v2_progress.get("categories_total", 0) or 0),
+            "roots_completed": int(v2_progress.get("categories_done", 0) or 0),
+            "roots_failed": 0,
         }
-
+    elif latest is not None:
+        # Historical 1.x runs stay readable after the legacy engine is retired.
+        latest_sync = latest.to_dict()
     return {
         "folders": counts.folders,
         "resources": counts.resources,
-        "latest_sync": latest.to_dict() if latest else None,
-        "syncing": bool(latest and latest.status == "running"),
+        "syncing": v2_running,
+        "latest_sync": latest_sync,
     }
-
 
 @router.get("/api/admin/index/folders")
 async def admin_index_folders():

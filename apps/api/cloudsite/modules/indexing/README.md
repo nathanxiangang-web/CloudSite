@@ -90,11 +90,10 @@ task payload schemas.
 
 ## Current Migration Status
 
-This is a NEW module. Legacy `sync/rolling.py` (54KB) is frozen: no new logic
-goes there. All new indexing code goes to `modules/indexing/`. The module
-skeleton with task payload schemas in `public/` is in place. Full replacement
-of rolling sync is a Phase 2-4 milestone; until then both may coexist with
-feature flags selecting the pipeline.
+Indexing v2 is the only production indexing engine. The old engine-switch
+configuration has been retired, and no request/scheduler path may select the
+legacy full-sync implementation. Frozen 1.x sync tables remain readable only
+for historical run/change views while their execution code is burned down.
 
 Resource persistence is now outside the Indexing ownership boundary: the production reconciliation adapter consumes `modules/resources/contracts` only, while top-level task composition injects the Resources SQLAlchemy repository. Indexing no longer imports Folder/Resource ORM classes.
 

@@ -1,26 +1,14 @@
-"""C7: Rolling Index -> Indexing v2 feature flag 切换测试。
-
-验证：
-1. feature flag 默认为 v1
-2. 设置 CLOUDSITE_INDEXING_ENGINE=v2 后切换为 v2
-3. v2 模式下 run_indexing_v2 使用新的 ScanCategoryService + ReconcileService
-4. adapter/store 缺省时返回 skipped，不抛异常
-"""
+"""Indexing v2 scan/reconcile regression tests."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
 
 from cloudsite.modules.indexing.domain.inspection import (
     InspectionRequest,
     InspectionResult,
 )
 from cloudsite.modules.indexing.domain.snapshot import SnapshotEntry
-from cloudsite.modules.indexing.infrastructure.indexing_engine import (
-    get_indexing_engine,
-    use_indexing_v2,
-)
 from cloudsite.modules.indexing.infrastructure.legacy_bridge import run_indexing_v2
 from cloudsite.modules.indexing.infrastructure.provider_adapter import (
     ProviderAdapter,
@@ -112,32 +100,6 @@ def _entry(rid: str, name: str = "f") -> SnapshotEntry:
         modified_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
         content_hash="h",
     )
-
-
-def test_default_engine_is_v2(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "v2")
-    assert get_indexing_engine() == "v2"
-    assert use_indexing_v2() is True
-
-
-def test_engine_switches_to_v1_via_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "v1")
-    assert get_indexing_engine() == "v1"
-    assert use_indexing_v2() is False
-
-
-def test_engine_switches_to_v2_via_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "v2")
-    assert get_indexing_engine() == "v2"
-    assert use_indexing_v2() is True
-
-
-def test_unknown_engine_value_is_not_v2(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("cloudsite.config.settings.indexing_engine", "experimental")
-    assert get_indexing_engine() == "experimental"
-    assert use_indexing_v2() is False
 
 
 async def test_run_indexing_v2_skipped_without_adapter_or_store() -> None:
