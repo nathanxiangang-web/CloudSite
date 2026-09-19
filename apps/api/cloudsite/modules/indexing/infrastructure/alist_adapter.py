@@ -28,7 +28,7 @@ def _normalize_path(value: str) -> str:
 
 
 def _stable_id(kind: str, path: str) -> str:
-    normalized = __normalize_path(path)
+    normalized = _normalize_path(path)
     prefix = "f_" if kind == "folder" else "r_"
     digest = hashlib.sha256(
         f"{kind}:{normalized}".encode("utf-8")
@@ -47,15 +47,15 @@ def _parse_time(value: str | None) -> datetime | None:
 
 
 def _join_path(parent: str, name: str) -> str:
-    return __normalize_path(
-        f"{__normalize_path(parent)}/{str(name).strip('/')}"
+    return _normalize_path(
+        f"{_normalize_path(parent)}/{str(name).strip('/')}"
     )
 
 
 def _should_ignore(path: str) -> bool:
     return any(
         part == ".cloudsite"
-        for part in PurePosixPath(__normalize_path(path)).parts
+        for part in PurePosixPath(_normalize_path(path)).parts
     )
 
 
