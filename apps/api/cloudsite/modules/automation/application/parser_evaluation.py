@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ....services.resource_name_parser import UNKNOWN, parse_resource_name
+from ..domain.resource_name_parser import UNKNOWN, parse_resource_name
 
 EVALUATED_FIELDS = ("platform", "architecture", "language", "version", "package_form")
 
