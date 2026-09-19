@@ -5,6 +5,12 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { Brand } from "@/components/Brand";
 
+function adminNextPath() {
+  const raw = new URLSearchParams(window.location.search).get("next");
+  if (raw === "/admin" || (raw?.startsWith("/admin/") && !raw.startsWith("//"))) return raw;
+  return "/admin";
+}
+
 export default function AdminLoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +29,7 @@ export default function AdminLoginPage() {
         if (mode === "setup_required") {
           window.location.replace("/admin/setup");
         } else if (mode === "authenticated" || (!status.auth_required && status.authenticated)) {
-          window.location.replace("/admin");
+          window.location.replace(adminNextPath());
         } else {
           setReady(true);
         }
@@ -43,7 +49,7 @@ export default function AdminLoginPage() {
       body: JSON.stringify({ username, password }),
     });
     if (response.ok) {
-      window.location.replace("/admin");
+      window.location.replace(adminNextPath());
       return;
     }
     const body = await response.json().catch(() => ({}));
