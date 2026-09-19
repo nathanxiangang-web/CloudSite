@@ -26,7 +26,7 @@ from ....models import (
     CatalogSuggestion,
     Resource,
 )
-from ....services.resource_name_parser import UNKNOWN, PARSER_VERSION, ParseResult, parse_resource_name
+from ..domain.resource_name_parser import UNKNOWN, PARSER_VERSION, ParseResult, parse_resource_name
 
 SUGGESTION_ID_PREFIX = "cs_"
 _ID_HEX_LEN = 32
