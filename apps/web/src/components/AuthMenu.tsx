@@ -24,6 +24,7 @@ export function AuthMenu() {
   });
 
   if (!hydrated || auth.isLoading) return <span className="auth-menu-loading">正在读取账号…</span>;
+  if (auth.error) return <span className="auth-menu-loading">账号状态不可用 <button type="button" style={{ minHeight: 26, padding: "0 8px", borderRadius: 7, fontSize: 11 }} onClick={() => auth.refetch()}>重试</button></span>;
   if (!auth.data?.authenticated || !auth.data.user) {
     return <nav className="auth-links" aria-label="账号入口">
       <Link href="/login"><LogIn />登录</Link>
@@ -42,6 +43,7 @@ export function AuthMenu() {
       <Link href="/account/shares"><Share2 />我的分享</Link>
       <Link href="/account/security"><KeyRound />修改密码</Link>
       <button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut />{logout.isPending ? "正在退出…" : "退出登录"}</button>
+      {logout.error && <p className="form-error">{logout.error.message}</p>}
     </div>
   </details>;
 }
