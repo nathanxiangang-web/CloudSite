@@ -9,7 +9,6 @@ allowed_dependencies:
   - "platform/db"
   - "platform/tasks"
   - "modules/resources/contracts"
-  - "modules/search/contracts"
   - "modules/notifications/contracts"
 
 owned_tables:
@@ -22,11 +21,9 @@ owned_tables:
   - "catalog_relations"
   - "catalog_revisions"
   - "catalog_search_outbox"
-  - "catalog_search_projection_state"
   - "catalog_favorites"
   - "catalog_subscriptions"
   - "catalog_release_notifications"
-  - "catalog_suggestions"
 
 forbidden_dependencies:
   - "cloudsite.main"

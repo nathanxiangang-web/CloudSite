@@ -29,4 +29,24 @@ Every business module must contain `module.yaml`, `README.md`, and `contracts/pu
 
 Another business module may import only `modules/<name>/contracts/*`. It must not import `domain/`, `application/`, `infrastructure/`, or `api/` internals.
 
-The next architecture step (M2) adds a ratchet so existing legacy dependencies may remain temporarily but their count cannot increase.
+## Machine enforcement
+
+`scripts/check-module-architecture.py` treats every `module.yaml` as executable
+architecture policy.
+
+CI rejects:
+
+- duplicate `owned_tables` entries across business modules;
+- unknown or malformed module/platform/plugin dependencies;
+- business-module dependency cycles;
+- runtime imports of another module's public contract when that dependency is
+  missing from `allowed_dependencies`;
+- invalid manifest identity, migration status, or missing public contract files.
+
+The manifest is therefore not a planning note or aspirational ownership map. It
+must describe the dependency graph and table ownership that the repository
+currently intends to preserve.
+
+Existing legacy-core imports are governed separately by the architecture-debt
+ratchet. Cross-module internal imports remain forbidden by the architecture
+boundary tests.

@@ -15,8 +15,6 @@ owned_tables:
   - "folders"
   - "resources"
   - "download_rate_limits"
-  - "download_events"
-  - "download_diagnostics"
 
 forbidden_dependencies:
   - "cloudsite.main"
