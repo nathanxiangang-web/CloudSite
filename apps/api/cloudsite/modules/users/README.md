@@ -92,8 +92,11 @@ Users is now **partial** rather than a skeleton.
 - `cloudsite.models.User` remains an exact compatibility re-export.
 - `contracts/public.py` exposes persistence-neutral batch user references
   (`id`, `username`, `status`) for business modules such as Submissions.
-- Authentication, user/admin sessions, favorites, history, playback progress,
-  and the legacy admin user routes remain follow-up migration work.
+- `UserSession` ORM and server-side session create/validate/revoke/cleanup
+  now live behind the Users contract; `cloudsite.sessions` is an HTTP/
+  compatibility shim for cookies and request metadata.
+- Authentication credential workflows, admin sessions, favorites, history,
+  playback progress, and the legacy admin user routes remain follow-up work.
 
 ## Role Policy Ownership
 
