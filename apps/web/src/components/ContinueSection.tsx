@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Archive } from "lucide-react";
 import { formatBytes, Resource } from "@/lib/api";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type HistoryResponse = { items: (Resource & { last_viewed_at: string; view_count: number })[]; total: number };
 
@@ -20,15 +21,22 @@ function formatTime(value: string | null) {
 }
 
 export function ContinueSection({ limit }: { limit: number }) {
+  const auth = useAuth();
+  const userId = auth.data?.user?.id ?? null;
   const query = useQuery({
-    queryKey: ["home-continue"],
+    queryKey: ["home-continue", userId, limit],
     queryFn: () => api<HistoryResponse>("/api/me/history?page_size=" + limit),
+    enabled: Boolean(auth.data?.authenticated && userId !== null),
     staleTime: 60_000,
     retry: false,
   });
-  if (query.error || !query.data || !query.data.items.length) {
-    return <div className="empty">登录后这里会显示你最近浏览过的资源。</div>;
-  }
+
+  if (auth.isLoading) return <div className="loading">正在读取账号状态…</div>;
+  if (auth.error) return <div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div>;
+  if (!auth.data?.authenticated) return <div className="empty">登录后这里会显示你最近浏览过的资源。</div>;
+  if (query.isLoading) return <div className="loading">正在读取最近浏览…</div>;
+  if (query.error) return <div className="empty error-state">最近浏览暂时不可用：{query.error.message}<button type="button" onClick={() => query.refetch()}>重试</button></div>;
+  if (!query.data?.items.length) return <div className="empty">还没有浏览记录。</div>;
   const items = query.data.items.slice(0, limit);
   return <section className="recent-table">
     {items.map((item) => (

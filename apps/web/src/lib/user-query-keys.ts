@@ -14,6 +14,8 @@ export const USER_SCOPED_QUERY_KEY_PREFIXES = [
   "my-catalog-follows",
   "my-shares",
   "catalog-follow-status",
+  "home-continue",
+  "cloud-download-tasks",
 ] as const;
 
 /**
