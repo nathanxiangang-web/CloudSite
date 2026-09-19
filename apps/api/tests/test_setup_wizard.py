@@ -158,6 +158,12 @@ async def test_wizard_full_flow(monkeypatch):
             assert brand.json()["state"]["brand_done"] is True
             assert brand.json()["state"]["current_step"] == "publish"
 
+            draft = await client.get("/api/admin/setup/wizard")
+            assert draft.status_code == 200, draft.text
+            assert draft.json()["draft"]["preset"] == "software"
+            assert draft.json()["draft"]["site_name"] == "我的软件站"
+            assert draft.json()["draft"]["home_title"] == "好软件"
+
             publish = await client.post(
                 "/api/admin/setup/wizard/step",
                 json={"step": "publish", "data": {}},
@@ -182,7 +188,10 @@ async def test_wizard_skip(monkeypatch):
     transport = httpx.ASGITransport(app=main.app)
     try:
         async with _wizard_client(transport) as client:
-            skip = await client.post("/api/admin/setup/wizard/skip")
+            skip = await client.post(
+                "/api/admin/setup/wizard/skip",
+                headers={"X-CloudSite-Setup-Token": "test-setup-token"},
+            )
             assert skip.status_code == 200, skip.text
             assert skip.json()["state"]["wizard_completed"] is True
             assert skip.json()["state"]["current_step"] == "publish"
@@ -190,8 +199,20 @@ async def test_wizard_skip(monkeypatch):
         await state_engine.dispose()
 
 
+async def test_wizard_skip_requires_token_before_connect(monkeypatch):
+    state_engine = await _wizard_setup(monkeypatch)
+    transport = httpx.ASGITransport(app=main.app)
+    try:
+        async with _wizard_client(transport) as client:
+            skip = await client.post("/api/admin/setup/wizard/skip")
+            assert skip.status_code == 403, skip.text
+            assert skip.json()["detail"]["code"] == "SETUP_FORBIDDEN"
+    finally:
+        await state_engine.dispose()
+
+
 async def test_wizard_go_back(monkeypatch):
-    """回退到上一步：current_step 回退，done 标记保留。"""
+    """真实回退只移动 current_step，已完成标记保留。"""
     state_engine = await _wizard_setup(monkeypatch)
     transport = httpx.ASGITransport(app=main.app)
     try:
@@ -201,11 +222,32 @@ async def test_wizard_go_back(monkeypatch):
                 json={"step": "connect", "data": {"base_url": "https://alist.example.com", "username": "admin", "password": "pass"}},
                 headers={"X-CloudSite-Setup-Token": "test-setup-token"},
             )
-            await client.post("/api/admin/setup/wizard/step", json={"step": "scope", "data": {}})
-            back = await client.post("/api/admin/setup/wizard/step", json={"step": "connect", "data": {"base_url": "https://alist2.example.com", "username": "admin2", "password": "pass2"}})
+            scope = await client.post(
+                "/api/admin/setup/wizard/step",
+                json={"step": "scope", "data": {}},
+            )
+            assert scope.json()["state"]["current_step"] == "preset"
+
+            back = await client.post("/api/admin/setup/wizard/back")
             assert back.status_code == 200, back.text
-            assert back.json()["state"]["connect_done"] is True
+            assert back.json()["state"]["scope_done"] is True
             assert back.json()["state"]["current_step"] == "scope"
+    finally:
+        await state_engine.dispose()
+
+
+async def test_wizard_rejects_out_of_order_publish(monkeypatch):
+    state_engine = await _wizard_setup(monkeypatch)
+    transport = httpx.ASGITransport(app=main.app)
+    try:
+        async with _wizard_client(transport) as client:
+            publish = await client.post(
+                "/api/admin/setup/wizard/step",
+                json={"step": "publish", "data": {}},
+            )
+            assert publish.status_code == 409, publish.text
+            assert publish.json()["detail"]["code"] == "WIZARD_STEP_OUT_OF_ORDER"
+            assert publish.json()["detail"]["message"] == "当前应处理步骤：connect"
     finally:
         await state_engine.dispose()
 
