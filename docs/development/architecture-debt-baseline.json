@@ -3,7 +3,7 @@
   "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
   "counts": {
     "module_legacy_import": 0,
-    "router_orm_import": 55
+    "router_orm_import": 52
   },
   "violations": [
     {
@@ -17,12 +17,6 @@
       "file": "apps/api/cloudsite/routers/admin/alist.py",
       "target": "sqlalchemy",
       "id": "router_orm_import::apps/api/cloudsite/routers/admin/alist.py::sqlalchemy"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/admin/auth.py",
-      "target": "cloudsite.models",
-      "id": "router_orm_import::apps/api/cloudsite/routers/admin/auth.py::cloudsite.models"
     },
     {
       "rule": "router_orm_import",
@@ -59,12 +53,6 @@
       "file": "apps/api/cloudsite/routers/admin/content_roots.py",
       "target": "sqlalchemy",
       "id": "router_orm_import::apps/api/cloudsite/routers/admin/content_roots.py::sqlalchemy"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/admin/delivery.py",
-      "target": "sqlalchemy",
-      "id": "router_orm_import::apps/api/cloudsite/routers/admin/delivery.py::sqlalchemy"
     },
     {
       "rule": "router_orm_import",
@@ -251,12 +239,6 @@
       "file": "apps/api/cloudsite/routers/catalog.py",
       "target": "sqlalchemy",
       "id": "router_orm_import::apps/api/cloudsite/routers/catalog.py::sqlalchemy"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/catalog_follow.py",
-      "target": "cloudsite.models",
-      "id": "router_orm_import::apps/api/cloudsite/routers/catalog_follow.py::cloudsite.models"
     },
     {
       "rule": "router_orm_import",
