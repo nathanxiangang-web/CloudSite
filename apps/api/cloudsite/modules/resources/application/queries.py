@@ -11,6 +11,7 @@ from ..domain.views import (
     DiagnosticResourceView,
     FolderDetailView,
     FolderSummaryView,
+    HomeInventoryView,
     ParserResourceView,
     ResourceDetailView,
     ResourceDownloadView,
@@ -41,6 +42,24 @@ class ResourceQueryRepository(Protocol):
         *,
         content_types: tuple[str, ...],
     ) -> dict[str, int]: ...
+
+    async def home_inventory(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        content_types: tuple[str, ...],
+        recent_limit: int,
+        popular_limit: int,
+        popular_strategy: str,
+        featured_resource_ids: list[str],
+        manual_root_order: tuple[int, ...],
+    ) -> HomeInventoryView: ...
+
+    async def root_inventory_counts(
+        self,
+        *,
+        enabled_root_ids: set[int],
+    ) -> tuple[dict[int, int], dict[int, int]]: ...
 
     async def admin_index_folders(self) -> list[AdminIndexFolderView]: ...
 
@@ -183,6 +202,36 @@ class ResourceQueries:
     ) -> dict[str, int]:
         return await self._repository.admin_content_type_counts(
             content_types=content_types,
+        )
+
+    async def home_inventory(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        content_types: tuple[str, ...],
+        recent_limit: int,
+        popular_limit: int,
+        popular_strategy: str,
+        featured_resource_ids: list[str] | None = None,
+        manual_root_order: tuple[int, ...] = (),
+    ) -> HomeInventoryView:
+        return await self._repository.home_inventory(
+            enabled_root_ids=set(enabled_root_ids),
+            content_types=tuple(content_types),
+            recent_limit=max(int(recent_limit), 0),
+            popular_limit=max(int(popular_limit), 0),
+            popular_strategy=popular_strategy,
+            featured_resource_ids=list(featured_resource_ids or []),
+            manual_root_order=tuple(manual_root_order),
+        )
+
+    async def root_inventory_counts(
+        self,
+        *,
+        enabled_root_ids: set[int],
+    ) -> tuple[dict[int, int], dict[int, int]]:
+        return await self._repository.root_inventory_counts(
+            enabled_root_ids=set(enabled_root_ids),
         )
 
     async def admin_index_folders(self) -> list[AdminIndexFolderView]:
