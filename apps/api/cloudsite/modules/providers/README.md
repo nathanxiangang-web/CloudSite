@@ -94,5 +94,6 @@ module-owned connection ORM and no longer imports `cloudsite.models`.
 
 Low-level AList transport still lives in the legacy `cloudsite.alist` surface,
 and admin connection CRUD / runtime provider resolution remain transitional.
-The next slice should expose a Providers-owned runtime gateway for resolving an
-enabled content root to provider operations without exporting credentials.
+Providers now exposes a runtime gateway through its public contract for resolving an
+enabled content root to download/preview operations without exporting credentials.
+Admin connection CRUD and compatibility-record persistence remain transitional.

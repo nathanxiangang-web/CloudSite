@@ -14,7 +14,14 @@ from ..domain.delta import (
     resolve_sync_strategy,
 )
 from ..domain.provider import StorageProvider
+from ..domain.runtime import (
+    ProviderAccessError,
+    ProviderEntry,
+    ProviderRuntimePort,
+    ProviderUnavailableError,
+)
 from ..infrastructure.alist_adapter import GenericAListProvider
+from ..api.runtime import provider_runtime
 from ..infrastructure.registry import (
     DEFAULT_PROVIDER_TYPE,
     ProviderRegistry,
@@ -23,6 +30,11 @@ from ..infrastructure.registry import (
 
 __all__ = [
     "StorageProvider",
+    "ProviderRuntimePort",
+    "ProviderEntry",
+    "ProviderUnavailableError",
+    "ProviderAccessError",
+    "provider_runtime",
     "CAPABILITY_SCHEMA_VERSION",
     "CapabilityState",
     "ProviderCapabilities",
