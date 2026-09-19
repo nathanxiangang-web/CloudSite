@@ -17,15 +17,17 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import (
+from ...providers.contracts.public import enabled_root_ids
+from ...resources.contracts.public import resource_queries
+from ..infrastructure.models import (
     CatalogAsset,
     CatalogEntry,
     CatalogLocation,
     CatalogRelease,
-    Resource,
 )
-from ....services.catalog_metadata import append_catalog_revision
-from ....services.catalog_search_projection import enqueue_catalog_search_outbox
+from .outbox import enqueue_catalog_search_outbox
+from .release_notifications import notify_release_subscribers
+from .revisions import append_catalog_revision
 from .catalog_entry import (
     ASSET_ID_PREFIX,
     DEFAULT_RELEASE_SLUG,
@@ -39,7 +41,6 @@ from .catalog_entry import (
     LocationResolution,
     _new_id,
     _resolve_location,
-    enabled_root_ids,
 )
 
 class CatalogReleaseNotFound(CatalogError):
@@ -265,7 +266,7 @@ async def attach_catalog_location(
     if existing_pair is not None:
         raise CatalogLocationInvalid(resource_id, "duplicate")
 
-    resource = await index.get(Resource, resource_id)
+    resource = await resource_queries(index).catalog_resource(resource_id=resource_id)
     roots = await enabled_root_ids(state)
     expected_ct = await _entry_content_type_for_asset(state, asset)
     resolution = _resolve_location(resource, resource_id, roots, expected_ct)
@@ -477,12 +478,12 @@ async def update_catalog_release(
             diff=diff,
         )
     if before.get("status") != "published" and release.status == "published":
-        from ....services.catalog_follow import notify_release_subscribers  # noqa: PLC0415
-
         entry = await state.get(CatalogEntry, release.entry_id)
         if entry is not None and entry.status == "published":
             await notify_release_subscribers(state, release=release, entry=entry)
     return release
+
+
 async def update_catalog_asset(
     state: AsyncSession,
     asset_id: str,
@@ -703,7 +704,7 @@ async def resolve_asset_download_target(
         raise CatalogAssetNotDownloadable(asset_id, "no_enabled_location")
     chosen: CatalogLocation | None = None
     for location in locations:
-        resource = await index.get(Resource, location.resource_id)
+        resource = await resource_queries(index).catalog_resource(resource_id=location.resource_id)
         resolution = _resolve_location(resource, location.resource_id, roots, entry.content_type)
         if resolution.available:
             chosen = location

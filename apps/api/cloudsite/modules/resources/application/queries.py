@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from ..domain.views import (
+    CatalogResourceView,
     FolderDetailView,
     FolderSummaryView,
     ResourceDetailView,
@@ -16,6 +17,12 @@ from ..domain.views import (
 
 @runtime_checkable
 class ResourceQueryRepository(Protocol):
+    async def catalog_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> CatalogResourceView | None: ...
+
     async def list_resources(
         self,
         *,
@@ -73,6 +80,15 @@ class ResourceQueryRepository(Protocol):
 class ResourceQueries:
     def __init__(self, repository: ResourceQueryRepository) -> None:
         self._repository = repository
+
+    async def catalog_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> CatalogResourceView | None:
+        return await self._repository.catalog_resource(
+            resource_id=resource_id,
+        )
 
     async def list_resources(
         self,

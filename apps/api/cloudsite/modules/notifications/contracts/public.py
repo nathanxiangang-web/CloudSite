@@ -1,5 +1,6 @@
 from ..application.notification_service import (
     create_admin_notification,
+    create_user_notification,
     delete_admin_notification,
     delete_notification_for_user,
     list_admin_notifications,
@@ -17,6 +18,7 @@ __all__ = [
     "delete_notification_for_user",
     "list_admin_notifications",
     "create_admin_notification",
+    "create_user_notification",
     "update_admin_notification",
     "delete_admin_notification",
 ]

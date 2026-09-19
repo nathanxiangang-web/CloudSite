@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from ..api.queries import resource_queries
+from ..domain.views import CatalogResourceView
 from ..infrastructure.rate_limit import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
     DOWNLOAD_RATE_CLEANUP_SECONDS,
@@ -66,6 +68,8 @@ class ResourceInventoryPort(Protocol):
 
 
 __all__ = [
+    "CatalogResourceView",
+    "resource_queries",
     "ResourceInventoryPort",
     "ResourceInventoryRecord",
     "DOWNLOAD_RATE_MAX_ATTEMPTS",

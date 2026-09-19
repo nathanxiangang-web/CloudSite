@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ..application.provider_service import enabled_root_ids
 from ..domain.capabilities import (
     CAPABILITY_SCHEMA_VERSION,
     CapabilityState,
@@ -35,6 +36,7 @@ __all__ = [
     "ProviderUnavailableError",
     "ProviderAccessError",
     "provider_runtime",
+    "enabled_root_ids",
     "CAPABILITY_SCHEMA_VERSION",
     "CapabilityState",
     "ProviderCapabilities",

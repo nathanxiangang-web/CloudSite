@@ -18,17 +18,17 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import (
+from ...providers.contracts.public import enabled_root_ids
+from ...resources.contracts.public import CatalogResourceView, resource_queries
+from ..infrastructure.models import (
     CatalogAsset,
     CatalogEntry,
     CatalogLocation,
     CatalogRelease,
-    ContentRootMapping,
-    Resource,
     utcnow,
 )
-from ....services.catalog_metadata import append_catalog_revision
-from ....services.catalog_search_projection import enqueue_catalog_search_outbox
+from .outbox import enqueue_catalog_search_outbox
+from .revisions import append_catalog_revision
 
 ENTRY_ID_PREFIX = "ce_"
 RELEASE_ID_PREFIX = "cr_"
@@ -112,21 +112,8 @@ class PreviewValidationResult:
 class PublishCatalogEntryResult:
     entry: CatalogEntry
     published_at: datetime
-async def enabled_root_ids(state: AsyncSession) -> set[int]:
-    """Return the set of currently enabled content root mapping ids."""
-    return set(
-        (
-            await state.scalars(
-                select(ContentRootMapping.id).where(
-                    ContentRootMapping.enabled.is_(True)
-                )
-            )
-        ).all()
-    )
-
-
 def _resolve_location(
-    resource: Resource | None,
+    resource: CatalogResourceView | None,
     resource_id: str,
     roots: set[int],
     expected_content_type: str | None = None,
@@ -394,7 +381,7 @@ async def _collect_location_blockers(
                 ).all()
             )
             for loc in locations:
-                resource = await index.get(Resource, loc.resource_id)
+                resource = await resource_queries(index).catalog_resource(resource_id=loc.resource_id)
                 resolution = _resolve_location(
                     resource, loc.resource_id, roots, expected_content_type
                 )
@@ -471,7 +458,7 @@ async def validate_catalog_entry_for_preview(
                         }
                     )
                     continue
-                resource = await index.get(Resource, loc.resource_id)
+                resource = await resource_queries(index).catalog_resource(resource_id=loc.resource_id)
                 resolution = _resolve_location(
                     resource, loc.resource_id, roots, entry.content_type
                 )

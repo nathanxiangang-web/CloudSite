@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..infrastructure.models import AListConnection
+from ..infrastructure.models import AListConnection, ContentRootMapping
 from ..domain.delta import resolve_sync_strategy
 from ..infrastructure.registry import registry
 
@@ -34,4 +35,17 @@ async def provider_info(session: AsyncSession) -> dict:
     }
 
 
-__all__ = ["provider_info"]
+async def enabled_root_ids(session: AsyncSession) -> set[int]:
+    """Return enabled content-root ids without exposing provider ORM."""
+    return set(
+        (
+            await session.scalars(
+                select(ContentRootMapping.id).where(
+                    ContentRootMapping.enabled.is_(True)
+                )
+            )
+        ).all()
+    )
+
+
+__all__ = ["provider_info", "enabled_root_ids"]

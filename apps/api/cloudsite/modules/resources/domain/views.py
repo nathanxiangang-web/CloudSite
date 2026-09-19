@@ -72,6 +72,16 @@ class FolderSummaryView:
 
 
 @dataclass(frozen=True, slots=True)
+class CatalogResourceView:
+    """Minimal resource state exposed to Catalog validation."""
+
+    id: str
+    status: str
+    root_mapping_id: int | None
+    content_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class ResourcePreviewView:
     """Internal preview input. Storage path is never serialized to API output."""
 
@@ -156,6 +166,7 @@ class FolderDetailView:
 
 
 __all__ = [
+    "CatalogResourceView",
     "FolderDetailView",
     "FolderSummaryView",
     "ParentSummaryView",

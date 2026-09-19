@@ -30,6 +30,34 @@ def notification_dict(row: Notification) -> dict:
     }
 
 
+async def create_user_notification(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    title: str,
+    body: str = "",
+    level: str = "info",
+    source: str,
+    enabled: bool = True,
+    published_at: datetime | None = None,
+) -> int:
+    """Create one user notification inside the caller-owned transaction."""
+    values = {
+        "user_id": user_id,
+        "title": title,
+        "body": body,
+        "level": level,
+        "source": source,
+        "enabled": enabled,
+    }
+    if published_at is not None:
+        values["published_at"] = published_at
+    row = Notification(**values)
+    session.add(row)
+    await session.flush()
+    return int(row.id)
+
+
 async def list_notifications_for_user(
     session: AsyncSession,
     *,
@@ -175,6 +203,7 @@ async def delete_admin_notification(
 
 __all__ = [
     "notification_dict",
+    "create_user_notification",
     "list_notifications_for_user",
     "delete_notification_for_user",
     "list_admin_notifications",

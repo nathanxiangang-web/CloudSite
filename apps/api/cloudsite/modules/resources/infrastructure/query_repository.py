@@ -13,6 +13,7 @@ from ..domain.errors import (
     ResourceNotFoundError,
 )
 from ..domain.views import (
+    CatalogResourceView,
     FolderDetailView,
     FolderSummaryView,
     ParentSummaryView,
@@ -82,6 +83,21 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
                 break
             current = await self._session.get(Folder, current.parent_id)
         return tuple(reversed(items))
+
+    async def catalog_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> CatalogResourceView | None:
+        row = await self._session.get(Resource, resource_id)
+        if row is None:
+            return None
+        return CatalogResourceView(
+            id=row.id,
+            status=row.status,
+            root_mapping_id=row.root_mapping_id,
+            content_type=row.content_type,
+        )
 
     async def list_resources(
         self,
