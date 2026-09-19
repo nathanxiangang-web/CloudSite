@@ -143,3 +143,15 @@ Catalog now owns publication visibility in
   sitemap route and legacy tests;
 - `routers/admin/publication_scope.py` contains no direct ORM/SQLAlchemy
   access.
+
+## Admin Boundary Ownership
+
+Admin Catalog list/detail/release/asset/location projections now live in
+`application/admin_facade.py` and are exported only through
+`contracts/public.py`. Release/asset/location deletion is module-owned as
+well. The admin Catalog router no longer imports shared ORM models or
+SQLAlchemy and acts only as an HTTP boundary.
+
+Legacy `services/catalog.py` remains a compatibility shim for older call
+sites, but new admin code must use the Catalog public contract.
+
