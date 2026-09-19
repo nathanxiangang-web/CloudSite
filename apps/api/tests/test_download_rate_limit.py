@@ -198,22 +198,30 @@ def test_trusted_proxy_chain_uses_first_untrusted_hop(monkeypatch):
     assert get_effective_client_ip(request) == "198.51.100.20"
 
 
-async def test_rate_limit_runs_before_alist(monkeypatch):
+async def test_rate_limit_runs_before_provider(monkeypatch):
     class FakeSession:
-        def __init__(self, resource=None):
-            self.resource = resource
-
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *_):
             return None
 
-        async def get(self, model, _):
-            return self.resource if model is Resource else None
+    class FakeQueries:
+        async def download_resource(self, *, resource_id, enabled_root_ids):
+            assert resource_id == "r_1234567890"
+            assert enabled_root_ids == {1}
+            return SimpleNamespace(
+                id=resource_id,
+                path="/files/file.zip",
+                root_mapping_id=1,
+                status="active",
+            )
 
-    monkeypatch.setattr(main, "IndexSession", lambda: FakeSession(SimpleNamespace(status="active")))
-    monkeypatch.setattr(main, "StateSession", lambda: FakeSession())
+    monkeypatch.setattr(main, "IndexSession", FakeSession)
+    monkeypatch.setattr(main, "StateSession", FakeSession)
+
+    async def enabled_roots(_state):
+        return {1}
 
     async def denied(_):
         return DownloadRateDecision(
@@ -227,15 +235,25 @@ async def test_rate_limit_runs_before_alist(monkeypatch):
         return None
 
     async def must_not_call(*_args, **_kwargs):
-        raise AssertionError("rate-limited request reached AList")
+        raise AssertionError("rate-limited request reached provider runtime")
 
-    monkeypatch.setattr(main, "check_download_rate", denied)
     from cloudsite.routers import downloads as downloads_router_mod
+
+    monkeypatch.setattr(downloads_router_mod, "enabled_root_ids", enabled_roots)
+    monkeypatch.setattr(
+        downloads_router_mod,
+        "resource_queries",
+        lambda _session: FakeQueries(),
+    )
     monkeypatch.setattr(downloads_router_mod, "check_download_rate", denied)
     monkeypatch.setattr(downloads_router_mod, "_download_event", no_event)
+    monkeypatch.setattr(downloads_router_mod, "provider_runtime", must_not_call)
     monkeypatch.setattr(downloads_router_mod, "resolve_download_entry", must_not_call)
-    monkeypatch.setattr(downloads_router_mod, "resource_in_publication_scope", lambda *_a: _true_coro())
-    response = await downloads_router_mod.download("r_1234567890", request_from("198.51.100.20"))
+
+    response = await downloads_router_mod.download(
+        "r_1234567890",
+        request_from("198.51.100.20"),
+    )
     assert response.status_code == 429
     assert response.headers["retry-after"] == "43"
     assert json.loads(response.body)["code"] == "DOWNLOAD_RATE_LIMITED"
@@ -245,20 +263,26 @@ async def test_download_route_first_five_302_sixth_429(tmp_path, monkeypatch):
     engine, _ = await rate_store(tmp_path, monkeypatch)
 
     class FakeSession:
-        def __init__(self, resource=None):
-            self.resource = resource
-
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *_):
             return None
 
-        async def get(self, model, _):
-            return self.resource if model is Resource else None
+    class FakeQueries:
+        async def download_resource(self, *, resource_id, enabled_root_ids):
+            return SimpleNamespace(
+                id=resource_id,
+                path="/files/file.zip",
+                root_mapping_id=1,
+                status="active",
+            )
 
-    monkeypatch.setattr(main, "IndexSession", lambda: FakeSession(SimpleNamespace(status="active")))
-    monkeypatch.setattr(main, "StateSession", lambda: FakeSession())
+    monkeypatch.setattr(main, "IndexSession", FakeSession)
+    monkeypatch.setattr(main, "StateSession", FakeSession)
+
+    async def enabled_roots(_state):
+        return {1}
 
     async def no_event(*_args, **_kwargs):
         return None
@@ -266,13 +290,30 @@ async def test_download_route_first_five_302_sixth_429(tmp_path, monkeypatch):
     async def resolved(*_args, **_kwargs):
         return SimpleNamespace(url="https://alist.example/d/file.zip")
 
-    monkeypatch.setattr(main, "_download_event", no_event)
     from cloudsite.routers import downloads as downloads_router_mod
+
+    monkeypatch.setattr(downloads_router_mod, "enabled_root_ids", enabled_roots)
+    monkeypatch.setattr(
+        downloads_router_mod,
+        "resource_queries",
+        lambda _session: FakeQueries(),
+    )
     monkeypatch.setattr(downloads_router_mod, "_download_event", no_event)
+    monkeypatch.setattr(downloads_router_mod, "provider_runtime", lambda _state: object())
     monkeypatch.setattr(downloads_router_mod, "resolve_download_entry", resolved)
-    monkeypatch.setattr(downloads_router_mod, "resource_in_publication_scope", lambda *_a: _true_coro())
+
     request = request_from("198.51.100.20")
-    responses = [await downloads_router_mod.download("r_1234567890", request) for _ in range(6)]
-    assert [response.status_code for response in responses] == [302, 302, 302, 302, 302, 429]
+    responses = [
+        await downloads_router_mod.download("r_1234567890", request)
+        for _ in range(6)
+    ]
+    assert [response.status_code for response in responses] == [
+        302,
+        302,
+        302,
+        302,
+        302,
+        429,
+    ]
     assert responses[-1].headers["retry-after"] == "60"
     await engine.dispose()

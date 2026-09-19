@@ -8,12 +8,13 @@ from sqlalchemy import desc, select
 
 from ..auth import require_user, validate_request_origin
 from ..download import DownloadError, resolve_download_entry
+from ..modules.providers.contracts.public import provider_runtime
 from ..download_rate_limit import (
     check_download_rate,
     get_effective_client_ip,
     rate_limit_payload,
 )
-from ..models import AListConnection, Collection, Folder, OperationLog, Resource, Share, SiteSettings, utcnow
+from ..models import Collection, Folder, OperationLog, Resource, Share, SiteSettings, utcnow
 from ..request_context import request_is_https
 from ..schemas import ShareInput, ShareUpdate, ShareVerifyInput
 from ..services.collections import collection_dict
@@ -237,9 +238,9 @@ async def _share_download_response(token: str, request: Request, resource_id: st
         if not rate.allowed:
             await _download_event(state, resource.id, "failed", "DOWNLOAD_RATE_LIMITED", started, source="share")
             return JSONResponse(rate_limit_payload(rate), status_code=429, headers={"Retry-After": str(rate.retry_after)})
-        connection = await state.get(AListConnection, 1)
+        runtime = provider_runtime(state)
         try:
-            resolution = await resolve_download_entry(resource, connection)
+            resolution = await resolve_download_entry(resource, runtime)
             await reserve_share_download(state, row.token)
             await _download_event(state, resource.id, "success", None, started, source="share")
             return RedirectResponse(resolution.url, status_code=302)

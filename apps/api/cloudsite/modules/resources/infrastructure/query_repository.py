@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..application.queries import ResourceQueryRepository
 from ..domain.errors import (
     FolderNotFoundError,
+    ResourceInactiveError,
     ResourceNotAvailableError,
     ResourceNotFoundError,
 )
@@ -16,6 +17,7 @@ from ..domain.views import (
     FolderSummaryView,
     ParentSummaryView,
     ResourceDetailView,
+    ResourceDownloadView,
     ResourcePageView,
     ResourcePreviewView,
     ResourceSummaryView,
@@ -282,6 +284,30 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             extension=row.extension,
             mime_type=row.mime_type,
             size=row.size,
+            status=row.status,
+        )
+
+    async def download_resource(
+        self,
+        *,
+        resource_id: str,
+        enabled_root_ids: set[int],
+    ) -> ResourceDownloadView:
+        row = await self._session.get(Resource, resource_id)
+        if row is None or row.status == "missing":
+            raise ResourceNotFoundError(resource_id)
+        if row.status != "active":
+            raise ResourceInactiveError(resource_id)
+        if (
+            row.root_mapping_id is None
+            or row.root_mapping_id not in enabled_root_ids
+        ):
+            raise ResourceNotAvailableError(resource_id)
+
+        return ResourceDownloadView(
+            id=row.id,
+            path=row.path,
+            root_mapping_id=row.root_mapping_id,
             status=row.status,
         )
 

@@ -276,6 +276,40 @@ class TestPreviewProviderBoundary:
             assert "modules.providers.contracts" in source
 
 
+class TestDownloadRuntimeBoundary:
+    """Download HTTP/provider boundaries must remain module-owned."""
+
+    def test_download_router_has_no_orm_or_legacy_connection_dependency(self):
+        router_file = CLOUDSITE / "routers" / "downloads.py"
+        source = router_file.read_text(encoding="utf-8")
+
+        assert "from ..models" not in source
+        assert "cloudsite.models" not in source
+        assert "sqlalchemy" not in source
+        assert "index.get(" not in source
+        assert "resolve_resource_connection" not in source
+        assert "resource_in_publication_scope" not in source
+        assert "resource_queries(" in source
+        assert "provider_runtime(" in source
+
+    def test_delivery_download_uses_providers_contract_only(self):
+        domain_file = (
+            CLOUDSITE
+            / "modules"
+            / "delivery"
+            / "domain"
+            / "download.py"
+        )
+        source = domain_file.read_text(encoding="utf-8")
+
+        assert "AListClient" not in source
+        assert "AListError" not in source
+        assert "decrypt_secret" not in source
+        assert "cloudsite.alist" not in source
+        assert "cloudsite.crypto" not in source
+        assert "modules.providers.contracts" in source
+
+
 class TestPreviewCompatibilityFacades:
     """Legacy top-level preview modules must remain implementation-free facades."""
 
