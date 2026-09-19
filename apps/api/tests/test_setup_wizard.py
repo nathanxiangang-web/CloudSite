@@ -43,8 +43,12 @@ async def _wizard_setup(monkeypatch):
     monkeypatch.setattr(main, "StateSession", state_factory)
     monkeypatch.setattr(auth, "StateSession", state_factory)
     monkeypatch.setattr(config.settings, "setup_token", "test-setup-token")
-    import cloudsite.routers.admin.setup as setup_module
-    monkeypatch.setattr(setup_module, "AListClient", _FakeAListClient)
+    from cloudsite.modules.providers.application import connection_admin
+    monkeypatch.setattr(
+        connection_admin,
+        "AListClient",
+        _FakeAListClient,
+    )
     return state_engine
 
 

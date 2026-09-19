@@ -143,6 +143,34 @@ async def update_root_mapping(
         ) from exc
 
 
+async def update_root_mapping_preferences(
+    state: AsyncSession,
+    *,
+    updates: list[dict[str, Any]],
+) -> int:
+    """Update setup-facing root visibility/order fields atomically."""
+
+    updated = 0
+    for item in updates:
+        mapping_id = item.get("id")
+        if mapping_id is None:
+            continue
+        row = await state.get(ContentRootMapping, int(mapping_id))
+        if row is None:
+            continue
+        changed = False
+        if "enabled" in item:
+            row.enabled = bool(item["enabled"])
+            changed = True
+        if "sort_order" in item:
+            row.sort_order = int(item["sort_order"])
+            changed = True
+        if changed:
+            updated += 1
+    await state.commit()
+    return updated
+
+
 async def delete_root_mapping(
     state: AsyncSession,
     mapping_id: int,

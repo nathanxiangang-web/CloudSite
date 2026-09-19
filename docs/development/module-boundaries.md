@@ -18,6 +18,7 @@
 | `automation` | Automation rules, suggestion engine, parser candidates | — | `services/suggestion_*.py`, `services/parser_candidate*.py`, `routers/admin/automation.py`, `routers/admin/parser_candidates.py` |
 | `delivery` | Delivery preparation, redirect | — | `services/delivery.py`, `routers/delivery.py`, `delivery_schemas.py` |
 | `presentation` | Site presentation presets, theme/navigation/home blocks, revisions and rollback | — | `modules/presentation/`, legacy `services/presentation.py`, `routers/admin/presentation.py` |
+| `setup` | First-run setup workflow progress and cross-module onboarding orchestration | — | `modules/setup/`, `routers/admin/setup.py` |
 
 ## Platform layer
 

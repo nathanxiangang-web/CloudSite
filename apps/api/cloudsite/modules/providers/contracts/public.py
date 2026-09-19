@@ -6,6 +6,7 @@ from ..application.connection_admin import (
     browse_admin_directories,
     check_provider_health,
     save_admin_connection,
+    save_setup_connection,
     test_admin_connection,
 )
 from ..application.root_mappings import (
@@ -14,6 +15,7 @@ from ..application.root_mappings import (
     list_root_mappings,
     normalize_provider_path,
     update_root_mapping,
+    update_root_mapping_preferences,
     validate_root_mapping_path,
 )
 from ..application.provider_service import (
@@ -87,11 +89,13 @@ __all__ = [
     "browse_admin_directories",
     "check_provider_health",
     "save_admin_connection",
+    "save_setup_connection",
     "test_admin_connection",
     "create_root_mapping",
     "delete_root_mapping",
     "list_root_mappings",
     "normalize_provider_path",
     "update_root_mapping",
+    "update_root_mapping_preferences",
     "validate_root_mapping_path",
 ]
