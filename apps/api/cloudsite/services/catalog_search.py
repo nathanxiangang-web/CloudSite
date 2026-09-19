@@ -29,7 +29,7 @@ from .catalog_search_projection import (
     catalog_search_fts_match,
     consume_catalog_search_outbox,
 )
-from .catalog_views import catalog_entry_view
+from ..modules.catalog.contracts.public import catalog_entry_view
 
 
 def normalize_catalog_query(value: str) -> str:
