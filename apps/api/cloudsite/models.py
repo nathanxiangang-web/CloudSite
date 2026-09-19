@@ -39,6 +39,7 @@ from .modules.presentation.infrastructure.models import (
     SitePresentation,
     SitePresentationRevision,
 )
+from .modules.setup.infrastructure.models import SetupWizardState
 from .modules.catalog.infrastructure.models import (
     CatalogAsset,
     CatalogEntry,
@@ -185,30 +186,6 @@ class CatalogSearchProjectionState(IndexBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-
-class SetupWizardState(StateBase):
-    """B2 首次建站向导状态：单例（id=1）记录七步进度。
-
-    current_step 为当前步骤标识（connect/scope/preset/samples/brand/preview/publish），
-    completed_steps_json 为已完成步骤 JSON 数组，每步对应 *_done 布尔标记。
-    wizard_completed=1 表示向导已完成（正常走完或跳过）。向导在 setup_completed
-    标记前置位运行；publish/skip 步骤才写入 setup_completed。
-    """
-
-    __tablename__ = "setup_wizard_state"
-    id: Mapped[int] = mapped_column(primary_key=True, default=1)
-    current_step: Mapped[str] = mapped_column(String(20), default="connect")
-    completed_steps_json: Mapped[str] = mapped_column(Text, default="[]")
-    connect_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    scope_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    preset_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    samples_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    brand_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    preview_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    publish_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    wizard_completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    started_at: Mapped[str] = mapped_column(String(40), default="")
-    completed_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 class HealthCheckState(StateBase):
     """M6 健康检查组件状态：每组件一行（component 唯一）。
