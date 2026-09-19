@@ -12,7 +12,7 @@ from ..download_rate_limit import (
     rate_limit_payload,
 )
 from ..services.downloads import _download_event
-from .admin.catalog import _build_entry_detail, _entry_to_summary
+from ..modules.catalog.contracts import public as catalog_api
 from ..modules.catalog.contracts.public import (
     public_catalog_asset_view,
     public_catalog_entry_view,
@@ -32,9 +32,7 @@ router = APIRouter()
 
 
 def _catalog_service():
-    from ..services import catalog  # noqa: PLC0415
-
-    return catalog
+    return catalog_api
 
 
 def _not_found() -> HTTPException:
@@ -51,25 +49,14 @@ async def public_catalog_list(
 ):
     from ..main import StateSession
 
-    service = _catalog_service()
     async with StateSession() as state:
-        entries = await service.list_catalog_entries(
+        payload = await catalog_api.admin_entry_summary_page(
             state,
-            status="published",
-            limit=page_size,
-            offset=(page - 1) * page_size,
-        )
-        total = await service.count_catalog_entries(
-            state,
-            status="published",
-        )
-        return CatalogEntryListOutput(
-            items=[_entry_to_summary(entry) for entry in entries],
             page=page,
             page_size=page_size,
-            total=total,
-            total_pages=max(1, (total + page_size - 1) // page_size),
+            status="published",
         )
+        return CatalogEntryListOutput(**payload)
 
 
 @router.get("/api/catalog/entries")
@@ -180,15 +167,22 @@ async def catalog_tags():
 async def public_catalog_detail(entry_id: str):
     from ..main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            entry = await service.get_catalog_entry(state, entry_id)
-        except service.CatalogEntryNotFound as exc:
+            entry = await catalog_api.get_catalog_entry(
+                state,
+                entry_id,
+            )
+        except catalog_api.CatalogEntryNotFound as exc:
             raise _not_found() from exc
         if entry.status != "published":
             raise _not_found()
-        return await _build_entry_detail(state, index, entry, published_only=True)
+        return await catalog_api.admin_legacy_entry_detail(
+            state,
+            index,
+            entry_id,
+            published_only=True,
+        )
 
 
 # ---- C2 Asset download signing ----
