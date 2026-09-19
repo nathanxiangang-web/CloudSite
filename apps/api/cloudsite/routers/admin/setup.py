@@ -7,12 +7,12 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ...admin_auth import get_setup_completed, verify_setup_token
 from ...auth import validate_request_origin
 from ...config import settings
 from ...modules.setup.contracts.public import (
     SetupWorkflowError,
     complete_initial_alist_setup,
+    get_setup_status,
     get_wizard_state,
     process_wizard_step,
     skip_wizard,
@@ -54,11 +54,10 @@ async def admin_setup_status():
     from ...main import StateSession
 
     async with StateSession() as session:
-        setup_completed = await get_setup_completed(session)
-    return {
-        "setup_required": not setup_completed,
-        "setup_available": bool(settings.setup_token),
-    }
+        return await get_setup_status(
+            session,
+            setup_available=bool(settings.setup_token),
+        )
 
 
 @router.post("/api/admin/setup/alist")
@@ -70,38 +69,6 @@ async def admin_setup_alist(
 
     _origin_or_403(request)
     async with StateSession() as session:
-        setup_completed = await get_setup_completed(session)
-        if setup_completed:
-            raise HTTPException(
-                409,
-                {
-                    "code": "SETUP_ALREADY_COMPLETED",
-                    "message": "站点已完成初始化",
-                },
-            )
-        if not settings.setup_token:
-            raise HTTPException(
-                503,
-                {
-                    "code": "SETUP_UNAVAILABLE",
-                    "message": "服务器未配置初始化令牌",
-                },
-            )
-        provided_token = request.headers.get(
-            "X-CloudSite-Setup-Token",
-            "",
-        )
-        if not verify_setup_token(
-            provided_token,
-            settings.setup_token,
-        ):
-            raise HTTPException(
-                403,
-                {
-                    "code": "SETUP_FORBIDDEN",
-                    "message": "初始化令牌错误",
-                },
-            )
         try:
             result = await complete_initial_alist_setup(
                 session,
@@ -109,6 +76,11 @@ async def admin_setup_alist(
                 username=payload.username,
                 password=payload.password,
                 remember_credentials=payload.remember_credentials,
+                provided_setup_token=request.headers.get(
+                    "X-CloudSite-Setup-Token",
+                    "",
+                ),
+                expected_setup_token=settings.setup_token,
             )
         except SetupWorkflowError as exc:
             raise _translate_setup_error(exc) from exc
