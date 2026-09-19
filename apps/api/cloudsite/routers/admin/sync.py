@@ -16,9 +16,6 @@ async def sync(payload: SyncInput):
 
     if _main.manual_sync_task and not _main.manual_sync_task.done():
         return {"status": "already_running"}
-    preflight = await _main.sync_preflight("manual", payload.force)
-    if preflight:
-        return preflight
     _main.manual_sync_task = asyncio.create_task(
         _main._run_manual_sync_in_background(payload.full, payload.force),
         name="cloudsite-manual-sync",
