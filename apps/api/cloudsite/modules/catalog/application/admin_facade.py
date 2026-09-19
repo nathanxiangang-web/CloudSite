@@ -19,12 +19,12 @@ from ..infrastructure.models import (
     CatalogRelease,
 )
 from .catalog_entry import (
-    CatalogAssetNotFound,
     get_catalog_entry,
     list_catalog_entries,
     count_catalog_entries,
 )
 from .catalog_release import (
+    CatalogAssetNotFound,
     attach_catalog_location,
     get_catalog_asset,
     get_catalog_release,
