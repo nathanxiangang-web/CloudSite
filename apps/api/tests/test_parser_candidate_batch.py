@@ -15,14 +15,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import Resource
-from cloudsite.services.parser_candidate_batch import (
+from cloudsite.modules.automation.contracts.public import (
     INTERRUPTED_MESSAGE,
     enqueue_indexed_resource,
     list_parser_candidates,
     recover_interrupted_candidates,
     run_parser_candidate_batch,
 )
-from cloudsite.services.parser_candidates import (
+from cloudsite.modules.automation.contracts.public import (
     ParserCandidateError,
     claim_parser_candidate,
     enqueue_parser_candidate,
