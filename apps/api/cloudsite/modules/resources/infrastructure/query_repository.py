@@ -307,6 +307,33 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             resources=resources,
         )
 
+    async def admin_content_type_counts(
+        self,
+        *,
+        content_types: tuple[str, ...],
+    ) -> dict[str, int]:
+        if not content_types:
+            return {}
+        rows = (
+            await self._session.execute(
+                select(Resource.content_type, func.count())
+                .select_from(Resource)
+                .where(
+                    Resource.status == "active",
+                    Resource.content_type.in_(content_types),
+                )
+                .group_by(Resource.content_type)
+            )
+        ).all()
+        counts = {content_type: 0 for content_type in content_types}
+        counts.update(
+            {
+                str(content_type): int(count or 0)
+                for content_type, count in rows
+            }
+        )
+        return counts
+
     async def admin_index_folders(self) -> list[AdminIndexFolderView]:
         rows = list(
             (
