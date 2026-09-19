@@ -44,6 +44,24 @@ class ResourceQueryRepository(Protocol):
         resource_ids: list[str],
     ) -> dict[str, ResourceReferenceView]: ...
 
+    async def browse_resources(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        status: str,
+        content_type: str | None,
+        page: int,
+        page_size: int,
+    ) -> ResourcePageView: ...
+
+    async def browse_resource_counts(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        status: str,
+        content_types: tuple[str, ...],
+    ) -> dict[str, int]: ...
+
     async def list_resources(
         self,
         *,
@@ -138,6 +156,36 @@ class ResourceQueries:
     ) -> dict[str, ResourceReferenceView]:
         return await self._repository.resource_references(
             resource_ids=list(dict.fromkeys(resource_ids)),
+        )
+
+    async def browse_resources(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        status: str,
+        content_type: str | None,
+        page: int,
+        page_size: int,
+    ) -> ResourcePageView:
+        return await self._repository.browse_resources(
+            enabled_root_ids=enabled_root_ids,
+            status=status,
+            content_type=content_type,
+            page=page,
+            page_size=page_size,
+        )
+
+    async def browse_resource_counts(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        status: str,
+        content_types: tuple[str, ...],
+    ) -> dict[str, int]:
+        return await self._repository.browse_resource_counts(
+            enabled_root_ids=enabled_root_ids,
+            status=status,
+            content_types=content_types,
         )
 
     async def list_resources(
