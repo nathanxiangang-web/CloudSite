@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, KeyRound, Pencil, RotateCcw, Search, Trash2, UserPlus, UserRoundCheck, UserRoundX, Users, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api } from "@/lib/api";
 import { PublicUser } from "@/lib/auth";
@@ -12,16 +13,39 @@ type Editor = { kind: "create" | "edit" | "reset"; user?: PublicUser } | null;
 
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(1);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const search = (searchParams.get("search") || "").slice(0, 100);
+  const statusParam = searchParams.get("status") || "all";
+  const status = ["all", "active", "disabled", "deleted"].includes(statusParam) ? statusParam : "all";
+  const requestedPage = Number.parseInt(searchParams.get("page") || "1", 10);
+  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
 
-  const query = useQuery({ queryKey: ["admin-users", search, status, page], queryFn: () => api<UserPage>(`/api/admin/users?search=${encodeURIComponent(search)}&status=${status}&page=${page}&page_size=20`) });
+  const navigate = useCallback((next: { search?: string; status?: string; page?: number }, replace = false) => {
+    const values = new URLSearchParams();
+    const nextSearch = (next.search ?? search).slice(0, 100);
+    const nextStatus = next.status ?? status;
+    const nextPage = next.page ?? page;
+    if (nextSearch) values.set("search", nextSearch);
+    if (nextStatus !== "all") values.set("status", nextStatus);
+    if (nextPage > 1) values.set("page", String(nextPage));
+    const href = `/admin/users${values.size ? `?${values.toString()}` : ""}`;
+    if (replace) router.replace(href);
+    else router.push(href);
+  }, [page, router, search, status]);
+
+  const query = useQuery({ queryKey: ["admin-users", search, status, page], queryFn: () => api<UserPage>(`/api/admin/users?search=${encodeURIComponent(search)}&status=${status}&page=${page}&page_size=20`), placeholderData: (previous) => previous });
+
+  useEffect(() => {
+    if (!query.data) return;
+    const lastPage = Math.max(1, query.data.total_pages || 1);
+    if (page > lastPage) navigate({ page: lastPage }, true);
+  }, [page, query.data, navigate]);
   const detail = useQuery({ queryKey: ["admin-user", selectedId], queryFn: () => api<PublicUser>(`/api/admin/users/${selectedId}`), enabled: selectedId !== null });
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
@@ -42,7 +66,12 @@ export default function AdminUsersPage() {
   });
   const remove = useMutation({
     mutationFn: (id: number) => api<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
-    onSuccess: async () => { setSelectedId(null); await refresh(); },
+    onSuccess: async () => {
+      setSelectedId(null);
+      const shouldStepBack = page > 1 && query.data?.items.length === 1;
+      await refresh();
+      if (shouldStepBack) navigate({ page: page - 1 });
+    },
   });
 
   function toggle(user: PublicUser) {
@@ -65,7 +94,7 @@ export default function AdminUsersPage() {
   const mutationError = updateStatus.error || remove.error;
   return <AdminShell title="用户管理"><div className="admin-page">
     <section className="panel users-panel">
-      <div className="panel-toolbar"><div><h2><Users />用户列表</h2><p>共 {query.data?.total ?? 0} 个 CloudSite 用户</p></div><div className="users-toolbar"><button className="primary" onClick={() => openEditor({ kind: "create" })}><UserPlus />新建用户</button><div className="small-search"><Search /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="搜索用户名" /></div><select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">当前用户</option><option value="active">正常</option><option value="disabled">已停用</option><option value="deleted">已删除</option></select><button title="刷新" onClick={() => query.refetch()}><RotateCcw /></button></div></div>
+      <div className="panel-toolbar"><div><h2><Users />用户列表</h2><p>共 {query.data?.total ?? 0} 个 CloudSite 用户</p></div><div className="users-toolbar"><button className="primary" onClick={() => openEditor({ kind: "create" })}><UserPlus />新建用户</button><div className="small-search"><Search /><input value={search} onChange={(event) => navigate({ search: event.target.value, page: 1 }, true)} placeholder="搜索用户名" /></div><select value={status} onChange={(event) => navigate({ status: event.target.value, page: 1 })}><option value="all">当前用户</option><option value="active">正常</option><option value="disabled">已停用</option><option value="deleted">已删除</option></select><button title="刷新" onClick={() => query.refetch()}><RotateCcw /></button></div></div>
       <div className="table-head users-table-head"><span>用户</span><span>状态</span><span>注册时间</span><span>最近登录</span><span>操作</span></div>
       {query.isLoading ? <div className="loading">正在读取用户…</div> : query.error ? <div className="empty error-state">加载失败：{query.error.message}</div> : query.data?.items.length ? query.data.items.map((user) => <div className="table-row users-table-row" key={user.id}>
         <span><span className="user-avatar small">{user.username.slice(0, 1).toUpperCase()}</span><b>{user.username}<small>用户 #{user.id}{user.created_by_admin ? " · 管理员创建" : ""}</small></b></span>
@@ -74,7 +103,7 @@ export default function AdminUsersPage() {
         <span>{user.last_login_at ? formatTime(user.last_login_at) : "从未登录"}</span>
         <span className="user-actions"><button title="详情" onClick={() => setSelectedId(user.id)}><Eye /></button>{user.status !== "deleted" && <><button title="编辑用户名" onClick={() => openEditor({ kind: "edit", user })}><Pencil /></button><button title="重置密码" onClick={() => openEditor({ kind: "reset", user })}><KeyRound /></button><button className={user.status === "active" ? "danger" : ""} title={user.status === "active" ? "停用" : "恢复"} disabled={updateStatus.isPending} onClick={() => toggle(user)}>{user.status === "active" ? <UserRoundX /> : <UserRoundCheck />}</button><button className="danger" title="删除" disabled={remove.isPending} onClick={() => deleteUser(user)}><Trash2 /></button></>}</span>
       </div>) : <div className="empty">没有匹配的用户。</div>}
-      {(query.data?.total_pages ?? 0) > 1 && <nav className="pagination"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><span>第 {page} / {query.data?.total_pages} 页</span><button disabled={page >= (query.data?.total_pages ?? 1)} onClick={() => setPage((value) => value + 1)}>下一页</button></nav>}
+      {(query.data?.total_pages ?? 0) > 1 && <nav className="pagination"><button disabled={page <= 1 || query.isFetching} onClick={() => navigate({ page: page - 1 })}>上一页</button><span>第 {page} / {query.data?.total_pages} 页</span><button disabled={page >= (query.data?.total_pages ?? 1) || query.isFetching} onClick={() => navigate({ page: page + 1 })}>下一页</button></nav>}
       {mutationError && <p className="form-error">{mutationError.message}</p>}
     </section>
 
