@@ -29,12 +29,8 @@ type WizardState = {
     accent_color: string;
     card_radius: number;
   };
-  root_mappings?: RootMapping[];
-  root_directories?: Array<{ name: string; path: string }>;
-  scope_error?: string;
+  has_root_mappings?: boolean;
 };
-
-type RootMapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean; sort_order?: number };
 
 const STEPS = ["connect", "scope", "preset", "brand", "publish"] as const;
 const STEP_LABELS: Record<string, string> = {
@@ -53,13 +49,6 @@ const CONTENT_TYPES = [
   ["file", "普通文件"],
 ] as const;
 
-function inferContentType(name: string) {
-  if (/软件|应用|程序|software|app/i.test(name)) return "software";
-  if (/图片|图像|照片|摄影|image|photo|gallery/i.test(name)) return "image";
-  if (/视频|电影|剧集|video|movie|tv/i.test(name)) return "video";
-  if (/教程|文档|书籍|document|tutorial|book/i.test(name)) return "document";
-  return "file";
-}
 
 export default function SetupWizardPage() {
   const queryClient = useQueryClient();
@@ -135,31 +124,21 @@ export default function SetupWizardPage() {
     event.preventDefault();
     const scopeState = wizard.data;
     if (!scopeState) return;
+    if (scopeState.has_root_mappings) {
+      submitStep("scope", { root_mappings: [] });
+      return;
+    }
     const form = new FormData(event.currentTarget);
-    const existing = (scopeState.root_mappings ?? []).map((mapping) => ({
-      id: mapping.id,
-      enabled: form.has(`mapping:${mapping.id}`),
-      sort_order: mapping.sort_order ?? 0,
-    }));
-    const existingPaths = new Set((scopeState.root_mappings ?? []).map((mapping) => mapping.alist_path));
-    const candidates = [
-      { name: "整个 AList 根目录", path: "/" },
-      ...(scopeState.root_directories ?? []),
-    ].filter((candidate, index, all) =>
-      !existingPaths.has(candidate.path)
-      && all.findIndex((item) => item.path === candidate.path) === index
-    );
-    const created = candidates.flatMap((candidate, index) => {
-      if (!form.has(`candidate:${index}`)) return [];
-      return [{
-        alist_path: candidate.path,
-        display_name: candidate.name,
-        content_type: String(form.get(`candidate-type:${index}`) || inferContentType(candidate.name)),
+    const path = String(form.get("alist_path") || "/").trim() || "/";
+    submitStep("scope", {
+      root_mappings: [{
+        alist_path: path,
+        display_name: String(form.get("display_name") || "").trim() || (path === "/" ? "全部内容" : path.split("/").filter(Boolean).at(-1) || "内容"),
+        content_type: String(form.get("content_type") || "file"),
         enabled: true,
-        sort_order: existing.length + index,
-      }];
+        sort_order: 0,
+      }],
     });
-    submitStep("scope", { root_mappings: [...existing, ...created] });
   }
 
   function handlePresetSubmit(event: FormEvent<HTMLFormElement>) {
@@ -218,41 +197,23 @@ export default function SetupWizardPage() {
       {currentStep === "scope" && (
         <form className="form-stack" onSubmit={handleScopeSubmit}>
           <h2>选择启用范围</h2>
-          <p className="panel-intro">选择要在站点上启用的内容根目录。</p>
-          {(state.root_mappings ?? []).length > 0 && <>
-            <strong>已配置映射</strong>
-            {(state.root_mappings ?? []).map((mapping) => (
-              <label key={mapping.id} className="checkbox-label">
-                <input name={`mapping:${mapping.id}`} type="checkbox" defaultChecked={mapping.enabled} />
-                {mapping.display_name} <small>{mapping.content_type} · {mapping.alist_path}</small>
+          {state.has_root_mappings ? (
+            <p className="panel-intro">已检测到根目录映射，本次向导保留现有配置。完成建站后可在系统设置中继续调整。</p>
+          ) : (
+            <>
+              <p className="panel-intro">设置首次索引范围。默认使用整个 AList 根目录；复杂的多目录配置可在建站完成后继续调整。</p>
+              <label>根目录路径<input name="alist_path" defaultValue="/" required /></label>
+              <label>显示名称<input name="display_name" defaultValue="全部内容" /></label>
+              <label>内容类型
+                <select name="content_type" defaultValue="file">
+                  {CONTENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
               </label>
-            ))}
-          </>}
-          {state.scope_error ? <div className="empty error-state">AList 目录读取失败：{state.scope_error}<button type="button" onClick={() => wizard.refetch()}>重试</button></div> : (() => {
-            const existingPaths = new Set((state.root_mappings ?? []).map((mapping) => mapping.alist_path));
-            const candidates = [
-              { name: "整个 AList 根目录", path: "/" },
-              ...(state.root_directories ?? []),
-            ].filter((candidate, index, all) =>
-              !existingPaths.has(candidate.path)
-              && all.findIndex((item) => item.path === candidate.path) === index
-            );
-            return candidates.length > 0 ? <>
-              <strong>从 AList 添加</strong>
-              {candidates.map((candidate, index) => (
-                <div key={candidate.path} className="checkbox-label">
-                  <input name={`candidate:${index}`} type="checkbox" />
-                  <span>{candidate.name} <small>{candidate.path}</small></span>
-                  <select name={`candidate-type:${index}`} defaultValue={inferContentType(candidate.name)}>
-                    {CONTENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                </div>
-              ))}
-            </> : (state.root_mappings ?? []).length === 0 ? <p className="empty">AList 根目录暂无可选内容。</p> : null;
-          })()}
+            </>
+          )}
           <div className="form-actions">
             <button type="button" disabled={backMutation.isPending || stepMutation.isPending} onClick={goBack}><ArrowLeft />上一步</button>
-            <button className="primary" disabled={stepMutation.isPending || (Boolean(state.scope_error) && !(state.root_mappings ?? []).length)}><ArrowRight />下一步</button>
+            <button className="primary" disabled={stepMutation.isPending}><ArrowRight />下一步</button>
           </div>
         </form>
       )}
