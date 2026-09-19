@@ -1,10 +1,15 @@
-"""Application query boundary for resource/folder list views."""
+"""Application query boundary for Resources read views."""
 
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from ..domain.views import FolderSummaryView, ResourcePageView
+from ..domain.views import (
+    FolderDetailView,
+    FolderSummaryView,
+    ResourceDetailView,
+    ResourcePageView,
+)
 
 
 @runtime_checkable
@@ -29,6 +34,24 @@ class ResourceQueryRepository(Protocol):
         parent_id: str | None,
         parent_filter_supplied: bool,
     ) -> list[FolderSummaryView]: ...
+
+    async def resource_detail(
+        self,
+        *,
+        resource_id: str,
+        enabled_root_ids: set[int],
+    ) -> ResourceDetailView: ...
+
+    async def folder_detail(
+        self,
+        *,
+        folder_id: str,
+        enabled_root_ids: set[int],
+        page: int,
+        page_size: int,
+        sort: str,
+        order: str,
+    ) -> FolderDetailView: ...
 
 
 class ResourceQueries:
@@ -69,6 +92,36 @@ class ResourceQueries:
             content_type=content_type,
             parent_id=parent_id,
             parent_filter_supplied=parent_filter_supplied,
+        )
+
+    async def resource_detail(
+        self,
+        *,
+        resource_id: str,
+        enabled_root_ids: set[int],
+    ) -> ResourceDetailView:
+        return await self._repository.resource_detail(
+            resource_id=resource_id,
+            enabled_root_ids=enabled_root_ids,
+        )
+
+    async def folder_detail(
+        self,
+        *,
+        folder_id: str,
+        enabled_root_ids: set[int],
+        page: int,
+        page_size: int,
+        sort: str,
+        order: str,
+    ) -> FolderDetailView:
+        return await self._repository.folder_detail(
+            folder_id=folder_id,
+            enabled_root_ids=enabled_root_ids,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            order=order,
         )
 
 

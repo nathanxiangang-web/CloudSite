@@ -1,12 +1,14 @@
 """resources 路由：资源列表、详情、文件夹。"""
-import math
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import and_, desc, func, or_, select
-
-from ..models import Folder, Resource
+from ..models import Resource
 from ..modules.resources.api.queries import resource_queries
+from ..modules.resources.domain.errors import (
+    FolderNotFoundError,
+    ResourceNotAvailableError,
+    ResourceNotFoundError,
+)
 from ..office import OfficePreviewError, ensure_preview_cached, office_cache_filename, render_pdf_pages
 from ..preview import PreviewError, create_preview_ticket, load_text_preview, preview_capability
 from ..schemas import (
@@ -17,11 +19,6 @@ from ..schemas import (
     TextPreviewOutput,
 )
 from ..services.connections import resolve_resource_connection
-from ..services.resources import (
-    breadcrumbs_for_folder,
-    folder_dict,
-    resource_dict,
-)
 from ..shares.service import enabled_root_ids, resource_in_publication_scope
 
 router = APIRouter()
@@ -64,38 +61,26 @@ async def resource_detail(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as session, StateSession() as state:
-        row = await session.get(Resource, resource_id)
-        if not row or row.status != "active":
-            raise HTTPException(404, {"code": "RS-001", "message": "资源不存在或已不可用"})
-        if not await resource_in_publication_scope(state, row):
-            raise HTTPException(404, {"code": "RESOURCE_NOT_AVAILABLE", "message": "资源不存在或已不可用"})
-        parent = await session.get(Folder, row.parent_id) if row.parent_id else None
-        breadcrumbs = await breadcrumbs_for_folder(session, parent)
         enabled_ids = await enabled_root_ids(state)
-        sibling_scope = (
-            Resource.status == "active",
-            Resource.parent_id == row.parent_id,
-            Resource.root_mapping_id == row.root_mapping_id,
-            Resource.root_mapping_id.in_(enabled_ids) if enabled_ids else False,
-        )
-        related = list((await session.scalars(select(Resource).where(*sibling_scope, Resource.id != row.id).order_by(desc(Resource.modified_at)).limit(8))).all())
-        # 只查相邻的 prev/next（各 limit 1），不加载全部 siblings
-        previous = (await session.scalars(select(Resource).where(
-            *sibling_scope, Resource.content_type == row.content_type,
-            or_(Resource.name < row.name, and_(Resource.name == row.name, Resource.id < row.id)),
-        ).order_by(desc(Resource.name), desc(Resource.id)).limit(1))).first()
-        next_item = (await session.scalars(select(Resource).where(
-            *sibling_scope, Resource.content_type == row.content_type,
-            or_(Resource.name > row.name, and_(Resource.name == row.name, Resource.id > row.id)),
-        ).order_by(Resource.name, Resource.id).limit(1))).first()
-        return {
-            **resource_dict(row, parent),
-            "breadcrumbs": breadcrumbs,
-            "related": [resource_dict(item, parent) for item in related],
-            "capabilities": preview_capability(row),
-            "previous": resource_dict(previous, parent) if previous else None,
-            "next": resource_dict(next_item, parent) if next_item else None,
-        }
+        try:
+            detail = await resource_queries(session).resource_detail(
+                resource_id=resource_id,
+                enabled_root_ids=enabled_ids,
+            )
+        except ResourceNotFoundError as exc:
+            raise HTTPException(
+                404,
+                {"code": "RS-001", "message": "资源不存在或已不可用"},
+            ) from exc
+        except ResourceNotAvailableError as exc:
+            raise HTTPException(
+                404,
+                {"code": "RESOURCE_NOT_AVAILABLE", "message": "资源不存在或已不可用"},
+            ) from exc
+
+        payload = detail.to_dict()
+        payload["capabilities"] = preview_capability(detail.resource)
+        return payload
 
 
 @router.get("/api/resources/{resource_id}/preview")
@@ -185,23 +170,24 @@ async def folder_detail(
 ):
     from ..main import IndexSession, StateSession
 
-    sort_columns = {"name": Resource.name, "modified_at": Resource.modified_at, "size": Resource.size}
-    if sort not in sort_columns or order not in {"asc", "desc"}:
+    if sort not in {"name", "modified_at", "size"} or order not in {"asc", "desc"}:
         raise HTTPException(400, {"code": "API-001", "message": "排序参数无效"})
+
     async with IndexSession() as session, StateSession() as state:
         enabled_ids = await enabled_root_ids(state)
-        row = await session.get(Folder, folder_id)
-        if not row or row.status != "active" or row.root_mapping_id not in enabled_ids:
-            raise HTTPException(404, {"code": "FD-001", "message": "文件夹不存在或已不可用"})
-        breadcrumbs = await breadcrumbs_for_folder(session, row)
-        child_folders = list((await session.scalars(select(Folder).where(Folder.parent_id == folder_id, Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids)).order_by(Folder.name))).all())
-        resource_query = select(Resource).where(Resource.parent_id == folder_id, Resource.status == "active", Resource.root_mapping_id.in_(enabled_ids))
-        total = int(await session.scalar(select(func.count()).select_from(Resource).where(Resource.parent_id == folder_id, Resource.status == "active", Resource.root_mapping_id.in_(enabled_ids))) or 0)
-        order_by = sort_columns[sort].asc() if order == "asc" else sort_columns[sort].desc()
-        child_resources = list((await session.scalars(resource_query.order_by(order_by, Resource.id).offset((page - 1) * page_size).limit(page_size))).all())
-        return {
-            "folder": folder_dict(row),
-            "breadcrumbs": breadcrumbs,
-            "child_folders": [folder_dict(item) for item in child_folders],
-            "resources": {"items": [resource_dict(item, row) for item in child_resources], "page": page, "page_size": page_size, "total": total, "total_pages": math.ceil(total / page_size) if total else 0},
-        }
+        try:
+            detail = await resource_queries(session).folder_detail(
+                folder_id=folder_id,
+                enabled_root_ids=enabled_ids,
+                page=page,
+                page_size=page_size,
+                sort=sort,
+                order=order,
+            )
+        except FolderNotFoundError as exc:
+            raise HTTPException(
+                404,
+                {"code": "FD-001", "message": "文件夹不存在或已不可用"},
+            ) from exc
+        return detail.to_dict()
+
