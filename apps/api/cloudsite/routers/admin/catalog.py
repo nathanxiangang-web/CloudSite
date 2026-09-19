@@ -432,36 +432,20 @@ async def admin_catalog_release_delete(release_id: str):
 
 # ---- C2 Asset CRUD ----
 
-
-# ---- C2 Asset CRUD ----
-
-async def _asset_content_type(state, asset: CatalogAsset) -> str:
-    release = await state.get(CatalogRelease, asset.release_id)
-    if release is None:
-        return "file"
-    entry = await state.get(CatalogEntry, release.entry_id)
-    return entry.content_type if entry is not None else "file"
-
-
 @router.get("/api/admin/catalog/releases/{release_id}/assets")
 async def admin_catalog_assets_list(release_id: str):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            release = await service.get_catalog_release(state, release_id)
-            assets = await service.list_catalog_assets(state, release_id)
-        except service.CatalogError as exc:
+            items = await catalog_api.admin_asset_views(
+                state,
+                index,
+                release_id,
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        entry = await state.get(CatalogEntry, release.entry_id)
-        content_type = entry.content_type if entry is not None else "file"
-        return {
-            "items": [
-                await catalog_asset_view(state, index, asset, content_type=content_type, public=False)
-                for asset in assets
-            ]
-        }
+        return {"items": items}
 
 
 @router.post("/api/admin/catalog/releases/{release_id}/assets", status_code=201)
@@ -491,22 +475,26 @@ async def admin_catalog_asset_create(release_id: str, payload: CatalogAssetCreat
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        content_type = await _asset_content_type(state, result.asset)
-        return await catalog_asset_view(state, index, result.asset, content_type=content_type, public=False)
+        return await catalog_api.admin_asset_view(
+            state,
+            index,
+            result.asset.asset_id,
+        )
 
 
 @router.get("/api/admin/catalog/assets/{asset_id}")
 async def admin_catalog_asset_detail(asset_id: str):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            asset = await service.get_catalog_asset(state, asset_id)
-        except service.CatalogError as exc:
+            return await catalog_api.admin_asset_view(
+                state,
+                index,
+                asset_id,
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        content_type = await _asset_content_type(state, asset)
-        return await catalog_asset_view(state, index, asset, content_type=content_type, public=False)
 
 
 @router.patch("/api/admin/catalog/assets/{asset_id}")
@@ -521,82 +509,45 @@ async def admin_catalog_asset_update(asset_id: str, payload: CatalogAssetUpdateI
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        content_type = await _asset_content_type(state, asset)
-        return await catalog_asset_view(state, index, asset, content_type=content_type, public=False)
+        return await catalog_api.admin_asset_view(
+            state,
+            index,
+            asset.asset_id,
+        )
 
 
 @router.delete("/api/admin/catalog/assets/{asset_id}", status_code=204)
 async def admin_catalog_asset_delete(asset_id: str):
     from ...main import StateSession
-    from ...services.catalog_metadata import append_catalog_revision
 
-    service = _catalog_service()
     async with StateSession() as state:
         try:
-            asset = await service.get_catalog_asset(state, asset_id)
-        except service.CatalogError as exc:
+            await catalog_api.delete_catalog_asset(
+                state,
+                asset_id,
+                actor="admin",
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        before = {"release_id": asset.release_id, "slug": asset.slug, "display_name": asset.display_name, "status": asset.status}
-        await state.delete(asset)
-        await append_catalog_revision(
-            state, target_type="asset", target_id=asset_id, action="delete", actor="admin", before=before
-        )
         await state.commit()
 
 
 # ---- C2 Location CRUD ----
 
-async def _location_view(state, index, location: CatalogLocation, content_type: str) -> dict:
-    service = _catalog_service()
-    roots = await service.enabled_root_ids(state)
-    resource = await index.get(Resource, location.resource_id)
-    available = bool(
-        location.status == "active"
-        and resource is not None
-        and resource.status == "active"
-        and resource.root_mapping_id is not None
-        and resource.root_mapping_id in roots
-        and resource.content_type == content_type
-    )
-    return {
-        "location_id": location.location_id,
-        "asset_id": location.asset_id,
-        "resource_id": location.resource_id,
-        "root_mapping_id": location.root_mapping_id,
-        "label": location.label,
-        "is_primary": location.is_primary,
-        "status": location.status,
-        "availability": "available" if available else "unavailable",
-        "download_url": f"/d/{location.resource_id}" if available else "",
-        "resource": (
-            {
-                "id": resource.id,
-                "name": resource.name,
-                "extension": resource.extension,
-                "size": resource.size or 0,
-                "content_type": resource.content_type,
-            }
-            if available and resource is not None
-            else None
-        ),
-        "created_at": location.created_at,
-        "updated_at": location.updated_at,
-    }
-
-
 @router.get("/api/admin/catalog/assets/{asset_id}/locations")
 async def admin_catalog_locations_list(asset_id: str):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            asset = await service.get_catalog_asset(state, asset_id)
-            locations = await service.list_catalog_locations(state, asset_id)
-        except service.CatalogError as exc:
+            items = await catalog_api.admin_location_views(
+                state,
+                index,
+                asset_id,
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        content_type = await _asset_content_type(state, asset)
-        return {"items": [await _location_view(state, index, loc, content_type) for loc in locations]}
+        return {"items": items}
 
 
 @router.post("/api/admin/catalog/assets/{asset_id}/locations", status_code=201)
@@ -618,9 +569,12 @@ async def admin_catalog_location_attach(asset_id: str, payload: CatalogLocationA
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        asset = await service.get_catalog_asset(state, asset_id)
-        content_type = await _asset_content_type(state, asset)
-        return await _location_view(state, index, result.location, content_type)
+        return await catalog_api.admin_location_view_for_asset(
+            state,
+            index,
+            asset_id=asset_id,
+            location=result.location,
+        )
 
 
 @router.patch("/api/admin/catalog/locations/{location_id}")
@@ -635,9 +589,12 @@ async def admin_catalog_location_update(location_id: str, payload: CatalogLocati
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        asset = await service.get_catalog_asset(state, location.asset_id)
-        content_type = await _asset_content_type(state, asset)
-        return await _location_view(state, index, location, content_type)
+        return await catalog_api.admin_location_view_for_asset(
+            state,
+            index,
+            asset_id=location.asset_id,
+            location=location,
+        )
 
 
 @router.delete("/api/admin/catalog/locations/{location_id}", status_code=204)
