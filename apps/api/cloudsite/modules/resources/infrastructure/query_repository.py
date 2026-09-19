@@ -27,6 +27,10 @@ from ..domain.views import (
     ResourcePreviewView,
     ResourceReferenceView,
     ResourceSummaryView,
+    SearchDocumentView,
+    SearchFolderView,
+    SearchObjectBatchView,
+    SearchResourceView,
 )
 from .models import Folder, Resource
 
@@ -110,6 +114,176 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
                 break
             current = await self._session.get(Folder, current.parent_id)
         return tuple(reversed(items))
+
+    async def _breadcrumb_map(
+        self,
+        folder_ids: list[str],
+    ) -> dict[str, tuple[ParentSummaryView, ...]]:
+        cache: dict[str, Folder] = {}
+        result: dict[str, tuple[ParentSummaryView, ...]] = {}
+        for start_id in folder_ids:
+            if not start_id or start_id in result:
+                continue
+            chain: list[ParentSummaryView] = []
+            current_id: str | None = start_id
+            visited: set[str] = set()
+            while current_id and current_id not in visited:
+                visited.add(current_id)
+                folder = cache.get(current_id)
+                if folder is None:
+                    folder = await self._session.get(Folder, current_id)
+                    if folder is None:
+                        break
+                    cache[current_id] = folder
+                chain.append(
+                    ParentSummaryView(id=folder.id, name=folder.name)
+                )
+                current_id = folder.parent_id
+            result[start_id] = tuple(reversed(chain))
+        return result
+
+    async def search_documents(self) -> list[SearchDocumentView]:
+        folders = list(
+            (
+                await self._session.scalars(
+                    select(Folder)
+                    .where(Folder.status == "active")
+                    .order_by(Folder.id)
+                )
+            ).all()
+        )
+        resources = list(
+            (
+                await self._session.scalars(
+                    select(Resource)
+                    .where(Resource.status == "active")
+                    .order_by(Resource.id)
+                )
+            ).all()
+        )
+        return [
+            *[
+                SearchDocumentView(
+                    object_id=row.id,
+                    object_type="folder",
+                    name=row.name,
+                    extension="",
+                    content_type=row.content_type,
+                    breadcrumb_text=row.path,
+                )
+                for row in folders
+            ],
+            *[
+                SearchDocumentView(
+                    object_id=row.id,
+                    object_type="resource",
+                    name=row.name,
+                    extension=row.extension or "",
+                    content_type=row.content_type,
+                    breadcrumb_text=row.path,
+                )
+                for row in resources
+            ],
+        ]
+
+    async def search_objects(
+        self,
+        *,
+        resource_ids: list[str],
+        folder_ids: list[str],
+        enabled_root_ids: set[int],
+    ) -> SearchObjectBatchView:
+        if not enabled_root_ids:
+            return SearchObjectBatchView(resources=(), folders=())
+
+        resource_rows: list[Resource] = []
+        if resource_ids:
+            resource_rows = list(
+                (
+                    await self._session.scalars(
+                        select(Resource).where(
+                            Resource.id.in_(resource_ids),
+                            Resource.status == "active",
+                            Resource.root_mapping_id.in_(enabled_root_ids),
+                        )
+                    )
+                ).all()
+            )
+
+        folder_rows: list[Folder] = []
+        if folder_ids:
+            folder_rows = list(
+                (
+                    await self._session.scalars(
+                        select(Folder).where(
+                            Folder.id.in_(folder_ids),
+                            Folder.status == "active",
+                            Folder.root_mapping_id.in_(enabled_root_ids),
+                        )
+                    )
+                ).all()
+            )
+
+        parent_ids = {
+            row.parent_id
+            for row in resource_rows
+            if row.parent_id
+        }
+        parents: dict[str, Folder] = {}
+        if parent_ids:
+            parent_rows = (
+                await self._session.scalars(
+                    select(Folder).where(
+                        Folder.id.in_(parent_ids),
+                        Folder.status == "active",
+                    )
+                )
+            ).all()
+            parents = {row.id: row for row in parent_rows}
+
+        breadcrumb_map = await self._breadcrumb_map(
+            [*parent_ids, *[row.id for row in folder_rows]]
+        )
+
+        resources = tuple(
+            SearchResourceView(
+                id=row.id,
+                name=row.name,
+                parent_id=row.parent_id,
+                content_type=row.content_type,
+                extension=row.extension,
+                mime_type=row.mime_type,
+                size=row.size,
+                modified_at=row.modified_at,
+                parent=self._parent_view(
+                    parents.get(row.parent_id or "")
+                ),
+                breadcrumbs=(
+                    breadcrumb_map.get(row.parent_id, ())
+                    if row.parent_id
+                    else ()
+                ),
+            )
+            for row in resource_rows
+        )
+        folders = tuple(
+            SearchFolderView(
+                id=row.id,
+                name=row.name,
+                parent_id=row.parent_id,
+                content_type=row.content_type,
+                depth=row.depth,
+                child_folder_count=row.child_folder_count,
+                resource_count=row.resource_count,
+                modified_at=row.modified_at,
+                breadcrumbs=breadcrumb_map.get(row.id, ()),
+            )
+            for row in folder_rows
+        )
+        return SearchObjectBatchView(
+            resources=resources,
+            folders=folders,
+        )
 
     async def admin_index_counts(self) -> AdminIndexCountsView:
         folders = int(

@@ -17,11 +17,23 @@ from ..domain.views import (
     ResourcePageView,
     ResourcePreviewView,
     ResourceReferenceView,
+    SearchDocumentView,
+    SearchObjectBatchView,
 )
 
 
 @runtime_checkable
 class ResourceQueryRepository(Protocol):
+    async def search_documents(self) -> list[SearchDocumentView]: ...
+
+    async def search_objects(
+        self,
+        *,
+        resource_ids: list[str],
+        folder_ids: list[str],
+        enabled_root_ids: set[int],
+    ) -> SearchObjectBatchView: ...
+
     async def admin_index_counts(self) -> AdminIndexCountsView: ...
 
     async def admin_index_folders(self) -> list[AdminIndexFolderView]: ...
@@ -138,6 +150,22 @@ class ResourceQueryRepository(Protocol):
 class ResourceQueries:
     def __init__(self, repository: ResourceQueryRepository) -> None:
         self._repository = repository
+
+    async def search_documents(self) -> list[SearchDocumentView]:
+        return await self._repository.search_documents()
+
+    async def search_objects(
+        self,
+        *,
+        resource_ids: list[str],
+        folder_ids: list[str],
+        enabled_root_ids: set[int],
+    ) -> SearchObjectBatchView:
+        return await self._repository.search_objects(
+            resource_ids=list(dict.fromkeys(resource_ids)),
+            folder_ids=list(dict.fromkeys(folder_ids)),
+            enabled_root_ids=set(enabled_root_ids),
+        )
 
     async def admin_index_counts(self) -> AdminIndexCountsView:
         return await self._repository.admin_index_counts()

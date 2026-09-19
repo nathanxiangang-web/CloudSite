@@ -1,4 +1,3 @@
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -8,36 +7,18 @@ from sqlalchemy import bindparam, select, text
 from .database import IndexSession, StateSession
 from .models import Folder, Resource, SystemSetting
 
+from .modules.search.domain.query import (
+    SEARCH_OBJECT_TYPES,
+    SEARCH_SORTS,
+    SEARCH_TYPES,
+    build_fts_query,
+    classify_match,
+    escape_like,
+    normalize_search_query,
+)
 
-SEARCH_TYPES = {"software", "image", "video", "document", "file"}
-SEARCH_OBJECT_TYPES = {"all", "resource", "folder"}
-SEARCH_SORTS = {"relevance", "modified_at", "name", "size"}
+
 SEARCH_INDEX_DIRTY_KEY = "search_index_dirty"
-
-
-def normalize_search_query(value: str) -> str:
-    return " ".join(value.strip().split())
-
-
-def escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def build_fts_query(value: str) -> str:
-    tokens = re.findall(r"[0-9A-Za-z\u0080-\uffff]+", value)[:8]
-    return " AND ".join(f'"{token.replace(chr(34), chr(34) * 2)}"*' for token in tokens)
-
-
-def classify_match(name: str, query: str) -> str:
-    lowered_name = name.casefold()
-    lowered_query = query.casefold()
-    if lowered_name == lowered_query:
-        return "exact"
-    if lowered_name.startswith(lowered_query):
-        return "prefix"
-    if lowered_query in lowered_name:
-        return "name"
-    return "metadata"
 
 
 async def rebuild_search_index(session, folders: Iterable[Any], resources: Iterable[Any]) -> int:
