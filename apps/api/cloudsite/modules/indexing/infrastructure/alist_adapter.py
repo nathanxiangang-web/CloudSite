@@ -32,7 +32,7 @@ class AListProviderAdapter:
 
     def __init__(self, client: AListClient, roots: list[ContentRootView]) -> None:
         self._client = client
-        self._roots = {root.content_type: root for root in roots}
+        self._roots = {str(root.id): root for root in roots}
 
     @property
     def provider_id(self) -> str:
