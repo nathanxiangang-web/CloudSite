@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, SkipForward } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
 
@@ -56,8 +56,6 @@ export default function SetupWizardPage() {
 
   const [connectForm, setConnectForm] = useState({ base_url: "", username: "", password: "", remember_credentials: true, token: "" });
   const [scopeEnabled, setScopeEnabled] = useState<Record<number, boolean>>({});
-  const [preset, setPreset] = useState<string>("software");
-  const [brandForm, setBrandForm] = useState({ site_name: "", home_title: "", description: "", hero_subtitle: "", accent_color: "#2563eb", card_radius: 12 });
   const [error, setError] = useState("");
 
   const stepMutation = useMutation({
@@ -93,36 +91,6 @@ export default function SetupWizardPage() {
     },
   });
 
-  const hydratedStep = useRef<string | null>(null);
-  useEffect(() => {
-    const step = wizard.data?.current_step;
-    const draft = wizard.data?.draft;
-    if (!step || !draft || hydratedStep.current === step) return;
-    if (step === "preset") {
-      setPreset(draft.preset || "software");
-    }
-    if (step === "brand") {
-      setBrandForm({
-        site_name: draft.site_name,
-        home_title: draft.home_title,
-        description: draft.description,
-        hero_subtitle: draft.hero_subtitle,
-        accent_color: draft.accent_color || "#2563eb",
-        card_radius: draft.card_radius ?? 12,
-      });
-    }
-    hydratedStep.current = step;
-  }, [
-    wizard.data?.current_step,
-    wizard.data?.draft?.preset,
-    wizard.data?.draft?.site_name,
-    wizard.data?.draft?.home_title,
-    wizard.data?.draft?.description,
-    wizard.data?.draft?.hero_subtitle,
-    wizard.data?.draft?.accent_color,
-    wizard.data?.draft?.card_radius,
-  ]);
-
   if (wizard.isLoading) {
     return <main className="login-page"><section className="login-card"><Brand admin /><p>正在加载向导…</p></section></main>;
   }
@@ -157,14 +125,23 @@ export default function SetupWizardPage() {
     submitStep("scope", { root_mappings: mappings });
   }
 
-  function handlePresetSubmit(event: FormEvent) {
+  function handlePresetSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    submitStep("preset", { preset });
+    const form = new FormData(event.currentTarget);
+    submitStep("preset", { preset: String(form.get("preset") || "software") });
   }
 
-  function handleBrandSubmit(event: FormEvent) {
+  function handleBrandSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    submitStep("brand", brandForm);
+    const form = new FormData(event.currentTarget);
+    submitStep("brand", {
+      site_name: String(form.get("site_name") || ""),
+      home_title: String(form.get("home_title") || ""),
+      description: String(form.get("description") || ""),
+      hero_subtitle: String(form.get("hero_subtitle") || ""),
+      accent_color: String(form.get("accent_color") || "#2563eb"),
+      card_radius: Number(form.get("card_radius") || 12),
+    });
   }
 
   function goBack() {
@@ -227,7 +204,7 @@ export default function SetupWizardPage() {
           <h2>选择站点预设</h2>
           <p className="panel-intro">选择预设可快速配置首页布局与导航，无需改源码。</p>
           <label>预设
-            <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+            <select name="preset" defaultValue={state.draft?.preset || "software"}>
               <option value="software">软件站</option>
               <option value="tutorial">教程站</option>
               <option value="custom">自定义</option>
@@ -244,12 +221,12 @@ export default function SetupWizardPage() {
         <form className="form-stack" onSubmit={handleBrandSubmit}>
           <h2>品牌设置</h2>
           <p className="panel-intro">设置站点名称、标题与主题色。</p>
-          <label>站点名称<input value={brandForm.site_name} onChange={(e) => setBrandForm({ ...brandForm, site_name: e.target.value })} placeholder="CloudSite" /></label>
-          <label>首页标题<input value={brandForm.home_title} onChange={(e) => setBrandForm({ ...brandForm, home_title: e.target.value })} /></label>
-          <label>站点描述<input value={brandForm.description} onChange={(e) => setBrandForm({ ...brandForm, description: e.target.value })} /></label>
-          <label>副标题<input value={brandForm.hero_subtitle} onChange={(e) => setBrandForm({ ...brandForm, hero_subtitle: e.target.value })} /></label>
-          <label>主题色<input type="color" value={brandForm.accent_color} onChange={(e) => setBrandForm({ ...brandForm, accent_color: e.target.value })} /></label>
-          <label>卡片圆角<input type="number" min={0} max={32} value={brandForm.card_radius} onChange={(e) => setBrandForm({ ...brandForm, card_radius: Number(e.target.value) })} /></label>
+          <label>站点名称<input name="site_name" defaultValue={state.draft?.site_name || ""} placeholder="CloudSite" /></label>
+          <label>首页标题<input name="home_title" defaultValue={state.draft?.home_title || ""} /></label>
+          <label>站点描述<input name="description" defaultValue={state.draft?.description || ""} /></label>
+          <label>副标题<input name="hero_subtitle" defaultValue={state.draft?.hero_subtitle || ""} /></label>
+          <label>主题色<input name="accent_color" type="color" defaultValue={state.draft?.accent_color || "#2563eb"} /></label>
+          <label>卡片圆角<input name="card_radius" type="number" min={0} max={32} defaultValue={state.draft?.card_radius ?? 12} /></label>
           <div className="form-actions">
             <button type="button" disabled={backMutation.isPending || stepMutation.isPending} onClick={goBack}><ArrowLeft />上一步</button>
             <button className="primary" disabled={stepMutation.isPending}><ArrowRight />下一步</button>
