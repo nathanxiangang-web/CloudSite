@@ -486,6 +486,7 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
                 modified_at=row.modified_at,
                 status=row.status,
                 root_mapping_id=row.root_mapping_id,
+                thumbnail=row.thumbnail,
             )
             for row in rows
         }
