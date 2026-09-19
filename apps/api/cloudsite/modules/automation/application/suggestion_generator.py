@@ -18,15 +18,15 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import (
-    CatalogAsset,
-    CatalogEntry,
-    CatalogLocation,
-    CatalogRelease,
-    CatalogSuggestion,
-    Resource,
+from ...catalog.contracts.public import catalog_suggestion_context
+from ...resources.contracts.public import SuggestionResourceView, resource_queries
+from ..domain.resource_name_parser import (
+    PARSER_VERSION,
+    UNKNOWN,
+    ParseResult,
+    parse_resource_name,
 )
-from ..domain.resource_name_parser import UNKNOWN, PARSER_VERSION, ParseResult, parse_resource_name
+from ..infrastructure.models import CatalogSuggestion
 
 SUGGESTION_ID_PREFIX = "cs_"
 _ID_HEX_LEN = 32
@@ -117,78 +117,39 @@ class GenerationResult:
     skipped: int = 0
 
 
-async def _existing_location_for_resource(
-    state: AsyncSession, resource_id: str
-) -> tuple[CatalogLocation | None, CatalogAsset | None, CatalogRelease | None, CatalogEntry | None]:
-    """查询资源是否已绑定到 catalog location，返回四级关联或 None。"""
-    location = await state.scalar(
-        select(CatalogLocation).where(CatalogLocation.resource_id == resource_id)
-    )
-    if location is None:
-        return None, None, None, None
-    asset = await state.get(CatalogAsset, location.asset_id)
-    if asset is None:
-        return location, None, None, None
-    release = await state.get(CatalogRelease, asset.release_id)
-    if release is None:
-        return location, asset, None, None
-    entry = await state.get(CatalogEntry, release.entry_id)
-    return location, asset, release, entry
-
-
-async def _duplicate_candidate(
-    state: AsyncSession, resource: Resource, exclude_resource_id: str
-) -> tuple[CatalogEntry | None, CatalogAsset | None]:
-    """查找同名资源是否已绑定到其他 catalog asset（候选重复）。"""
-    same_name_locations = list(
-        (
-            await state.scalars(
-                select(CatalogLocation).where(
-                    CatalogLocation.resource_id != exclude_resource_id,
-                )
-            )
-        ).all()
-    )
-    for loc in same_name_locations:
-        asset = await state.get(CatalogAsset, loc.asset_id)
-        if asset is None:
-            continue
-        release = await state.get(CatalogRelease, asset.release_id)
-        if release is None:
-            continue
-        entry = await state.get(CatalogEntry, release.entry_id)
-        if entry is None:
-            continue
-        if asset.display_name == resource.name:
-            return entry, asset
-    return None, None
-
-
 async def _classify_suggestion(
     state: AsyncSession,
-    resource: Resource,
+    resource: SuggestionResourceView,
     parse_result: ParseResult,
 ) -> tuple[str, str | None, str | None, str | None, dict[str, Any], float]:
-    """判断建议类型并构造建议字段。
+    """Classify one resource using persistence-neutral Catalog context."""
 
-    返回 (kind, target_entry_id, target_release_id, target_asset_id,
-    suggested_fields, confidence)。
-    """
-    location, asset, release, entry = await _existing_location_for_resource(
-        state, resource.id
+    context = await catalog_suggestion_context(
+        state,
+        resource_id=resource.id,
+        resource_name=resource.name,
     )
 
-    if location is None and entry is None:
-        dup_entry, dup_asset = await _duplicate_candidate(state, resource, resource.id)
-        if dup_entry is not None and dup_asset is not None:
+    if not context.has_location and context.entry_id is None:
+        if (
+            context.duplicate_entry_id is not None
+            and context.duplicate_asset_id is not None
+        ):
             suggested = {
-                "existing_entry_id": dup_entry.entry_id,
-                "existing_entry_slug": dup_entry.slug,
-                "existing_asset_id": dup_asset.asset_id,
-                "existing_asset_display_name": dup_asset.display_name,
+                "existing_entry_id": context.duplicate_entry_id,
+                "existing_entry_slug": context.duplicate_entry_slug,
+                "existing_asset_id": context.duplicate_asset_id,
+                "existing_asset_display_name": context.duplicate_asset_display_name,
                 "reason": "同名资源已存在于其他条目",
             }
-            return _KIND_CANDIDATE_DUPLICATE, dup_entry.entry_id, None, dup_asset.asset_id, suggested, 0.5
+            return (
+                _KIND_CANDIDATE_DUPLICATE,
+                context.duplicate_entry_id,
+                None,
+                context.duplicate_asset_id,
+                suggested,
+                0.5,
+            )
 
         suggested = {
             "content_type": resource.content_type,
@@ -204,47 +165,122 @@ async def _classify_suggestion(
             "language": parse_result.language,
             "version": parse_result.version,
         }
-        return _KIND_NEW_ENTRY, None, None, None, suggested, _confidence_for(parse_result)
+        return (
+            _KIND_NEW_ENTRY,
+            None,
+            None,
+            None,
+            suggested,
+            _confidence_for(parse_result),
+        )
 
-    if entry is not None and release is not None and asset is not None:
+    if (
+        context.entry_id is not None
+        and context.release_id is not None
+        and context.asset_id is not None
+    ):
         conflicts: list[dict[str, Any]] = []
-        if parse_result.platform != UNKNOWN and asset.platform and parse_result.platform != asset.platform:
-            conflicts.append({"field": "platform", "parsed": parse_result.platform, "existing": asset.platform})
-        if parse_result.architecture != UNKNOWN and asset.architecture != "unknown" and parse_result.architecture != asset.architecture:
-            conflicts.append({"field": "architecture", "parsed": parse_result.architecture, "existing": asset.architecture})
-        if parse_result.package_form != UNKNOWN and asset.package_type != "unknown" and parse_result.package_form != asset.package_type:
-            conflicts.append({"field": "package_type", "parsed": parse_result.package_form, "existing": asset.package_type})
+        if (
+            parse_result.platform != UNKNOWN
+            and context.asset_platform
+            and parse_result.platform != context.asset_platform
+        ):
+            conflicts.append(
+                {
+                    "field": "platform",
+                    "parsed": parse_result.platform,
+                    "existing": context.asset_platform,
+                }
+            )
+        if (
+            parse_result.architecture != UNKNOWN
+            and context.asset_architecture != "unknown"
+            and parse_result.architecture != context.asset_architecture
+        ):
+            conflicts.append(
+                {
+                    "field": "architecture",
+                    "parsed": parse_result.architecture,
+                    "existing": context.asset_architecture,
+                }
+            )
+        if (
+            parse_result.package_form != UNKNOWN
+            and context.asset_package_type != "unknown"
+            and parse_result.package_form != context.asset_package_type
+        ):
+            conflicts.append(
+                {
+                    "field": "package_type",
+                    "parsed": parse_result.package_form,
+                    "existing": context.asset_package_type,
+                }
+            )
         if conflicts:
-            suggested = {"conflicts": conflicts, "entry_id": entry.entry_id, "asset_id": asset.asset_id}
-            return _KIND_CONFLICT, entry.entry_id, release.release_id, asset.asset_id, suggested, 0.4
-
-        if parse_result.version != UNKNOWN and release.slug == "unversioned":
             suggested = {
-                "entry_id": entry.entry_id,
+                "conflicts": conflicts,
+                "entry_id": context.entry_id,
+                "asset_id": context.asset_id,
+            }
+            return (
+                _KIND_CONFLICT,
+                context.entry_id,
+                context.release_id,
+                context.asset_id,
+                suggested,
+                0.4,
+            )
+
+        if parse_result.version != UNKNOWN and context.release_slug == "unversioned":
+            suggested = {
+                "entry_id": context.entry_id,
                 "slug": _slugify(parse_result.version),
                 "title": parse_result.version,
                 "channel": "stable",
                 "version": parse_result.version,
             }
-            return _KIND_NEW_RELEASE, entry.entry_id, None, None, suggested, _confidence_for(parse_result)
+            return (
+                _KIND_NEW_RELEASE,
+                context.entry_id,
+                None,
+                None,
+                suggested,
+                _confidence_for(parse_result),
+            )
 
-        if parse_result.platform != UNKNOWN and (not asset.platform or asset.platform == ""):
+        if parse_result.platform != UNKNOWN and not context.asset_platform:
             suggested = {
-                "release_id": release.release_id,
-                "slug": _slugify(f"{parse_result.platform}-{parse_result.architecture}"),
+                "release_id": context.release_id,
+                "slug": _slugify(
+                    f"{parse_result.platform}-{parse_result.architecture}"
+                ),
                 "display_name": resource.name,
                 "platform": parse_result.platform,
                 "architecture": parse_result.architecture,
                 "package_type": parse_result.package_form,
                 "language": parse_result.language,
             }
-            return _KIND_ASSET, entry.entry_id, release.release_id, None, suggested, _confidence_for(parse_result)
+            return (
+                _KIND_ASSET,
+                context.entry_id,
+                context.release_id,
+                None,
+                suggested,
+                _confidence_for(parse_result),
+            )
 
-    return _KIND_NEW_ENTRY, None, None, None, {
-        "content_type": resource.content_type,
-        "slug": _slugify(resource.name),
-        "title": resource.name,
-    }, _confidence_for(parse_result)
+    return (
+        _KIND_NEW_ENTRY,
+        None,
+        None,
+        None,
+        {
+            "content_type": resource.content_type,
+            "slug": _slugify(resource.name),
+            "title": resource.name,
+        },
+        _confidence_for(parse_result),
+    )
 
 
 async def _insert_if_absent(
@@ -297,7 +333,7 @@ async def _insert_if_absent(
 async def generate_suggestions_for_resource(
     state: AsyncSession,
     index: AsyncSession,
-    resource: Resource,
+    resource: SuggestionResourceView,
 ) -> GenerationResult:
     """为单个 index 资源生成整理建议（影子模式，不改正式内容）。
 
@@ -360,15 +396,10 @@ async def generate_suggestions_batch(
     generate_suggestions_for_resource。limit 控制单批扫描上限以避免长事务。
     """
     result = GenerationResult()
-    stmt = (
-        select(Resource)
-        .where(Resource.status == "active")
-        .order_by(Resource.indexed_at)
-        .limit(max(int(limit), 0))
+    resources = await resource_queries(index).list_suggestion_resources(
+        content_type=content_type,
+        limit=limit,
     )
-    if content_type is not None:
-        stmt = stmt.where(Resource.content_type == content_type)
-    resources = list((await index.scalars(stmt)).all())
     for resource in resources:
         single = await generate_suggestions_for_resource(state, index, resource)
         result.created.extend(single.created)

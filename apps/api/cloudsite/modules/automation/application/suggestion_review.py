@@ -17,9 +17,15 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import CatalogRevision, CatalogSuggestion, utcnow
-from ....services import catalog as catalog_service
-from ....services.catalog_metadata import append_catalog_revision
+from ...catalog.contracts.public import (
+    CatalogSuggestionRevisionView,
+    apply_suggestion_asset as apply_catalog_suggestion_asset,
+    apply_suggestion_new_entry as apply_catalog_suggestion_new_entry,
+    apply_suggestion_new_release as apply_catalog_suggestion_new_release,
+    list_suggestion_catalog_revisions,
+    revert_suggestion_catalog_target,
+)
+from ..infrastructure.models import CatalogSuggestion, utcnow
 
 _KIND_NEW_ENTRY = "new_entry"
 _KIND_NEW_RELEASE = "new_release"
@@ -107,122 +113,87 @@ async def list_suggestions(
     return rows, total
 
 
-async def _latest_revision_id(
-    state: AsyncSession, target_type: str, target_id: str
-) -> str | None:
-    row = await state.scalar(
-        select(CatalogRevision)
-        .where(
-            CatalogRevision.target_type == target_type,
-            CatalogRevision.target_id == target_id,
-        )
-        .order_by(CatalogRevision.created_at.desc())
-    )
-    return row.revision_id if row is not None else None
-
-
 async def _apply_new_entry(
-    state: AsyncSession, index: AsyncSession, suggestion: CatalogSuggestion, actor: str
+    state: AsyncSession,
+    index: AsyncSession,
+    suggestion: CatalogSuggestion,
+    actor: str,
 ) -> ApplyResult:
     fields = _decode_json(suggestion.suggested_fields_json)
-    entry_result = await catalog_service.create_catalog_entry(
+    mutation = await apply_catalog_suggestion_new_entry(
         state,
-        content_type=fields.get("content_type", "file"),
-        slug=fields.get("slug", "untitled"),
-        title=fields.get("title", suggestion.source_file_id),
+        index,
+        source_file_id=suggestion.source_file_id,
+        fields=fields,
         actor=actor,
     )
-    entry = entry_result.entry
-    release = entry_result.release
-    asset_result = await catalog_service.create_catalog_asset(
-        state,
-        release_id=release.release_id,
-        slug=fields.get("asset_slug", fields.get("slug", "asset")),
-        display_name=fields.get("asset_display_name", fields.get("title", suggestion.source_file_id)),
-        platform=fields.get("platform", ""),
-        architecture=fields.get("architecture", "unknown"),
-        package_type=fields.get("package_type", "unknown"),
-        language=fields.get("language", "unknown"),
-        actor=actor,
-    )
-    asset = asset_result.asset
-    try:
-        await catalog_service.attach_catalog_location(
-            state,
-            index,
-            asset_id=asset.asset_id,
-            resource_id=suggestion.source_file_id,
-            actor=actor,
-        )
-    except catalog_service.CatalogError:
-        pass
-    suggestion.target_entry_id = entry.entry_id
-    suggestion.target_release_id = release.release_id
-    suggestion.target_asset_id = asset.asset_id
-    suggestion.applied_revision_id = await _latest_revision_id(state, "entry", entry.entry_id)
+    suggestion.target_entry_id = mutation.entry_id
+    suggestion.target_release_id = mutation.release_id
+    suggestion.target_asset_id = mutation.asset_id
+    suggestion.applied_revision_id = mutation.revision_id
     return ApplyResult(
         suggestion_id=suggestion.suggestion_id,
         success=True,
-        entry_id=entry.entry_id,
-        release_id=release.release_id,
-        asset_id=asset.asset_id,
+        entry_id=mutation.entry_id,
+        release_id=mutation.release_id,
+        asset_id=mutation.asset_id,
     )
 
 
 async def _apply_new_release(
-    state: AsyncSession, suggestion: CatalogSuggestion, actor: str
+    state: AsyncSession,
+    suggestion: CatalogSuggestion,
+    actor: str,
 ) -> ApplyResult:
     fields = _decode_json(suggestion.suggested_fields_json)
     entry_id = suggestion.target_entry_id or fields.get("entry_id")
     if not entry_id:
         raise SuggestionStateInvalid(suggestion.suggestion_id, "缺少 target_entry_id")
-    release_result = await catalog_service.create_catalog_release(
+    mutation = await apply_catalog_suggestion_new_release(
         state,
         entry_id=entry_id,
-        slug=fields.get("slug", "unversioned"),
-        title=fields.get("title", "release"),
-        channel=fields.get("channel", "unknown"),
+        fields=fields,
         actor=actor,
     )
-    release = release_result.release
-    suggestion.target_release_id = release.release_id
-    suggestion.applied_revision_id = await _latest_revision_id(state, "release", release.release_id)
+    suggestion.target_release_id = mutation.release_id
+    suggestion.applied_revision_id = mutation.revision_id
     return ApplyResult(
         suggestion_id=suggestion.suggestion_id,
         success=True,
         entry_id=entry_id,
-        release_id=release.release_id,
+        release_id=mutation.release_id,
     )
 
 
 async def _apply_asset(
-    state: AsyncSession, suggestion: CatalogSuggestion, actor: str
+    state: AsyncSession,
+    suggestion: CatalogSuggestion,
+    actor: str,
 ) -> ApplyResult:
     fields = _decode_json(suggestion.suggested_fields_json)
     release_id = suggestion.target_release_id or fields.get("release_id")
     if not release_id:
         raise SuggestionStateInvalid(suggestion.suggestion_id, "缺少 target_release_id")
-    asset_result = await catalog_service.create_catalog_asset(
+    mutation = await apply_catalog_suggestion_asset(
         state,
         release_id=release_id,
-        slug=fields.get("slug", "asset"),
-        display_name=fields.get("display_name", suggestion.source_file_id),
-        platform=fields.get("platform", ""),
-        architecture=fields.get("architecture", "unknown"),
-        package_type=fields.get("package_type", "unknown"),
-        language=fields.get("language", "unknown"),
+        fields={
+            **fields,
+            "display_name": fields.get(
+                "display_name",
+                suggestion.source_file_id,
+            ),
+        },
         actor=actor,
     )
-    asset = asset_result.asset
-    suggestion.target_asset_id = asset.asset_id
-    suggestion.applied_revision_id = await _latest_revision_id(state, "asset", asset.asset_id)
+    suggestion.target_asset_id = mutation.asset_id
+    suggestion.applied_revision_id = mutation.revision_id
     return ApplyResult(
         suggestion_id=suggestion.suggestion_id,
         success=True,
         release_id=release_id,
-        asset_id=asset.asset_id,
+        asset_id=mutation.asset_id,
     )
-
 
 async def apply_suggestion(
     state: AsyncSession,
@@ -345,30 +316,26 @@ async def revert_suggestion(
 
     kind = suggestion.suggestion_kind
     if kind == _KIND_NEW_ENTRY and suggestion.target_entry_id:
-        await catalog_service.update_catalog_entry(
+        await revert_suggestion_catalog_target(
             state,
-            suggestion.target_entry_id,
-            expected_revision=(
-                await catalog_service.get_catalog_entry(state, suggestion.target_entry_id)
-            ).revision,
-            status="archived",
+            target_type="entry",
+            target_id=suggestion.target_entry_id,
             actor=actor,
         )
     elif kind == _KIND_NEW_RELEASE and suggestion.target_release_id:
-        await catalog_service.update_catalog_release(
+        await revert_suggestion_catalog_target(
             state,
-            suggestion.target_release_id,
-            status="archived",
+            target_type="release",
+            target_id=suggestion.target_release_id,
             actor=actor,
         )
     elif kind == _KIND_ASSET and suggestion.target_asset_id:
-        await catalog_service.update_catalog_asset(
+        await revert_suggestion_catalog_target(
             state,
-            suggestion.target_asset_id,
-            status="disabled",
+            target_type="asset",
+            target_id=suggestion.target_asset_id,
             actor=actor,
         )
-
     suggestion.status = "reviewed"
     suggestion.applied_at = None
     await state.flush()
@@ -381,29 +348,19 @@ async def list_suggestion_revisions(
     *,
     limit: int = 50,
     offset: int = 0,
-) -> tuple[list[CatalogRevision], int]:
-    """查询与建议关联的内容修订记录（撤销记录查询）。"""
+) -> tuple[list[CatalogSuggestionRevisionView], int]:
+    """Return Catalog revisions associated with one suggestion."""
     suggestion = await get_suggestion(state, suggestion_id)
-    target_ids: list[tuple[str, str]] = []
+    targets: list[tuple[str, str]] = []
     if suggestion.target_entry_id:
-        target_ids.append(("entry", suggestion.target_entry_id))
+        targets.append(("entry", suggestion.target_entry_id))
     if suggestion.target_release_id:
-        target_ids.append(("release", suggestion.target_release_id))
+        targets.append(("release", suggestion.target_release_id))
     if suggestion.target_asset_id:
-        target_ids.append(("asset", suggestion.target_asset_id))
-    if not target_ids:
-        return [], 0
-    conditions = []
-    for t_type, t_id in target_ids:
-        conditions.append(
-            (CatalogRevision.target_type == t_type) & (CatalogRevision.target_id == t_id)
-        )
-    from sqlalchemy import or_
-    stmt = select(CatalogRevision).where(or_(*conditions)).order_by(
-        CatalogRevision.created_at, CatalogRevision.revision_id
+        targets.append(("asset", suggestion.target_asset_id))
+    return await list_suggestion_catalog_revisions(
+        state,
+        targets=tuple(targets),
+        limit=limit,
+        offset=offset,
     )
-    count_stmt = select(func.count()).select_from(CatalogRevision).where(or_(*conditions))
-    stmt = stmt.limit(max(int(limit), 0)).offset(max(int(offset), 0))
-    rows = list((await state.scalars(stmt)).all())
-    total = int(await state.scalar(count_stmt) or 0)
-    return rows, total

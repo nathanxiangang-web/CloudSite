@@ -94,6 +94,21 @@ class ParserResourceView:
 
 
 @dataclass(frozen=True, slots=True)
+class SuggestionResourceView:
+    """Minimal indexed resource input consumed by Automation suggestions."""
+
+    id: str
+    name: str
+    path: str
+    content_type: str
+    extension: str
+    mime_type: str
+    size: int
+    status: str
+    indexed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
 class ResourcePreviewView:
     """Internal preview input. Storage path is never serialized to API output."""
 
@@ -188,4 +203,5 @@ __all__ = [
     "ResourcePageView",
     "ResourcePreviewView",
     "ResourceSummaryView",
+    "SuggestionResourceView",
 ]

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from ..api.queries import resource_queries
-from ..domain.views import CatalogResourceView, ParserResourceView
+from ..domain.views import CatalogResourceView, ParserResourceView, SuggestionResourceView
 from ..infrastructure.rate_limit import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
     DOWNLOAD_RATE_CLEANUP_SECONDS,
@@ -70,6 +70,7 @@ class ResourceInventoryPort(Protocol):
 __all__ = [
     "CatalogResourceView",
     "ParserResourceView",
+    "SuggestionResourceView",
     "resource_queries",
     "ResourceInventoryPort",
     "ResourceInventoryRecord",

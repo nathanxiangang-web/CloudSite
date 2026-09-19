@@ -36,7 +36,7 @@ from .modules.catalog.infrastructure.models import (
     CatalogTag,
     CatalogTagAssignment,
 )
-from .modules.automation.infrastructure.models import ParserCandidateTask
+from .modules.automation.infrastructure.models import CatalogSuggestion, ParserCandidateTask
 
 
 def utcnow() -> datetime:
@@ -387,61 +387,6 @@ class CatalogSearchProjectionState(IndexBase):
     entry_id: Mapped[str] = mapped_column(String(35), primary_key=True)
     applied_revision: Mapped[int] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-
-class CatalogSuggestion(StateBase):
-    """A2 整理建议：影子模式生成的候选草稿，与正式 catalog 内容分表。
-
-    每行记录一条由 A1 resource_name_parser 推导出的整理建议，包含来源文件
-    指纹、解析器版本、建议类型、拟关联的 entry/release/asset、受控建议字段、
-    evidence 依据与置信度。状态在 pending → reviewed → applied/rejected 间
-    流转；apply 产生的内容修订记录于 catalog_revisions，撤销产生新修订而非
-    删除底层文件。相同 (source_file_id, file_fingerprint, parser_version,
-    suggestion_kind) 幂等：重跑不重复生成草稿，且不覆盖人工已确认的结果。
-    """
-    __tablename__ = "catalog_suggestions"
-    suggestion_id: Mapped[str] = mapped_column(String(35), primary_key=True)
-    source_file_id: Mapped[str] = mapped_column(String(64), index=True)
-    file_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
-    parser_version: Mapped[str] = mapped_column(String(20))
-    suggestion_kind: Mapped[str] = mapped_column(String(30), index=True)
-    target_entry_id: Mapped[str | None] = mapped_column(String(35), nullable=True, index=True)
-    target_release_id: Mapped[str | None] = mapped_column(String(35), nullable=True, index=True)
-    target_asset_id: Mapped[str | None] = mapped_column(String(35), nullable=True, index=True)
-    suggested_fields_json: Mapped[str] = mapped_column(Text, default="{}")
-    evidence_json: Mapped[str] = mapped_column(Text, default="{}")
-    confidence: Mapped[float] = mapped_column(Float, default=0.0)
-    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
-    reviewed_by: Mapped[str] = mapped_column(String(100), default="")
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    applied_revision_id: Mapped[str | None] = mapped_column(String(35), nullable=True)
-    reject_reason: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    __table_args__ = (
-        UniqueConstraint(
-            "source_file_id",
-            "file_fingerprint",
-            "parser_version",
-            "suggestion_kind",
-            name="ux_catalog_suggestions_idempotent",
-        ),
-        Index(
-            "ix_catalog_suggestions_kind_status",
-            "suggestion_kind",
-            "status",
-        ),
-        CheckConstraint(
-            "suggestion_kind IN ('new_entry', 'new_release', 'asset', 'candidate_duplicate', 'conflict')",
-            name="ck_catalog_suggestions_kind",
-        ),
-        CheckConstraint(
-            "status IN ('pending', 'reviewed', 'applied', 'rejected')",
-            name="ck_catalog_suggestions_status",
-        ),
-    )
 
 
 
