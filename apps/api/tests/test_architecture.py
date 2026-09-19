@@ -276,6 +276,41 @@ class TestPreviewProviderBoundary:
             assert "modules.providers.contracts" in source
 
 
+class TestDeliveryPackageInitialization:
+    """Delivery package import must not eagerly load its public contract."""
+
+    def test_delivery_package_init_is_side_effect_free(self):
+        init_file = CLOUDSITE / "modules" / "delivery" / "__init__.py"
+        source = init_file.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        assert "contracts.public" not in source
+        imports = [
+            node
+            for node in tree.body
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        ]
+        assert imports == []
+
+
+class TestDeliveryOrmBoundary:
+    """Delivery application code may not depend on shared ORM."""
+
+    def test_download_event_uses_delivery_owned_model(self):
+        event_file = (
+            CLOUDSITE
+            / "modules"
+            / "delivery"
+            / "application"
+            / "download_event.py"
+        )
+        source = event_file.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "from ....models" not in source
+        assert "delivery.infrastructure.models" in source
+
+
 class TestDownloadRuntimeBoundary:
     """Download HTTP/provider boundaries must remain module-owned."""
 
