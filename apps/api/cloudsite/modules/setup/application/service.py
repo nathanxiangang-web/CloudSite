@@ -42,11 +42,24 @@ WIZARD_STEPS: tuple[str, ...] = (
     "connect",
     "scope",
     "preset",
+    "brand",
+    "publish",
+)
+_LEGACY_WIZARD_STEPS: tuple[str, ...] = ("samples", "preview")
+_ACCEPTED_WIZARD_STEPS = WIZARD_STEPS + _LEGACY_WIZARD_STEPS
+_COMPLETED_STEP_ORDER: tuple[str, ...] = (
+    "connect",
+    "scope",
+    "preset",
     "samples",
     "brand",
     "preview",
     "publish",
 )
+_LEGACY_NEXT_STEP = {
+    "samples": "brand",
+    "preview": "publish",
+}
 _STEP_DONE_FIELD = {
     "connect": "connect_done",
     "scope": "scope_done",
@@ -119,6 +132,35 @@ def _advance_step(step: str) -> str:
     ]
 
 
+def _mark_completed(row: SetupWizardState, step: str) -> None:
+    setattr(row, _STEP_DONE_FIELD[step], True)
+    try:
+        completed = set(json.loads(row.completed_steps_json or "[]"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        completed = set()
+    completed.add(step)
+    row.completed_steps_json = json.dumps(
+        sorted(
+            completed,
+            key=lambda item: (
+                _COMPLETED_STEP_ORDER.index(item)
+                if item in _COMPLETED_STEP_ORDER
+                else len(_COMPLETED_STEP_ORDER)
+            ),
+        ),
+        ensure_ascii=False,
+    )
+
+
+def _normalize_legacy_progress(row: SetupWizardState) -> bool:
+    next_step = _LEGACY_NEXT_STEP.get(row.current_step)
+    if next_step is None:
+        return False
+    _mark_completed(row, row.current_step)
+    row.current_step = next_step
+    return True
+
+
 def _provider_error(exc: ProviderAdminError) -> SetupWorkflowError:
     return SetupWorkflowError(
         "ALIST_TEST_FAILED",
@@ -131,6 +173,8 @@ async def get_wizard_state(
     state: AsyncSession,
 ) -> dict[str, Any]:
     row = await _get_or_create_wizard(state)
+    _normalize_legacy_progress(row)
+    state.add(row)
     await state.commit()
     return _state_payload(row)
 
@@ -314,10 +358,6 @@ async def _process_preset(
         )
         config = result["config"]
 
-    await toggle_admin_presentation(
-        state,
-        enabled=True,
-    )
     await write_operation_log(
         state,
         module="setup",
@@ -325,18 +365,6 @@ async def _process_preset(
         message=f"向导：应用预设 {preset_id}",
     )
     return {"preset": str(config.get("preset") or preset_id)}
-
-
-async def _process_samples(
-    state: AsyncSession,
-) -> dict[str, Any]:
-    await write_operation_log(
-        state,
-        module="setup",
-        action="wizard_samples",
-        message="向导：样本整理已标记完成",
-    )
-    return {"marked": True}
 
 
 async def _process_brand(
@@ -394,32 +422,13 @@ async def _process_brand(
     return {"site_name": site["site_name"]}
 
 
-async def _process_preview(
-    state: AsyncSession,
-) -> dict[str, Any]:
-    site = await get_admin_site_settings(state)
-    presentation = await get_admin_presentation(state)
-    await write_operation_log(
-        state,
-        module="setup",
-        action="wizard_preview",
-        message="向导：预览快照已生成",
-    )
-    return {
-        "site_name": site["site_name"],
-        "home_title": site["home_title"],
-        "presentation_enabled": bool(
-            presentation["enabled"]
-        ),
-        "preset": str(
-            presentation["config"].get("preset") or "software"
-        ),
-    }
-
-
 async def _process_publish(
     state: AsyncSession,
 ) -> dict[str, Any]:
+    await toggle_admin_presentation(
+        state,
+        enabled=True,
+    )
     await save_admin_system_settings(
         state,
         values={"setup_completed": True},
@@ -441,13 +450,14 @@ async def process_wizard_step(
     provided_setup_token: str = "",
     expected_setup_token: str = "",
 ) -> dict[str, Any]:
-    if step not in WIZARD_STEPS:
+    if step not in _ACCEPTED_WIZARD_STEPS:
         raise SetupWorkflowError(
             "WIZARD_STEP_INVALID",
             "向导步骤无效",
         )
 
     row = await _get_or_create_wizard(state)
+    _normalize_legacy_progress(row)
     if step == "connect":
         result = await _process_connect(
             state,
@@ -460,35 +470,21 @@ async def process_wizard_step(
         result = await _process_scope(state, data)
     elif step == "preset":
         result = await _process_preset(state, data)
-    elif step == "samples":
-        result = await _process_samples(state)
     elif step == "brand":
         result = await _process_brand(state, data)
-    elif step == "preview":
-        result = await _process_preview(state)
+    elif step in _LEGACY_WIZARD_STEPS:
+        result = {"skipped": True, "legacy_step": step}
     else:
         result = await _process_publish(state)
 
-    setattr(row, _STEP_DONE_FIELD[step], True)
-    try:
-        completed = set(
-            json.loads(row.completed_steps_json or "[]")
-        )
-    except (TypeError, ValueError, json.JSONDecodeError):
-        completed = set()
-    completed.add(step)
-    row.completed_steps_json = json.dumps(
-        sorted(
-            completed,
-            key=lambda item: WIZARD_STEPS.index(item),
-        ),
-        ensure_ascii=False,
-    )
+    _mark_completed(row, step)
     if step == "publish":
         row.wizard_completed = True
         row.publish_done = True
         row.completed_at = _now_iso()
         row.current_step = "publish"
+    elif step in _LEGACY_WIZARD_STEPS:
+        row.current_step = _LEGACY_NEXT_STEP[step]
     else:
         row.current_step = _advance_step(step)
 
