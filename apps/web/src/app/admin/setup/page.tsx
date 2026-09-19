@@ -51,7 +51,7 @@ export default function AdminSetupPage() {
     setToken("");
     setPassword("");
     if (response.ok) {
-      window.location.replace("/admin/login");
+      window.location.replace("/admin/login?next=/admin/index");
       return;
     }
     const body = await response.json().catch(() => ({}));
