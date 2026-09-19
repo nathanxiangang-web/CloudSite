@@ -22,7 +22,7 @@ from cloudsite.modules.automation.contracts.public import ParserCandidateError
 from cloudsite.modules.automation.contracts.public import (
     seed_parser_candidates_from_sync_run,
 )
-from cloudsite.services.resource_name_parser import PARSER_VERSION
+from cloudsite.modules.automation.domain.resource_name_parser import PARSER_VERSION
 from cloudsite.modules.automation.application import parser_candidate_seeding as parser_candidate_seeding_impl
 
 
