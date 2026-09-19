@@ -29,9 +29,12 @@ type WizardState = {
     accent_color: string;
     card_radius: number;
   };
+  root_mappings?: RootMapping[];
+  root_directories?: Array<{ name: string; path: string }>;
+  scope_error?: string;
 };
 
-type RootMapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
+type RootMapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean; sort_order?: number };
 
 const STEPS = ["connect", "scope", "preset", "brand", "publish"] as const;
 const STEP_LABELS: Record<string, string> = {
@@ -42,20 +45,29 @@ const STEP_LABELS: Record<string, string> = {
   publish: "发布",
 };
 
+const CONTENT_TYPES = [
+  ["software", "软件"],
+  ["image", "图库"],
+  ["video", "视频"],
+  ["document", "教程"],
+  ["file", "普通文件"],
+] as const;
+
+function inferContentType(name: string) {
+  if (/软件|应用|程序|software|app/i.test(name)) return "software";
+  if (/图片|图像|照片|摄影|image|photo|gallery/i.test(name)) return "image";
+  if (/视频|电影|剧集|video|movie|tv/i.test(name)) return "video";
+  if (/教程|文档|书籍|document|tutorial|book/i.test(name)) return "document";
+  return "file";
+}
+
 export default function SetupWizardPage() {
   const queryClient = useQueryClient();
   const wizard = useQuery<WizardState>({
     queryKey: ["setup-wizard"],
     queryFn: () => api<WizardState>("/api/admin/setup/wizard"),
   });
-  const rootMappings = useQuery<{ items: RootMapping[] }>({
-    queryKey: ["wizard-root-mappings"],
-    queryFn: () => api<{ items: RootMapping[] }>("/api/admin/root-mappings"),
-    enabled: wizard.data?.current_step === "scope",
-  });
-
-  const [connectForm, setConnectForm] = useState({ base_url: "", username: "", password: "", remember_credentials: true, token: "" });
-  const [scopeEnabled, setScopeEnabled] = useState<Record<number, boolean>>({});
+  const [connectForm, setConnectForm] = useState({ base_url: "", username: "", password: "", token: "" });
   const [error, setError] = useState("");
 
   const stepMutation = useMutation({
@@ -115,14 +127,37 @@ export default function SetupWizardPage() {
 
   function handleConnectSubmit(event: FormEvent) {
     event.preventDefault();
-    submitStep("connect", { base_url: connectForm.base_url, username: connectForm.username, password: connectForm.password, remember_credentials: connectForm.remember_credentials }, connectForm.token);
+    submitStep("connect", { base_url: connectForm.base_url, username: connectForm.username, password: connectForm.password, remember_credentials: true }, connectForm.token);
     setConnectForm((f) => ({ ...f, token: "", password: "" }));
   }
 
-  function handleScopeSubmit(event: FormEvent) {
+  function handleScopeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const mappings = (rootMappings.data?.items ?? []).map((m) => ({ id: m.id, enabled: scopeEnabled[m.id] ?? m.enabled }));
-    submitStep("scope", { root_mappings: mappings });
+    const form = new FormData(event.currentTarget);
+    const existing = (state.root_mappings ?? []).map((mapping) => ({
+      id: mapping.id,
+      enabled: form.has(`mapping:${mapping.id}`),
+      sort_order: mapping.sort_order ?? 0,
+    }));
+    const existingPaths = new Set((state.root_mappings ?? []).map((mapping) => mapping.alist_path));
+    const candidates = [
+      { name: "整个 AList 根目录", path: "/" },
+      ...(state.root_directories ?? []),
+    ].filter((candidate, index, all) =>
+      !existingPaths.has(candidate.path)
+      && all.findIndex((item) => item.path === candidate.path) === index
+    );
+    const created = candidates.flatMap((candidate, index) => {
+      if (!form.has(`candidate:${index}`)) return [];
+      return [{
+        alist_path: candidate.path,
+        display_name: candidate.name,
+        content_type: String(form.get(`candidate-type:${index}`) || inferContentType(candidate.name)),
+        enabled: true,
+        sort_order: existing.length + index,
+      }];
+    });
+    submitStep("scope", { root_mappings: [...existing, ...created] });
   }
 
   function handlePresetSubmit(event: FormEvent<HTMLFormElement>) {
@@ -173,7 +208,6 @@ export default function SetupWizardPage() {
           <label>AList 地址<input value={connectForm.base_url} onChange={(e) => setConnectForm({ ...connectForm, base_url: e.target.value })} placeholder="https://alist.example.com" required /></label>
           <label>用户名<input value={connectForm.username} onChange={(e) => setConnectForm({ ...connectForm, username: e.target.value })} required /></label>
           <label>密码<input type="password" value={connectForm.password} onChange={(e) => setConnectForm({ ...connectForm, password: e.target.value })} required /></label>
-          <label className="checkbox-label"><input type="checkbox" checked={connectForm.remember_credentials} onChange={(e) => setConnectForm({ ...connectForm, remember_credentials: e.target.checked })} /> 记住凭据</label>
           {!state.connect_done && <label>初始化令牌<input type="password" value={connectForm.token} onChange={(e) => setConnectForm({ ...connectForm, token: e.target.value })} required /></label>}
           <button className="primary" disabled={stepMutation.isPending}><ArrowRight />下一步</button>
         </form>
@@ -183,18 +217,40 @@ export default function SetupWizardPage() {
         <form className="form-stack" onSubmit={handleScopeSubmit}>
           <h2>选择启用范围</h2>
           <p className="panel-intro">选择要在站点上启用的内容根目录。</p>
-          {rootMappings.isLoading ? <p className="loading">正在读取内容根目录…</p> : rootMappings.error ? <div className="empty error-state">内容根目录加载失败：{rootMappings.error.message}<button type="button" onClick={() => rootMappings.refetch()}>重试</button></div> : <>
-            {(rootMappings.data?.items ?? []).map((m) => (
-              <label key={m.id} className="checkbox-label">
-                <input type="checkbox" checked={scopeEnabled[m.id] ?? m.enabled} onChange={(e) => setScopeEnabled({ ...scopeEnabled, [m.id]: e.target.checked })} />
-                {m.display_name} <small>{m.content_type} · {m.alist_path}</small>
+          {(state.root_mappings ?? []).length > 0 && <>
+            <strong>已配置映射</strong>
+            {(state.root_mappings ?? []).map((mapping) => (
+              <label key={mapping.id} className="checkbox-label">
+                <input name={`mapping:${mapping.id}`} type="checkbox" defaultChecked={mapping.enabled} />
+                {mapping.display_name} <small>{mapping.content_type} · {mapping.alist_path}</small>
               </label>
             ))}
-            {(rootMappings.data?.items ?? []).length === 0 && <p className="empty">暂无内容根目录映射，可跳过此步。</p>}
           </>}
+          {state.scope_error ? <div className="empty error-state">AList 目录读取失败：{state.scope_error}<button type="button" onClick={() => wizard.refetch()}>重试</button></div> : (() => {
+            const existingPaths = new Set((state.root_mappings ?? []).map((mapping) => mapping.alist_path));
+            const candidates = [
+              { name: "整个 AList 根目录", path: "/" },
+              ...(state.root_directories ?? []),
+            ].filter((candidate, index, all) =>
+              !existingPaths.has(candidate.path)
+              && all.findIndex((item) => item.path === candidate.path) === index
+            );
+            return candidates.length > 0 ? <>
+              <strong>从 AList 添加</strong>
+              {candidates.map((candidate, index) => (
+                <div key={candidate.path} className="checkbox-label">
+                  <input name={`candidate:${index}`} type="checkbox" />
+                  <span>{candidate.name} <small>{candidate.path}</small></span>
+                  <select name={`candidate-type:${index}`} defaultValue={inferContentType(candidate.name)}>
+                    {CONTENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </div>
+              ))}
+            </> : (state.root_mappings ?? []).length === 0 ? <p className="empty">AList 根目录暂无可选内容。</p> : null;
+          })()}
           <div className="form-actions">
             <button type="button" disabled={backMutation.isPending || stepMutation.isPending} onClick={goBack}><ArrowLeft />上一步</button>
-            <button className="primary" disabled={stepMutation.isPending || rootMappings.isLoading || Boolean(rootMappings.error)}><ArrowRight />下一步</button>
+            <button className="primary" disabled={stepMutation.isPending || (Boolean(state.scope_error) && !(state.root_mappings ?? []).length)}><ArrowRight />下一步</button>
           </div>
         </form>
       )}
