@@ -13,9 +13,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....admin_auth import get_setup_completed, verify_setup_token
+from ....admin_auth import verify_setup_token
 from ....platform.observability import write_operation_log
-from ....platform.settings import save_admin_system_settings
+from ....platform.settings import (
+    read_setup_completed,
+    save_admin_system_settings,
+)
 from ....site import (
     get_admin_site_settings,
     update_admin_site_settings,
@@ -132,6 +135,18 @@ async def get_wizard_state(
     return _state_payload(row)
 
 
+async def get_setup_status(
+    state: AsyncSession,
+    *,
+    setup_available: bool,
+) -> dict[str, bool]:
+    setup_completed = await read_setup_completed(state)
+    return {
+        "setup_required": not setup_completed,
+        "setup_available": setup_available,
+    }
+
+
 async def complete_initial_alist_setup(
     state: AsyncSession,
     *,
@@ -139,7 +154,31 @@ async def complete_initial_alist_setup(
     username: str,
     password: str,
     remember_credentials: bool,
+    provided_setup_token: str,
+    expected_setup_token: str,
 ) -> dict[str, Any]:
+    if await read_setup_completed(state):
+        raise SetupWorkflowError(
+            "SETUP_ALREADY_COMPLETED",
+            "站点已完成初始化",
+            status_code=409,
+        )
+    if not expected_setup_token:
+        raise SetupWorkflowError(
+            "SETUP_UNAVAILABLE",
+            "服务器未配置初始化令牌",
+            status_code=503,
+        )
+    if not verify_setup_token(
+        provided_setup_token,
+        expected_setup_token,
+    ):
+        raise SetupWorkflowError(
+            "SETUP_FORBIDDEN",
+            "初始化令牌错误",
+            status_code=403,
+        )
+
     try:
         result = await save_setup_connection(
             state,
@@ -186,7 +225,7 @@ async def _process_connect(
             "请填写 AList 地址和用户名",
         )
 
-    setup_completed = await get_setup_completed(state)
+    setup_completed = await read_setup_completed(state)
     if not setup_completed and not row.connect_done:
         if not expected_setup_token:
             raise SetupWorkflowError(
@@ -492,6 +531,7 @@ __all__ = [
     "SetupWorkflowError",
     "WIZARD_STEPS",
     "complete_initial_alist_setup",
+    "get_setup_status",
     "get_wizard_state",
     "process_wizard_step",
     "skip_wizard",
