@@ -1,5 +1,22 @@
 """Stable public contract for the Users module."""
 
+from ..application.admin_management import (
+    UserAdminError,
+    UserAdminView,
+    create_admin_user,
+    delete_admin_user,
+    get_admin_user,
+    list_admin_users,
+    rename_admin_user,
+    reset_admin_user_password,
+    set_admin_user_status,
+)
+from ..domain.credentials import (
+    CredentialPolicyError,
+    USERNAME_PATTERN,
+    validate_password as validate_user_password,
+    validate_username as validate_user_username,
+)
 from ..application.authentication import (
     AuthenticationResult,
     UserAuthenticationError,
@@ -46,6 +63,19 @@ from ..domain.roles import (
 )
 
 __all__ = [
+    "UserAdminError",
+    "UserAdminView",
+    "create_admin_user",
+    "delete_admin_user",
+    "get_admin_user",
+    "list_admin_users",
+    "rename_admin_user",
+    "reset_admin_user_password",
+    "set_admin_user_status",
+    "CredentialPolicyError",
+    "USERNAME_PATTERN",
+    "validate_user_password",
+    "validate_user_username",
     "AuthenticationResult",
     "UserAuthenticationError",
     "change_user_password",
