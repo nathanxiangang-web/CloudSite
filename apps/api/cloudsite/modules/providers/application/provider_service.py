@@ -48,6 +48,17 @@ async def connection_admin_username(
     return connection.username
 
 
+async def provider_connected(
+    session: AsyncSession,
+) -> bool:
+    connection = await session.get(AListConnection, 1)
+    return bool(
+        connection
+        and connection.enabled
+        and connection.last_test_status == "success"
+    )
+
+
 async def provider_info(session: AsyncSession) -> dict:
     connection = await session.get(AListConnection, 1)
 
@@ -116,4 +127,4 @@ async def enabled_root_ids(session: AsyncSession) -> set[int]:
     )
 
 
-__all__ = ["ContentRootView", "ProviderLoginTarget", "connection_login_target", "connection_admin_username", "provider_info", "enabled_content_roots", "enabled_root_ids"]
+__all__ = ["ContentRootView", "ProviderLoginTarget", "connection_login_target", "connection_admin_username", "provider_info", "provider_connected", "enabled_content_roots", "enabled_root_ids"]
