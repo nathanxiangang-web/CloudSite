@@ -237,6 +237,10 @@ async def _update_v2_sync_status(
     elapsed_seconds: int,
     current_path: str = "",
     entries_scanned: int = 0,
+    added: int = 0,
+    changed: int = 0,
+    removed: int = 0,
+    unchanged: int = 0,
 ) -> None:
     """Persist v2 sync progress to SystemSetting for status endpoint."""
     import json
@@ -251,6 +255,10 @@ async def _update_v2_sync_status(
         "elapsed_seconds": elapsed_seconds,
         "current_path": current_path,
         "entries_scanned": entries_scanned,
+        "added": added,
+        "changed": changed,
+        "removed": removed,
+        "unchanged": unchanged,
     })
     async with state_session() as session:
         await session.execute(
