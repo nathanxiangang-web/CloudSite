@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, SkipForward } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
 
@@ -20,6 +20,15 @@ type WizardState = {
   wizard_completed: boolean;
   started_at: string;
   completed_at: string | null;
+  draft?: {
+    preset: string;
+    site_name: string;
+    home_title: string;
+    description: string;
+    hero_subtitle: string;
+    accent_color: string;
+    card_radius: number;
+  };
 };
 
 type RootMapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
@@ -64,8 +73,21 @@ export default function SetupWizardPage() {
     onError: (err: Error) => setError(err.message),
   });
 
+  const backMutation = useMutation({
+    mutationFn: () => api("/api/admin/setup/wizard/back", { method: "POST" }),
+    onSuccess: async () => {
+      setError("");
+      await queryClient.invalidateQueries({ queryKey: ["setup-wizard"] });
+    },
+  });
+
   const skipMutation = useMutation({
-    mutationFn: () => api("/api/admin/setup/wizard/skip", { method: "POST" }),
+    mutationFn: () => api("/api/admin/setup/wizard/skip", {
+      method: "POST",
+      headers: !wizard.data?.connect_done && connectForm.token
+        ? { "X-CloudSite-Setup-Token": connectForm.token }
+        : {},
+    }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["setup-wizard"] });
     },
@@ -79,6 +101,29 @@ export default function SetupWizardPage() {
   }
 
   const state = wizard.data;
+
+  useEffect(() => {
+    const draft = wizard.data?.draft;
+    if (!draft) return;
+    setPreset(draft.preset || "software");
+    setBrandForm({
+      site_name: draft.site_name,
+      home_title: draft.home_title,
+      description: draft.description,
+      hero_subtitle: draft.hero_subtitle,
+      accent_color: draft.accent_color || "#2563eb",
+      card_radius: draft.card_radius ?? 12,
+    });
+  }, [
+    wizard.data?.draft?.preset,
+    wizard.data?.draft?.site_name,
+    wizard.data?.draft?.home_title,
+    wizard.data?.draft?.description,
+    wizard.data?.draft?.hero_subtitle,
+    wizard.data?.draft?.accent_color,
+    wizard.data?.draft?.card_radius,
+  ]);
+
   if (!state) return null;
   if (state.wizard_completed) {
     return <main className="login-page"><section className="login-card"><Brand admin /><h1>建站完成</h1><p>向导已完成，现在可以登录管理后台。</p><Link href="/admin/login" className="primary">前往登录</Link></section></main>;
@@ -116,9 +161,8 @@ export default function SetupWizardPage() {
 
   function goBack() {
     if (currentIdx > 0) {
-      const prevStep = STEPS[currentIdx - 1];
       setError("");
-      stepMutation.mutate({ step: prevStep, data: {} });
+      backMutation.mutate();
     }
   }
 
@@ -135,7 +179,7 @@ export default function SetupWizardPage() {
         ))}
       </ol>
 
-      {(error || skipMutation.error) && <p className="form-error">{error || skipMutation.error?.message}</p>}
+      {(error || backMutation.error || skipMutation.error) && <p className="form-error">{error || backMutation.error?.message || skipMutation.error?.message}</p>}
 
       {currentStep === "connect" && (
         <form className="form-stack" onSubmit={handleConnectSubmit}>
@@ -164,7 +208,7 @@ export default function SetupWizardPage() {
             {(rootMappings.data?.items ?? []).length === 0 && <p className="empty">暂无内容根目录映射，可跳过此步。</p>}
           </>}
           <div className="form-actions">
-            <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
+            <button type="button" disabled={backMutation.isPending || stepMutation.isPending} onClick={goBack}><ArrowLeft />上一步</button>
             <button className="primary" disabled={stepMutation.isPending || rootMappings.isLoading || Boolean(rootMappings.error)}><ArrowRight />下一步</button>
           </div>
         </form>
@@ -182,7 +226,7 @@ export default function SetupWizardPage() {
             </select>
           </label>
           <div className="form-actions">
-            <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
+            <button type="button" disabled={backMutation.isPending || stepMutation.isPending} onClick={goBack}><ArrowLeft />上一步</button>
             <button className="primary" disabled={stepMutation.isPending}><ArrowRight />下一步</button>
           </div>
         </form>
@@ -199,7 +243,7 @@ export default function SetupWizardPage() {
           <label>主题色<input type="color" value={brandForm.accent_color} onChange={(e) => setBrandForm({ ...brandForm, accent_color: e.target.value })} /></label>
           <label>卡片圆角<input type="number" min={0} max={32} value={brandForm.card_radius} onChange={(e) => setBrandForm({ ...brandForm, card_radius: Number(e.target.value) })} /></label>
           <div className="form-actions">
-            <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
+            <button type="button" disabled={backMutation.isPending || stepMutation.isPending} onClick={goBack}><ArrowLeft />上一步</button>
             <button className="primary" disabled={stepMutation.isPending}><ArrowRight />下一步</button>
           </div>
         </form>
@@ -210,14 +254,14 @@ export default function SetupWizardPage() {
           <h2>发布站点</h2>
           <p className="panel-intro">确认配置并正式启用站点呈现。完成后可登录管理后台继续调整。</p>
           <div className="form-actions">
-            <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
+            <button type="button" disabled={backMutation.isPending || stepMutation.isPending} onClick={goBack}><ArrowLeft />上一步</button>
             <button className="primary" disabled={stepMutation.isPending}><Check />完成建站</button>
           </div>
         </form>
       )}
 
       <div className="form-actions" style={{ marginTop: 16 }}>
-        <button type="button" className="wizard-skip" disabled={skipMutation.isPending} onClick={() => skipMutation.mutate()}>
+        <button type="button" className="wizard-skip" disabled={skipMutation.isPending || (!state.connect_done && !connectForm.token)} onClick={() => skipMutation.mutate()}>
           <SkipForward size={15} />跳过向导
         </button>
         <Link href="/admin/setup">传统初始化</Link>
