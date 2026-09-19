@@ -156,6 +156,7 @@ class ResourceReferenceView:
     modified_at: datetime | None
     status: str
     root_mapping_id: int | None
+    thumbnail: str = ""
 
 
 @dataclass(frozen=True, slots=True)
