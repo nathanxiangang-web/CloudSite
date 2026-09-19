@@ -45,9 +45,15 @@ and to 31 when role policy and User role query/update workflows moved behind the
 and to 29 when admin index Folder/Resource projections moved behind Resources and legacy sync/progress reads moved behind Indexing,
 and to 27 when download diagnostics moved behind Delivery with Resources diagnostic DTOs and Providers runtime access, to 23 when public/admin Search query and rebuild moved behind Search and Resources contracts, and to 19 when public/user/admin Shares persistence and lifecycle moved behind the Shares contract, and to 17 when admin Sync progress, root validation, and automatic-sync settings moved behind Indexing and Providers contracts, and to 14 when admin Site persistence and readiness Health probes moved behind site/platform/Providers boundaries, and to 12 when admin System settings, inventory counts, provider info, and operation-log counts moved behind platform and module contracts, and to 10 when admin Overview resource, delivery, provider, sync, and audit reads moved behind their owning contracts, and to 8 when Presentation became a first-class module owning its ORM, revision lifecycle, presets, and admin contract.
 
-The latest ratchet moved 8 -> 6 by removing lazy ORM/SQLAlchemy reads from the admin Quality router.\n\nThe latest ratchet moved 6 -> 4 by removing direct ORM/SQLAlchemy access from the admin Catalog router.\n\nThe latest ratchet moved 4 -> 2 when Setup became a workflow module that owns wizard progress, routes Provider/Presentation writes through owner boundaries, and removes ORM imports from the router.
+The latest ratchet moved 8 -> 6 by removing lazy ORM/SQLAlchemy reads from the admin Quality router.
 
-The final router ratchet moved 2 -> 0 when Home became a pure composition surface over Site, Providers, Resources, Collections, Catalog, and Presentation read contracts. No tracked router ORM or business-module legacy import debt remains.\n\nThe machine-readable list lives in
+The latest ratchet moved 6 -> 4 by removing direct ORM/SQLAlchemy access from the admin Catalog router.
+
+The latest ratchet moved 4 -> 2 when Setup became a workflow module that owns wizard progress, routes Provider/Presentation writes through owner boundaries, and removes ORM imports from the router.
+
+The final router ratchet moved 2 -> 0 when Home became a pure composition surface over Site, Providers, Resources, Collections, Catalog, and Presentation read contracts. No tracked router ORM or business-module legacy import debt remains.
+
+The machine-readable list lives in
 `docs/development/architecture-debt-baseline.json`.
 
 ## Stable debt IDs
