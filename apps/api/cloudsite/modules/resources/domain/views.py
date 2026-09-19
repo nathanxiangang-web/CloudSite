@@ -73,9 +73,12 @@ class FolderSummaryView:
 
 @dataclass(frozen=True, slots=True)
 class CatalogResourceView:
-    """Minimal resource state exposed to Catalog validation."""
+    """Persistence-neutral resource state exposed to Catalog."""
 
     id: str
+    name: str
+    extension: str
+    size: int
     status: str
     root_mapping_id: int | None
     content_type: str

@@ -5,6 +5,11 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from ..api.queries import resource_queries
+from ..domain.errors import (
+    ResourceInactiveError,
+    ResourceNotAvailableError,
+    ResourceNotFoundError,
+)
 from ..domain.views import CatalogResourceView, ParserResourceView
 from ..infrastructure.rate_limit import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
@@ -83,4 +88,7 @@ __all__ = [
     "check_download_rate",
     "cleanup_download_rate_limits",
     "rate_limit_payload",
+    "ResourceInactiveError",
+    "ResourceNotAvailableError",
+    "ResourceNotFoundError",
 ]

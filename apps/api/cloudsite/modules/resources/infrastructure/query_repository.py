@@ -95,6 +95,9 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             return None
         return CatalogResourceView(
             id=row.id,
+            name=row.name,
+            extension=row.extension,
+            size=row.size,
             status=row.status,
             root_mapping_id=row.root_mapping_id,
             content_type=row.content_type,
