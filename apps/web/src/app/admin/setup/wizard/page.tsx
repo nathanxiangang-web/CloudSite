@@ -133,16 +133,18 @@ export default function SetupWizardPage() {
 
   function handleScopeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const scopeState = wizard.data;
+    if (!scopeState) return;
     const form = new FormData(event.currentTarget);
-    const existing = (state.root_mappings ?? []).map((mapping) => ({
+    const existing = (scopeState.root_mappings ?? []).map((mapping) => ({
       id: mapping.id,
       enabled: form.has(`mapping:${mapping.id}`),
       sort_order: mapping.sort_order ?? 0,
     }));
-    const existingPaths = new Set((state.root_mappings ?? []).map((mapping) => mapping.alist_path));
+    const existingPaths = new Set((scopeState.root_mappings ?? []).map((mapping) => mapping.alist_path));
     const candidates = [
       { name: "整个 AList 根目录", path: "/" },
-      ...(state.root_directories ?? []),
+      ...(scopeState.root_directories ?? []),
     ].filter((candidate, index, all) =>
       !existingPaths.has(candidate.path)
       && all.findIndex((item) => item.path === candidate.path) === index
