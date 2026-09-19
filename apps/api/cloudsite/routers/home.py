@@ -1,6 +1,4 @@
-"""Home, public storage info and public content-root composition."""
-
-from __future__ import annotations
+"""Home HTTP composition: cache + owner-contract aggregation only."""
 
 import time
 
@@ -20,6 +18,7 @@ from ..modules.resources.contracts.public import resource_queries
 from ..schemas import ContentRootListOutput
 from ..site import home_site_settings
 
+
 router = APIRouter()
 
 _home_cache: dict = {"data": None, "fetched_at": 0.0}
@@ -27,8 +26,10 @@ _storage_info_cache: dict = {"data": None, "fetched_at": 0.0}
 _HOME_CACHE_TTL_SECONDS = 180
 STORAGE_INFO_TTL_SECONDS = 600
 
-# Compatibility surface: cloudsite.main and older tests import this name.
+# Compatibility cache re-exported through cloudsite.main. Provider persistence
+# is no longer read here, but admin/setup code still invalidates this marker.
 _alist_connection_cache: dict = {"data": None, "fetched_at": 0.0}
+_ALIST_CONNECTION_CACHE_TTL_SECONDS = 30
 
 _CONTENT_TYPES = ("software", "image", "video", "document", "file")
 _TYPE_DISPLAY = {
@@ -53,6 +54,13 @@ def _content_root_payloads(
     resource_counts: dict[int, int],
     folder_counts: dict[int, int],
 ) -> list[dict]:
+    # Legacy response order was sort_order then id. enabled_content_roots()
+    # is Home-order aware for the manual-popular strategy, so sort only the
+    # serialized root list here.
+    ordered = sorted(
+        roots,
+        key=lambda root: (root.sort_order, root.id),
+    )
     return [
         {
             "id": root.id,
@@ -62,10 +70,7 @@ def _content_root_payloads(
             "folder_count": folder_counts.get(root.id, 0),
             "sort_order": root.sort_order,
         }
-        for root in sorted(
-            roots,
-            key=lambda item: (item.sort_order, item.id),
-        )
+        for root in ordered
     ]
 
 
@@ -76,8 +81,7 @@ async def home(request: Request):
     now = time.time()
     if (
         _home_cache["data"] is not None
-        and (now - _home_cache["fetched_at"])
-        < _HOME_CACHE_TTL_SECONDS
+        and (now - _home_cache["fetched_at"]) < _HOME_CACHE_TTL_SECONDS
     ):
         return _home_cache["data"]
 
@@ -85,23 +89,21 @@ async def home(request: Request):
         site = await home_site_settings(state)
         roots = await enabled_content_roots(state)
         enabled_ids = {root.id for root in roots}
-        popular_strategy = (
-            str(site["popular_strategy"] or "recent")
-        )
-        featured_ids = (
-            await featured_cover_resource_ids(
+        popular_strategy = site["popular_strategy"]
+        popular_limit = site["popular_limit"]
+
+        featured_ids: list[str] = []
+        if popular_strategy == "featured":
+            featured_ids = await featured_cover_resource_ids(
                 state,
-                limit=int(site["popular_limit"]) * 2,
+                limit=popular_limit * 2,
             )
-            if popular_strategy == "featured"
-            else []
-        )
 
         inventory = await resource_queries(index).home_inventory(
             enabled_root_ids=enabled_ids,
             content_types=_CONTENT_TYPES,
-            recent_limit=int(site["recent_limit"]),
-            popular_limit=int(site["popular_limit"]),
+            recent_limit=site["recent_limit"],
+            popular_limit=popular_limit,
             popular_strategy=popular_strategy,
             featured_resource_ids=featured_ids,
             manual_root_order=tuple(root.id for root in roots),
@@ -109,7 +111,7 @@ async def home(request: Request):
         collections = await list_home_collections(
             state,
             index,
-            limit=int(site["collection_limit"]),
+            limit=site["collection_limit"],
         )
         presentation = await public_presentation(state)
         topic_entries = await published_browse_entries(
@@ -117,19 +119,13 @@ async def home(request: Request):
             limit=12,
         )
 
-        recent = [item.to_dict() for item in inventory.recent]
-        popular = [item.to_dict() for item in inventory.popular]
-        counts = {
-            content_type: int(
-                inventory.counts.get(content_type, 0)
-            )
-            for content_type in _CONTENT_TYPES
-        }
         content_roots = _content_root_payloads(
             roots,
             resource_counts=inventory.root_resource_counts,
             folder_counts=inventory.root_folder_counts,
         )
+        recent = [item.to_dict() for item in inventory.recent]
+        popular = [item.to_dict() for item in inventory.popular]
         topics = [
             {
                 "entry_id": entry.entry_id,
@@ -145,7 +141,7 @@ async def home(request: Request):
             {
                 "type": content_type,
                 "display_name": _TYPE_DISPLAY[content_type],
-                "count": counts.get(content_type, 0),
+                "count": inventory.counts.get(content_type, 0),
                 "url": f"/browse?type={content_type}",
             }
             for content_type in _CONTENT_TYPES
@@ -164,7 +160,7 @@ async def home(request: Request):
                 "total_size": inventory.total_size,
             },
             "recent_resources": recent,
-            "counts": counts,
+            "counts": inventory.counts,
             "recent": recent,
             "popular": popular,
             "collections": collections,
