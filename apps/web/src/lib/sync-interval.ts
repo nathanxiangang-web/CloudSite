@@ -3,9 +3,3 @@ export function normalizeSyncInterval(minutes: number): 180 | 360 | 720 | 1440 {
   return 360;
 }
 
-export function isRollingFixedSchedule(system: {
-  sync_engine_version?: string;
-  initial_index_completed_at?: string | null;
-}): boolean {
-  return false;
-}
