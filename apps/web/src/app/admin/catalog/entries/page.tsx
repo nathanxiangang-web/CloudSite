@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Plus, Search } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
@@ -15,16 +15,29 @@ import {
 import { createAdminCatalogEntry, fetchAdminCatalogEntries } from "@/lib/catalog-client";
 
 const CONTENT_TYPES = ["software", "image", "video", "document", "file"];
+const PAGE_SIZE = 24;
 
 export default function AdminCatalogEntriesPage() {
   const client = useQueryClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedPage = Number.parseInt(searchParams.get("page") || "1", 10);
+  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const [title, setTitle] = useState("");
   const [contentType, setContentType] = useState("software");
   const [summary, setSummary] = useState("");
   const [filter, setFilter] = useState("");
 
-  const entries = useQuery({ queryKey: ["admin-catalog-entries"], queryFn: fetchAdminCatalogEntries });
+  const entries = useQuery({
+    queryKey: ["admin-catalog-entries", page],
+    queryFn: () => fetchAdminCatalogEntries({ page, page_size: PAGE_SIZE }),
+    placeholderData: (previous) => previous,
+  });
+  const navigatePage = (nextPage: number) => {
+    const values = new URLSearchParams();
+    if (nextPage > 1) values.set("page", String(nextPage));
+    router.push(`/admin/catalog/entries${values.size ? `?${values.toString()}` : ""}`);
+  };
   const create = useMutation({
     mutationFn: () => createAdminCatalogEntry({ content_type: contentType, title: title.trim(), summary: summary.trim(), status: "draft" }),
     onSuccess: (data) => { setTitle(""); setSummary(""); client.invalidateQueries({ queryKey: ["admin-catalog-entries"] }); router.push(`/admin/catalog/entries/${data.entry_id}`); },
@@ -48,10 +61,10 @@ export default function AdminCatalogEntriesPage() {
       {create.error && <p className="form-error">{create.error.message}</p>}
     </section>
 
-    <div className="small-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="按标题或 slug 过滤" /></div>
+    <div className="small-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="筛选当前页标题或 slug" /></div>
 
     {entries.isLoading ? <div className="loading">正在加载条目…</div>
-      : entries.error ? <div className="empty error-state">加载失败：{entries.error.message}</div>
+      : entries.error ? <div className="empty error-state">加载失败：{entries.error.message}<button type="button" onClick={() => entries.refetch()}>重试</button></div>
       : visible.length ? <section className="collection-admin-grid">{visible.map((entry) => <article className="panel collection-admin-card" key={entry.entry_id}>
         <div className="collection-admin-head"><span className="stat-icon purple"><Boxes /></span><div><h2>{entry.title}</h2><p>{entry.summary || "暂无简介"}</p></div></div>
         <dl>
@@ -63,5 +76,6 @@ export default function AdminCatalogEntriesPage() {
         <div className="card-actions"><Link className="button primary" href={`/admin/catalog/entries/${entry.entry_id}`}>编辑</Link></div>
       </article>)}</section>
       : <div className="panel empty">还没有目录条目。</div>}
+    {(entries.data?.total_pages ?? 0) > 1 && <nav className="pagination" aria-label="目录条目分页"><button type="button" disabled={page <= 1 || entries.isFetching} onClick={() => navigatePage(page - 1)}>上一页</button><span>第 {page} / {entries.data?.total_pages} 页 · 共 {entries.data?.total ?? 0} 条</span><button type="button" disabled={page >= (entries.data?.total_pages ?? 1) || entries.isFetching} onClick={() => navigatePage(page + 1)}>下一页</button></nav>}
   </div></AdminShell>;
 }
