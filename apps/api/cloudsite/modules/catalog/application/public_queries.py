@@ -7,7 +7,7 @@ IDs; no Catalog/Resource ORM crosses the HTTP boundary.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...providers.contracts.public import enabled_root_ids
@@ -118,6 +118,7 @@ async def catalog_asset_view(
         "checksum": asset.checksum,
         "checksum_algorithm": asset.checksum_algorithm,
         "size": asset.size,
+        "sort_order": asset.sort_order,
         "status": asset.status,
         "availability": "available" if available else "unavailable",
         "location_count": len(location_views),
@@ -307,6 +308,124 @@ async def catalog_entry_view(
     }
 
 
+def _legacy_entry_summary(entry: CatalogEntry) -> dict:
+    return {
+        "entry_id": entry.entry_id,
+        "title": entry.title,
+        "summary": entry.summary,
+        "content_type": entry.content_type,
+        "status": entry.status,
+        "revision": entry.revision,
+        "created_at": entry.created_at,
+        "updated_at": entry.updated_at,
+        "published_at": entry.published_at,
+    }
+
+
+async def published_catalog_summary_page(
+    state: AsyncSession,
+    *,
+    page: int,
+    page_size: int,
+) -> dict:
+    """Legacy-compatible public summary page without router ORM access."""
+
+    total = int(
+        await state.scalar(
+            select(func.count())
+            .select_from(CatalogEntry)
+            .where(CatalogEntry.status == "published")
+        )
+        or 0
+    )
+    entries = list(
+        (
+            await state.scalars(
+                select(CatalogEntry)
+                .where(CatalogEntry.status == "published")
+                .order_by(
+                    CatalogEntry.sort_order,
+                    CatalogEntry.created_at,
+                )
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+        ).all()
+    )
+    return {
+        "items": [_legacy_entry_summary(entry) for entry in entries],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": max(
+            1,
+            (total + page_size - 1) // page_size,
+        ),
+    }
+
+
+async def public_catalog_legacy_detail(
+    state: AsyncSession,
+    index: AsyncSession,
+    entry_id: str,
+) -> dict | None:
+    """Legacy CatalogEntryDetail projection built from module-owned views."""
+
+    rich = await public_catalog_entry_view(
+        state,
+        index,
+        entry_id,
+    )
+    if rich is None:
+        return None
+
+    locations: list[dict] = []
+    for release in rich["releases"]:
+        for asset in release["assets"]:
+            for location in asset["locations"]:
+                resource = location.get("resource")
+                locations.append(
+                    {
+                        "location_id": location["location_id"],
+                        "asset_id": asset["asset_id"],
+                        "display_name": asset["display_name"],
+                        "sort_order": int(
+                            asset.get("sort_order") or 0
+                        ),
+                        "available": True,
+                        "content_type": (
+                            resource.get("content_type", "")
+                            if resource
+                            else ""
+                        ),
+                        "extension": (
+                            resource.get("extension", "")
+                            if resource
+                            else ""
+                        ),
+                        "size": (
+                            int(resource.get("size") or 0)
+                            if resource
+                            else 0
+                        ),
+                    }
+                )
+
+    return {
+        "entry_id": rich["entry_id"],
+        "title": rich["title"],
+        "summary": rich["summary"],
+        "content_type": rich["content_type"],
+        "status": rich["status"],
+        "revision": rich["revision"],
+        "created_at": rich["created_at"],
+        "updated_at": rich["updated_at"],
+        "published_at": rich["published_at"],
+        "description": rich["description"],
+        "locations": locations,
+    }
+
+
 async def published_catalog_page(
     state: AsyncSession,
     index: AsyncSession,
@@ -424,6 +543,8 @@ __all__ = [
     "catalog_release_view",
     "catalog_entry_view",
     "published_catalog_page",
+    "published_catalog_summary_page",
+    "public_catalog_legacy_detail",
     "public_catalog_entry_view",
     "public_catalog_release_view",
     "public_catalog_asset_view",

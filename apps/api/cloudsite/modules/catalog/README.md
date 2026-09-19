@@ -111,9 +111,11 @@ Resources contracts, enabled publication roots through Providers contracts,
 and release notifications through Notifications contracts.
 
 Revision writes, search-outbox enqueue, and release-subscriber notification
-write-side helpers now live in the Catalog module. Legacy `services/catalog*`
-read/search/follow compatibility surfaces and the public/admin Catalog routers
-remain migration work; Catalog should not yet be described as isolated.
+write-side helpers now live in the Catalog module. Both public and admin Catalog
+routers now consume module-owned application/query boundaries without direct
+ORM access. Legacy `services/catalog*` read/search/follow compatibility
+surfaces and remaining non-router call sites are still migration work, so
+Catalog should not yet be described as fully isolated.
 
 ## Public Query Ownership
 
@@ -143,3 +145,15 @@ Catalog now owns publication visibility in
   sitemap route and legacy tests;
 - `routers/admin/publication_scope.py` contains no direct ORM/SQLAlchemy
   access.
+
+## Admin Boundary Ownership
+
+Admin Catalog list/detail/release/asset/location projections now live in
+`application/admin_facade.py` and are exported only through
+`contracts/public.py`. Release/asset/location deletion is module-owned as
+well. The admin Catalog router no longer imports shared ORM models or
+SQLAlchemy and acts only as an HTTP boundary.
+
+Legacy `services/catalog.py` remains a compatibility shim for older call
+sites, but new admin code must use the Catalog public contract.
+
