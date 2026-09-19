@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from ..api.admin_status import (
-    indexing_v2_enabled,
     read_sync_circuit_status,
     read_v2_sync_progress,
     toggle_automatic_sync,
@@ -44,7 +43,6 @@ __all__ = [
     "LegacySyncChangeView",
     "LegacySyncChangePage",
     "legacy_sync_queries",
-    "indexing_v2_enabled",
     "read_v2_sync_progress",
     "read_sync_circuit_status",
     "toggle_automatic_sync",
