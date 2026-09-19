@@ -6,7 +6,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Collection, formatBytes, SearchResponse } from "@/lib/api";
-import { fetchCatalogEntries } from "@/lib/catalog-client";
+import { fetchCatalogEntries, fetchCatalogSearch } from "@/lib/catalog-client";
 import type { CatalogEntrySummary } from "@/lib/catalog";
 import { SEARCH_QUERY_MAX_LENGTH } from "@/lib/search-query";
 
@@ -40,12 +40,14 @@ export default function CollectionsPage() {
 
     <section className="collection-admin-grid">
       {collections.isLoading ? <div className="loading">正在加载合集…</div>
+        : collections.error ? <div className="panel empty error-state">加载合集失败：{collections.error.message}<button type="button" onClick={() => collections.refetch()}>重试</button></div>
         : collections.data?.items.length ? collections.data.items.map((collection) => <article className="panel collection-admin-card" key={collection.id}>
           <div className="collection-admin-head"><span className="stat-icon purple"><FolderKanban /></span><div><h2>{collection.name}</h2><p>{collection.description || "暂无说明"}</p></div>{collection.status === "hidden" ? <EyeOff aria-label="已隐藏" /> : <Eye aria-label="公开" />}</div>
           <dl><div><dt>资源数</dt><dd>{collection.item_count}</dd></div><div><dt>状态</dt><dd>{collection.status === "hidden" ? "隐藏" : "公开"}</dd></div><div><dt>首页展示</dt><dd>{collection.visible_on_home ? "是" : "否"}</dd></div></dl>
           <div className="card-actions"><Link className="button" href={`/collections/${collection.id}`}>查看</Link><button onClick={() => setEditingId(collection.id)}>编辑</button><button className="danger" onClick={() => window.confirm(`删除合集“${collection.name}”？`) && remove.mutate(collection.id)}><Trash2 />删除</button></div>
         </article>) : <div className="panel empty">还没有合集，先创建一个。</div>}
     </section>
+    {remove.error && <p className="form-error">{remove.error.message}</p>}
   </div></AdminShell>;
 }
 
@@ -86,7 +88,12 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
   }
 
   const search = useQuery({ queryKey: ["collection-picker", searchQuery], queryFn: () => api<SearchResponse>(`/api/search?q=${encodeURIComponent(searchQuery)}&object_type=resource&page_size=20`), enabled: searchQuery.trim().length > 0 });
-  const catalogSearch = useQuery({ queryKey: ["collection-catalog-picker", catalogQuery], queryFn: () => fetchCatalogEntries({ page_size: 100 }), enabled: catalogQuery.trim().length === 0 || catalogQuery.trim().length > 0 });
+  const catalogSearch = useQuery({
+    queryKey: ["collection-catalog-picker", catalogQuery],
+    queryFn: () => catalogQuery.trim()
+      ? fetchCatalogSearch({ q: catalogQuery.trim(), page_size: 20 })
+      : fetchCatalogEntries({ page_size: 20 }),
+  });
   const save = useMutation({ mutationFn: () => api(`/api/admin/collections/${id}`, { method: "PUT", body: JSON.stringify({ name, description, cover, status, visible_on_home: visibleOnHome, sort_order: sortOrder, goal, audience, prerequisites, item_intro: itemIntro }) }), onSuccess: () => client.invalidateQueries({ queryKey: ["admin-collections"] }) });
   const saveItems = useMutation({ mutationFn: (next: AdminCollectionItem[]) => api(`/api/admin/collections/${id}/items`, { method: "PUT", body: JSON.stringify({ items: next.map((i) => i.item_type === "resource" ? { item_type: "resource", resource_id: i.resource_id, catalog_entry_id: null, note: i.note } : { item_type: "catalog_entry", resource_id: null, catalog_entry_id: i.catalog_entry_id, note: i.note }) }) }), onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-collections"] }); client.invalidateQueries({ queryKey: ["admin-collection", id] }); } });
 
@@ -98,10 +105,12 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
   const persistAll = () => { save.mutate(); saveItems.mutate(items); };
 
   if (query.isLoading) return <div className="panel loading">正在加载合集…</div>;
+  if (query.error) return <div className="panel empty error-state">加载合集详情失败：{query.error.message}<div className="card-actions"><button type="button" onClick={() => query.refetch()}>重试</button><button type="button" onClick={onClose}><X />关闭</button></div></div>;
+  if (!query.data) return null;
 
   const addedResourceIds = new Set(items.filter((i): i is AdminResourceItem => i.item_type === "resource").map((i) => i.resource_id));
   const addedEntryIds = new Set(items.filter((i): i is AdminEntryItem => i.item_type === "catalog_entry").map((i) => i.catalog_entry_id));
-  const catalogResults = (catalogSearch.data?.items ?? []).filter((e) => !catalogQuery.trim() || e.title.toLowerCase().includes(catalogQuery.toLowerCase())).slice(0, 20);
+  const catalogResults = catalogSearch.data?.items ?? [];
 
   return <section className="panel collection-editor">
     <div className="panel-toolbar"><div><h2>编辑合集 #{id}</h2><p>修改合集信息并管理其中的资源与教程条目。</p></div><button onClick={onClose}><X />关闭</button></div>
@@ -131,11 +140,11 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
 
     <h3>添加资源</h3>
     <div className="small-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索资源名称或类型，如 Chrome / pdf / 摄影" /></div>
-    <div className="picker-results">{search.isLoading ? <div className="loading">搜索中…</div> : search.data?.items.filter((r) => r.object_type === "resource").map((resource) => { const added = addedResourceIds.has(resource.id); return <div className="picker-item" key={resource.id}><span className={`picker-item-icon type-${resource.content_type || "file"}`}><FolderKanban /></span><span className="picker-item-copy"><strong>{resource.name}</strong><small>{typeLabel[resource.content_type] ?? resource.content_type}{resource.extension ? ` · ${resource.extension.toUpperCase()}` : ""}{resource.size != null ? ` · ${formatBytes(resource.size)}` : ""}</small></span>{added ? <button disabled><Check />已添加</button> : <button className="primary" onClick={() => addResource(resource.id, resource.name, resource.content_type, resource.extension, resource.size ?? 0)}><Plus />添加</button>}</div>; })}</div>
+    <div className="picker-results">{search.isLoading ? <div className="loading">搜索中…</div> : search.error ? <div className="empty error-state">资源搜索失败：{search.error.message}<button type="button" onClick={() => search.refetch()}>重试</button></div> : search.data?.items.filter((r) => r.object_type === "resource").map((resource) => { const added = addedResourceIds.has(resource.id); return <div className="picker-item" key={resource.id}><span className={`picker-item-icon type-${resource.content_type || "file"}`}><FolderKanban /></span><span className="picker-item-copy"><strong>{resource.name}</strong><small>{typeLabel[resource.content_type] ?? resource.content_type}{resource.extension ? ` · ${resource.extension.toUpperCase()}` : ""}{resource.size != null ? ` · ${formatBytes(resource.size)}` : ""}</small></span>{added ? <button disabled><Check />已添加</button> : <button className="primary" onClick={() => addResource(resource.id, resource.name, resource.content_type, resource.extension, resource.size ?? 0)}><Plus />添加</button>}</div>; })}</div>
 
     <h3>添加教程条目（Catalog）</h3>
     <div className="small-search"><BookOpen /><input value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder="按标题筛选已发布的 Catalog 条目" /></div>
-    <div className="picker-results">{catalogSearch.isLoading ? <div className="loading">加载中…</div> : catalogResults.map((entry) => { const added = addedEntryIds.has(entry.entry_id); return <div className="picker-item" key={entry.entry_id}><span className={`picker-item-icon type-${entry.content_type || "file"}`}><BookOpen /></span><span className="picker-item-copy"><strong>{entry.title}</strong><small>{typeLabel[entry.content_type] ?? entry.content_type}{entry.summary ? ` · ${entry.summary}` : ""}</small></span>{added ? <button disabled><Check />已添加</button> : <button className="primary" onClick={() => addCatalogEntry(entry)}><Plus />添加</button>}</div>; })}</div>
+    <div className="picker-results">{catalogSearch.isLoading ? <div className="loading">加载中…</div> : catalogSearch.error ? <div className="empty error-state">Catalog 加载失败：{catalogSearch.error.message}<button type="button" onClick={() => catalogSearch.refetch()}>重试</button></div> : catalogResults.map((entry) => { const added = addedEntryIds.has(entry.entry_id); return <div className="picker-item" key={entry.entry_id}><span className={`picker-item-icon type-${entry.content_type || "file"}`}><BookOpen /></span><span className="picker-item-copy"><strong>{entry.title}</strong><small>{typeLabel[entry.content_type] ?? entry.content_type}{entry.summary ? ` · ${entry.summary}` : ""}</small></span>{added ? <button disabled><Check />已添加</button> : <button className="primary" onClick={() => addCatalogEntry(entry)}><Plus />添加</button>}</div>; })}</div>
 
     <div className="form-actions"><button onClick={onClose}>取消</button><button className="primary" onClick={persistAll} disabled={save.isPending || saveItems.isPending}>保存</button></div>
     {(save.error || saveItems.error) && <p className="form-error">{(save.error ?? saveItems.error)?.message}</p>}
