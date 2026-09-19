@@ -27,3 +27,29 @@ Later slices:
 Compatibility note: the legacy `.catalog-card-unavailable` selector remains
 global because the not-yet-migrated Catalog detail route still consumes it.
 It moves with the detail slice rather than being removed prematurely.
+
+
+## M6b — Public detail/release/asset slice
+
+The dynamic Catalog detail route now composes `CatalogDetailView` through the
+feature public entry. The feature owns entry/release API calls, detail DTOs,
+release-selection helpers, asset filters/download-path construction, and its
+detail CSS module.
+
+The legacy Follow component remains outside the feature and is injected by the
+route as a slot, avoiding a reverse dependency from the feature into the old
+business component tree.
+
+Only detail-owned global selectors are removed. Admin Catalog selectors remain
+global until the Admin slice migrates.
+
+
+### M6b CSS ratchet
+
+After moving the detail-owned selectors into
+`features/catalog/styles/catalog-detail.module.css`:
+
+- M6a baseline: **151,484 bytes**
+- M6b baseline: **149,456 bytes**
+- M6b reduction: **2,028 bytes**
+- cumulative reduction from M5 baseline (153,299): **3,843 bytes**
