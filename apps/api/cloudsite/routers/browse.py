@@ -1,6 +1,7 @@
 """browse 路由：全类型浏览，支持类型/状态/分页参数。"""
 
 import math
+from typing import Literal
 
 from fastapi import APIRouter, Query
 
@@ -32,6 +33,8 @@ async def browse(
     status: str = Query("active", description="资源状态筛选"),
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
+    sort: Literal["modified_at", "name", "size"] = Query("modified_at"),
+    order: Literal["asc", "desc"] | None = Query(None),
 ):
     """全类型浏览：资源分页 + Catalog 摘要 + 发布根入口。"""
 
@@ -60,12 +63,15 @@ async def browse(
             for content_type in _TYPE_ORDER
         ]
 
+        resolved_order = order or ("asc" if sort == "name" else "desc")
         resource_page = await queries.browse_resources(
             enabled_root_ids=root_ids,
             status=status,
             content_type=type,
             page=page,
             page_size=page_size,
+            sort=sort,
+            order=resolved_order,
         )
         catalog_entries = [
             entry.to_dict()
@@ -98,6 +104,8 @@ async def browse(
             "total": resource_page.total,
             "page": page,
             "page_size": page_size,
+            "sort": sort,
+            "order": resolved_order,
             "total_pages": (
                 math.ceil(resource_page.total / page_size)
                 if resource_page.total
