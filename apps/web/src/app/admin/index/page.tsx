@@ -73,7 +73,6 @@ export default function IndexPage() {
   const filtered = (folders.data?.items ?? []).filter((item) => `${item.name} ${item.path}`.toLowerCase().includes(filter.toLowerCase()));
   const latest = summary.data?.latest_sync;
   const syncing = summary.data?.syncing ?? false;
-  const busy = sync.isPending || syncing;
   const toggle = (id: string) => setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   const syncStatusIcon = syncing ? <Loader2 className="spin" /> : latest?.status === "success" ? <CheckCircle2 className="ok" /> : latest?.status === "failed" ? <AlertTriangle className="warn" /> : <Database />;
@@ -89,9 +88,7 @@ export default function IndexPage() {
     <section className="panel index-control-panel">
       <div className="index-control-info"><h2>Indexing v2</h2><p>扫描 AList 目录并同步到索引数据库</p></div>
       <div className="index-actions">
-        {syncing ? <button type="button" className="danger" disabled={cancelSync.isPending} onClick={() => cancelSync.mutate()}><AlertTriangle />取消同步</button> : <>
-          <button type="button" className="primary" disabled={sync.isPending} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>
-        </>}
+        {syncing ? <button type="button" className="danger" disabled={cancelSync.isPending} onClick={() => cancelSync.mutate()}><AlertTriangle />取消同步</button> : <button type="button" className="primary" disabled={sync.isPending} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>}
       </div>
       {sync.error && <p className="form-error">{sync.error.message}</p>}
       {syncing && latest && <div className="sync-progress-bar"><div className="sync-progress-info"><span>{latest.current_path ? `扫描中：${latest.current_path}` : "处理中…"}</span><span>{latest.roots_completed} / {latest.roots_total} 根目录 · {latest.resources_scanned} 资源</span></div></div>}
