@@ -1,6 +1,6 @@
 import time
 
-from ....models import DownloadEvent
+from ..infrastructure.models import DownloadEvent
 
 
 async def _download_event(session, resource_id, result, code, started, source: str = "public"):

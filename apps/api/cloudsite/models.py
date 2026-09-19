@@ -17,6 +17,10 @@ from .modules.providers.infrastructure.models import (
     ContentRootMapping,
     ProviderSyncState,
 )
+from .modules.delivery.infrastructure.models import (
+    DownloadDiagnostic,
+    DownloadEvent,
+)
 
 
 def utcnow() -> datetime:
@@ -49,30 +53,6 @@ class SystemSetting(StateBase):
     value: Mapped[str] = mapped_column(Text, default="")
     value_type: Mapped[str] = mapped_column(String(20), default="string")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-
-class DownloadEvent(StateBase):
-    __tablename__ = "download_events"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    resource_id: Mapped[str] = mapped_column(String(64), index=True)
-    result: Mapped[str] = mapped_column(String(20))
-    error_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
-    source: Mapped[str] = mapped_column(String(20), default="public")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class DownloadDiagnostic(StateBase):
-    __tablename__ = "download_diagnostics"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    resource_id: Mapped[str] = mapped_column(String(64), index=True)
-    status: Mapped[str] = mapped_column(String(20), index=True)
-    failed_step: Mapped[str] = mapped_column(String(40), default="")
-    error_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    message: Mapped[str] = mapped_column(String(500), default="")
-    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
-    target_host: Mapped[str] = mapped_column(String(300), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class OperationLog(StateBase):

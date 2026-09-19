@@ -90,3 +90,14 @@ move to `modules/delivery/` in Phase 3. The module skeleton with schemas in
 `public/` is in place. The split of `download_events` between resources and
 delivery will be resolved during migration, with delivery owning the delivery
 lifecycle events and resources owning rate limit events.
+
+## Migration Progress
+
+- D1 ORM ownership: `DownloadEvent` and `DownloadDiagnostic` are owned by
+  `modules/delivery/infrastructure/models.py`.
+- `cloudsite.models` remains a compatibility re-export for legacy callers.
+- Download-event writes now import the Delivery-owned ORM directly.
+- Existing event commit semantics are preserved.
+- Next: move download rate limiting to Resources, the declared owner of
+  `download_rate_limits`, removing the remaining two Delivery legacy-import
+  debt IDs.

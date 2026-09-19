@@ -4,6 +4,7 @@ kind: "business"
 migration_status: "partial"
 responsibility: "Delivery preparation, authorization, AList redirect construction, delivery tracking, diagnostics, and optional cache warm-up."
 public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
 
 allowed_dependencies:
   - "platform/db"
