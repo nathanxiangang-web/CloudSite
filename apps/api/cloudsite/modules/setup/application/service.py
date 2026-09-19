@@ -32,7 +32,6 @@ from ...presentation.contracts.public import (
 )
 from ...providers.contracts.public import (
     ProviderAdminError,
-    browse_admin_directories,
     create_root_mapping,
     list_root_mappings,
     save_setup_connection,
@@ -182,15 +181,7 @@ async def get_wizard_state(
     config = presentation["config"]
     theme = config.get("theme_tokens", {})
     payload = _state_payload(row)
-    scope_error = ""
     root_mappings = await list_root_mappings(state)
-    root_directories: list[dict[str, Any]] = []
-    if row.current_step == "scope" and row.connect_done:
-        try:
-            directories = await browse_admin_directories(state, path="/")
-            root_directories = list(directories.get("items") or [])
-        except ProviderAdminError as exc:
-            scope_error = str(exc)
 
     payload["draft"] = {
         "preset": str(config.get("preset") or "software"),
@@ -201,9 +192,7 @@ async def get_wizard_state(
         "accent_color": str(theme.get("accent_color") or "#2563eb"),
         "card_radius": int(theme["card_radius"]) if theme.get("card_radius") is not None else 12,
     }
-    payload["root_mappings"] = root_mappings
-    payload["root_directories"] = root_directories
-    payload["scope_error"] = scope_error
+    payload["has_root_mappings"] = bool(root_mappings)
     state.add(row)
     await state.commit()
     return payload
