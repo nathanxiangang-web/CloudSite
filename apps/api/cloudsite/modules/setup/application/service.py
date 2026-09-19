@@ -32,6 +32,8 @@ from ...presentation.contracts.public import (
 )
 from ...providers.contracts.public import (
     ProviderAdminError,
+    create_root_mapping,
+    list_root_mappings,
     save_setup_connection,
     update_root_mapping_preferences,
 )
@@ -42,11 +44,24 @@ WIZARD_STEPS: tuple[str, ...] = (
     "connect",
     "scope",
     "preset",
+    "brand",
+    "publish",
+)
+_LEGACY_WIZARD_STEPS: tuple[str, ...] = ("samples", "preview")
+_ACCEPTED_WIZARD_STEPS = WIZARD_STEPS + _LEGACY_WIZARD_STEPS
+_COMPLETED_STEP_ORDER: tuple[str, ...] = (
+    "connect",
+    "scope",
+    "preset",
     "samples",
     "brand",
     "preview",
     "publish",
 )
+_LEGACY_NEXT_STEP = {
+    "samples": "brand",
+    "preview": "publish",
+}
 _STEP_DONE_FIELD = {
     "connect": "connect_done",
     "scope": "scope_done",
@@ -119,6 +134,35 @@ def _advance_step(step: str) -> str:
     ]
 
 
+def _mark_completed(row: SetupWizardState, step: str) -> None:
+    setattr(row, _STEP_DONE_FIELD[step], True)
+    try:
+        completed = set(json.loads(row.completed_steps_json or "[]"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        completed = set()
+    completed.add(step)
+    row.completed_steps_json = json.dumps(
+        sorted(
+            completed,
+            key=lambda item: (
+                _COMPLETED_STEP_ORDER.index(item)
+                if item in _COMPLETED_STEP_ORDER
+                else len(_COMPLETED_STEP_ORDER)
+            ),
+        ),
+        ensure_ascii=False,
+    )
+
+
+def _normalize_legacy_progress(row: SetupWizardState) -> bool:
+    next_step = _LEGACY_NEXT_STEP.get(row.current_step)
+    if next_step is None:
+        return False
+    _mark_completed(row, row.current_step)
+    row.current_step = next_step
+    return True
+
+
 def _provider_error(exc: ProviderAdminError) -> SetupWorkflowError:
     return SetupWorkflowError(
         "ALIST_TEST_FAILED",
@@ -131,8 +175,27 @@ async def get_wizard_state(
     state: AsyncSession,
 ) -> dict[str, Any]:
     row = await _get_or_create_wizard(state)
+    _normalize_legacy_progress(row)
+    site = await get_admin_site_settings(state)
+    presentation = await get_admin_presentation(state)
+    config = presentation["config"]
+    theme = config.get("theme_tokens", {})
+    payload = _state_payload(row)
+    root_mappings = await list_root_mappings(state)
+
+    payload["draft"] = {
+        "preset": str(config.get("preset") or "software"),
+        "site_name": str(site.get("site_name") or ""),
+        "home_title": str(site.get("home_title") or ""),
+        "description": str(site.get("description") or ""),
+        "hero_subtitle": str(site.get("hero_subtitle") or ""),
+        "accent_color": str(theme.get("accent_color") or "#2563eb"),
+        "card_radius": int(theme["card_radius"]) if theme.get("card_radius") is not None else 12,
+    }
+    payload["has_root_mappings"] = bool(root_mappings)
+    state.add(row)
     await state.commit()
-    return _state_payload(row)
+    return payload
 
 
 async def get_setup_status(
@@ -185,7 +248,7 @@ async def complete_initial_alist_setup(
             base_url=base_url,
             username=username,
             password=password,
-            remember_credentials=remember_credentials,
+            remember_credentials=True,
         )
     except ProviderAdminError as exc:
         raise _provider_error(exc) from exc
@@ -203,7 +266,7 @@ async def complete_initial_alist_setup(
     await state.commit()
     return {
         "setup_completed": True,
-        "next": "/admin/login",
+        "next": "/admin/login?next=/admin/index",
         "base_path": result["base_path"],
     }
 
@@ -243,17 +306,13 @@ async def _process_connect(
                 status_code=403,
             )
 
-    remember = data.get("remember_credentials")
-    remember_credentials = (
-        bool(remember) if remember is not None else True
-    )
     try:
         result = await save_setup_connection(
             state,
             base_url=base_url,
             username=username,
             password=password,
-            remember_credentials=remember_credentials,
+            remember_credentials=True,
         )
     except ProviderAdminError as exc:
         raise _provider_error(exc) from exc
@@ -271,20 +330,72 @@ async def _process_scope(
     state: AsyncSession,
     data: dict[str, Any],
 ) -> dict[str, Any]:
-    mappings = data.get("root_mappings")
-    if mappings is None:
-        return {"updated": 0}
-    updated = await update_root_mapping_preferences(
-        state,
-        updates=list(mappings),
-    )
+    mappings = list(data.get("root_mappings") or [])
+    existing = await list_root_mappings(state)
+    existing_by_path = {
+        str(item["alist_path"]): item
+        for item in existing
+    }
+    updated = 0
+    created = 0
+    preference_updates: list[dict[str, Any]] = []
+
+    for index, item in enumerate(mappings):
+        mapping_id = item.get("id")
+        if mapping_id is not None:
+            preference_updates.append(
+                {
+                    "id": mapping_id,
+                    "enabled": bool(item.get("enabled", True)),
+                    "sort_order": int(item.get("sort_order", index)),
+                }
+            )
+            continue
+
+        path = str(item.get("alist_path") or "").strip()
+        if not path or not item.get("enabled", True):
+            continue
+        known = existing_by_path.get(path)
+        if known is not None:
+            preference_updates.append(
+                {
+                    "id": known["id"],
+                    "enabled": True,
+                    "sort_order": int(item.get("sort_order", index)),
+                }
+            )
+            continue
+
+        values = {
+            "connection_id": 1,
+            "content_type": str(item.get("content_type") or "file"),
+            "display_name": str(item.get("display_name") or path.rsplit("/", 1)[-1] or "内容"),
+            "alist_path": path,
+            "enabled": True,
+            "sort_order": int(item.get("sort_order", index)),
+        }
+        try:
+            mapping_id = await create_root_mapping(
+                state,
+                values=values,
+            )
+        except ProviderAdminError as exc:
+            raise _provider_error(exc) from exc
+        existing_by_path[path] = {"id": mapping_id, **values}
+        created += 1
+
+    if preference_updates:
+        updated = await update_root_mapping_preferences(
+            state,
+            updates=preference_updates,
+        )
     await write_operation_log(
         state,
         module="setup",
         action="wizard_scope",
-        message=f"向导：更新 {updated} 个根目录映射启用状态",
+        message=f"向导：创建 {created} 个、更新 {updated} 个根目录映射",
     )
-    return {"updated": updated}
+    return {"created": created, "updated": updated}
 
 
 async def _process_preset(
@@ -314,10 +425,6 @@ async def _process_preset(
         )
         config = result["config"]
 
-    await toggle_admin_presentation(
-        state,
-        enabled=True,
-    )
     await write_operation_log(
         state,
         module="setup",
@@ -325,18 +432,6 @@ async def _process_preset(
         message=f"向导：应用预设 {preset_id}",
     )
     return {"preset": str(config.get("preset") or preset_id)}
-
-
-async def _process_samples(
-    state: AsyncSession,
-) -> dict[str, Any]:
-    await write_operation_log(
-        state,
-        module="setup",
-        action="wizard_samples",
-        message="向导：样本整理已标记完成",
-    )
-    return {"marked": True}
 
 
 async def _process_brand(
@@ -394,32 +489,13 @@ async def _process_brand(
     return {"site_name": site["site_name"]}
 
 
-async def _process_preview(
-    state: AsyncSession,
-) -> dict[str, Any]:
-    site = await get_admin_site_settings(state)
-    presentation = await get_admin_presentation(state)
-    await write_operation_log(
-        state,
-        module="setup",
-        action="wizard_preview",
-        message="向导：预览快照已生成",
-    )
-    return {
-        "site_name": site["site_name"],
-        "home_title": site["home_title"],
-        "presentation_enabled": bool(
-            presentation["enabled"]
-        ),
-        "preset": str(
-            presentation["config"].get("preset") or "software"
-        ),
-    }
-
-
 async def _process_publish(
     state: AsyncSession,
 ) -> dict[str, Any]:
+    await toggle_admin_presentation(
+        state,
+        enabled=True,
+    )
     await save_admin_system_settings(
         state,
         values={"setup_completed": True},
@@ -441,13 +517,25 @@ async def process_wizard_step(
     provided_setup_token: str = "",
     expected_setup_token: str = "",
 ) -> dict[str, Any]:
-    if step not in WIZARD_STEPS:
+    if step not in _ACCEPTED_WIZARD_STEPS:
         raise SetupWorkflowError(
             "WIZARD_STEP_INVALID",
             "向导步骤无效",
         )
 
     row = await _get_or_create_wizard(state)
+    legacy_current = row.current_step
+    if not (
+        legacy_current in _LEGACY_WIZARD_STEPS
+        and step == legacy_current
+    ):
+        _normalize_legacy_progress(row)
+    if step != row.current_step:
+        raise SetupWorkflowError(
+            "WIZARD_STEP_OUT_OF_ORDER",
+            f"当前应处理步骤：{row.current_step}",
+            status_code=409,
+        )
     if step == "connect":
         result = await _process_connect(
             state,
@@ -460,35 +548,21 @@ async def process_wizard_step(
         result = await _process_scope(state, data)
     elif step == "preset":
         result = await _process_preset(state, data)
-    elif step == "samples":
-        result = await _process_samples(state)
     elif step == "brand":
         result = await _process_brand(state, data)
-    elif step == "preview":
-        result = await _process_preview(state)
+    elif step in _LEGACY_WIZARD_STEPS:
+        result = {"skipped": True, "legacy_step": step}
     else:
         result = await _process_publish(state)
 
-    setattr(row, _STEP_DONE_FIELD[step], True)
-    try:
-        completed = set(
-            json.loads(row.completed_steps_json or "[]")
-        )
-    except (TypeError, ValueError, json.JSONDecodeError):
-        completed = set()
-    completed.add(step)
-    row.completed_steps_json = json.dumps(
-        sorted(
-            completed,
-            key=lambda item: WIZARD_STEPS.index(item),
-        ),
-        ensure_ascii=False,
-    )
+    _mark_completed(row, step)
     if step == "publish":
         row.wizard_completed = True
         row.publish_done = True
         row.completed_at = _now_iso()
         row.current_step = "publish"
+    elif step in _LEGACY_WIZARD_STEPS:
+        row.current_step = _LEGACY_NEXT_STEP[step]
     else:
         row.current_step = _advance_step(step)
 
@@ -502,10 +576,47 @@ async def process_wizard_step(
     }
 
 
-async def skip_wizard(
+async def go_back_wizard(
     state: AsyncSession,
 ) -> dict[str, Any]:
     row = await _get_or_create_wizard(state)
+    _normalize_legacy_progress(row)
+    if row.wizard_completed:
+        return {"ok": True, "state": _state_payload(row)}
+    try:
+        index = WIZARD_STEPS.index(row.current_step)
+    except ValueError:
+        row.current_step = "connect"
+    else:
+        row.current_step = WIZARD_STEPS[max(0, index - 1)]
+    state.add(row)
+    await state.commit()
+    return {"ok": True, "state": _state_payload(row)}
+
+
+async def skip_wizard(
+    state: AsyncSession,
+    *,
+    provided_setup_token: str = "",
+    expected_setup_token: str = "",
+) -> dict[str, Any]:
+    row = await _get_or_create_wizard(state)
+    if not row.connect_done:
+        if not expected_setup_token:
+            raise SetupWorkflowError(
+                "SETUP_UNAVAILABLE",
+                "服务器未配置初始化令牌",
+                status_code=503,
+            )
+        if not verify_setup_token(
+            provided_setup_token,
+            expected_setup_token,
+        ):
+            raise SetupWorkflowError(
+                "SETUP_FORBIDDEN",
+                "初始化令牌错误",
+                status_code=403,
+            )
     row.wizard_completed = True
     row.current_step = "publish"
     row.completed_at = _now_iso()
@@ -533,6 +644,7 @@ __all__ = [
     "complete_initial_alist_setup",
     "get_setup_status",
     "get_wizard_state",
+    "go_back_wizard",
     "process_wizard_step",
     "skip_wizard",
 ]
