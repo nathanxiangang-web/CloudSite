@@ -9,7 +9,7 @@ from ...infrastructure.security import (
     create_session_token,
     verify_session_token,
 )
-from ...models import AListConnection
+from ...modules.providers.contracts.public import connection_login_target
 from ...request_context import request_is_https
 from ...schemas import AdminLoginInput
 
@@ -44,7 +44,7 @@ async def admin_login(payload: AdminLoginInput, request: Request, response: Resp
 
     async with StateSession() as session:
         setup_completed = await get_setup_completed(session)
-        connection = await session.get(AListConnection, 1)
+        connection = await connection_login_target(session)
     if not setup_completed:
         raise HTTPException(409, {"code": "SETUP_REQUIRED", "message": "站点尚未完成初始化"})
     if not connection:
