@@ -2,8 +2,8 @@
 
 Implements the ProviderAdapter Protocol by wrapping AListClient.list_path
 to recursively scan AList directories and produce SnapshotEntry lists.
-Each entry carries is_dir/content_type/root_mapping_id/parent_path in
-metadata so the ProductionIndexingStore can write to folders/resources.
+Each entry carries persistence-neutral resource metadata. Parent IDs are resolved
+inside Indexing before crossing the Resources contract boundary.
 """
 from __future__ import annotations
 
@@ -138,6 +138,7 @@ class AListProviderAdapter:
                 "content_type": root.content_type,
                 "root_mapping_id": root.id,
                 "parent_path": parent_path,
+                "parent_id": stable_id("folder", parent_path) if parent_path else None,
                 "extension": ext,
                 "mime_type": mime,
                 "thumbnail": str(item.get("thumb") or item.get("thumbnail") or ""),
