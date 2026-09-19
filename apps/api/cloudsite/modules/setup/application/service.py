@@ -186,7 +186,7 @@ async def get_wizard_state(
         "description": str(site.get("description") or ""),
         "hero_subtitle": str(site.get("hero_subtitle") or ""),
         "accent_color": str(theme.get("accent_color") or "#2563eb"),
-        "card_radius": int(theme.get("card_radius") or 12),
+        "card_radius": int(theme["card_radius"]) if theme.get("card_radius") is not None else 12,
     }
     state.add(row)
     await state.commit()
@@ -261,7 +261,7 @@ async def complete_initial_alist_setup(
     await state.commit()
     return {
         "setup_completed": True,
-        "next": "/admin/login",
+        "next": "/admin/login?next=/admin/index",
         "base_path": result["base_path"],
     }
 
