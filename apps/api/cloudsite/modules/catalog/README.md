@@ -114,3 +114,18 @@ Revision writes, search-outbox enqueue, and release-subscriber notification
 write-side helpers now live in the Catalog module. Legacy `services/catalog*`
 read/search/follow compatibility surfaces and the public/admin Catalog routers
 remain migration work; Catalog should not yet be described as isolated.
+
+## Public Query Ownership
+
+Public entry/release/asset projections now live in
+`application/public_queries.py` and are exported through the Catalog public
+contract. The legacy `services/catalog_views.py` module is a compatibility shim
+only.
+
+Catalog resource availability is resolved through the Resources contract using
+persistence-neutral DTOs. The public Catalog download route also resolves the
+underlying resource through Resources and passes the Providers runtime gateway
+to Delivery's download resolver; it no longer passes an `AListConnection` ORM
+object into a `ProviderRuntimePort` API.
+
+The authenticated public Catalog router now has zero tracked ORM-import debt.
