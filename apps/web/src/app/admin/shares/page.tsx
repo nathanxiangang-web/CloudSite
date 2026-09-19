@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, KeyRound, MoreHorizontal, Plus, RefreshCw, Search, Share2, Trash2 } from "lucide-react";
+import { Check, Copy, ExternalLink, KeyRound, MoreHorizontal, Plus, RefreshCw, Search, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
@@ -31,6 +31,8 @@ export default function SharesPage() {
   const [editingDuration, setEditingDuration] = useState<Duration>("24h");
   const [lastCode, setLastCode] = useState<{ token: string; code: string | null; mode: "code" | "direct" } | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState("");
 
   const query = useQuery({ queryKey: ["admin-shares"], queryFn: () => api<{ items: Share[] }>("/api/admin/shares") });
   const create = useMutation({
@@ -69,10 +71,17 @@ export default function SharesPage() {
     if (objectId.trim()) create.mutate();
   }
 
-  function copyShare(share: Share) {
+  async function copyShare(share: Share) {
     const link = `${location.origin}/s/${share.token}`;
     const text = share.access_mode === "code" && lastCode?.token === share.token && lastCode.code ? `${link}\n分享码：${lastCode.code}` : link;
-    navigator.clipboard.writeText(text);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedToken(share.token);
+      setCopyError("");
+      window.setTimeout(() => setCopiedToken((current) => current === share.token ? null : current), 2000);
+    } catch {
+      setCopyError("复制失败，请手动复制分享链接。");
+    }
   }
 
   function changeObjectType(value: "resource" | "folder" | "collection") {
@@ -106,7 +115,7 @@ export default function SharesPage() {
           <span><b>{share.download_count} / {share.download_limit}</b><small>访问 {share.view_count ?? share.access_count} · 剩余 {share.remaining_downloads}</small></span>
           <span className="share-expiry">{editingToken === share.token ? <><select value={editingDuration} onChange={(event) => setEditingDuration(event.target.value as Duration)}>{Object.entries(durationLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="primary" onClick={() => action.mutate({ share, body: { duration: editingDuration } })}>保存</button><button onClick={() => setEditingToken(null)}>取消</button></> : <><b className={status === "expired" ? "warn" : ""}>{share.expires_at ? formatTime(share.expires_at) : "永久"}</b><small>{statusLabel[status]}{share.cancel_reason === "download_limit" ? " · 达到下载上限" : ""}</small><button onClick={() => { setEditingToken(share.token); setEditingDuration("24h"); }}>改期</button></>}</span>
           <span className="share-actions">
-            <button title="复制分享信息" aria-label={`复制 ${share.title || share.token}`} onClick={() => copyShare(share)}><Copy />复制</button>
+            <button title={copiedToken === share.token ? "已复制" : "复制分享信息"} aria-label={copiedToken === share.token ? `${share.title || share.token} 已复制` : `复制 ${share.title || share.token}`} onClick={() => copyShare(share)}>{copiedToken === share.token ? <Check /> : <Copy />}{copiedToken === share.token ? "已复制" : "复制"}</button>
             <span className="share-more-wrap">
               <button type="button" title="更多操作" aria-label={`更多操作 ${share.title || share.token}`} aria-haspopup="menu" aria-expanded={openMenu === share.token} onClick={() => setOpenMenu((current) => current === share.token ? null : share.token)}><MoreHorizontal /></button>
               {openMenu === share.token && <div className="share-more-menu" role="menu">
@@ -120,6 +129,7 @@ export default function SharesPage() {
           </span>
         </div>;
       }) : <div className="empty">没有匹配的分享记录。</div>}
+      {copyError && <p className="form-error">{copyError}</p>}
     </section>
   </div></AdminShell>;
 }
