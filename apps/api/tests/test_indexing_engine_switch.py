@@ -1,11 +1,4 @@
-"""C7: Rolling Index -> Indexing v2 feature flag 切换测试。
-
-验证：
-1. feature flag 默认为 v1
-2. 设置 CLOUDSITE_INDEXING_ENGINE=v2 后切换为 v2
-3. v2 模式下 run_indexing_v2 使用新的 ScanCategoryService + ReconcileService
-4. adapter/store 缺省时返回 skipped，不抛异常
-"""
+"""Indexing v2 scan/reconcile regression tests."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
