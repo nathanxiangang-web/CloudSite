@@ -1,6 +1,5 @@
 """Public-auth HTTP edge and compatibility helpers."""
 
-import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -12,11 +11,14 @@ from .database import StateSession
 from .modules.site.contracts.public import registration_enabled
 from .modules.users.contracts.public import (
     AuthenticatedUserView,
+    CredentialPolicyError,
     UserAuthenticationError,
     change_user_password,
     login_user,
     logout_user,
     register_user,
+    validate_user_password,
+    validate_user_username,
 )
 from .request_context import request_host, request_scheme
 from .schemas import (
@@ -38,9 +40,6 @@ router = APIRouter(prefix="/api/auth", tags=["public-auth"])
 
 # Compatibility helpers still consumed by legacy admin user routes/tests.
 password_hash = PasswordHash.recommended()
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{2,16}$")
-
-
 def auth_error(
     status_code: int,
     code: str,
@@ -52,17 +51,17 @@ def auth_error(
     )
 
 
-def validate_username(username: str) -> tuple[str, str]:
-    if (
-        username != username.strip()
-        or not USERNAME_PATTERN.fullmatch(username)
-    ):
+def validate_username(
+    username: str,
+) -> tuple[str, str]:
+    try:
+        return validate_user_username(username)
+    except CredentialPolicyError as exc:
         raise auth_error(
-            400,
-            "USERNAME_INVALID",
-            "用户名须为 2～16 位，仅允许字母、数字、下划线和短横线",
-        )
-    return username, username.lower()
+            exc.status_code,
+            exc.code,
+            exc.message,
+        ) from exc
 
 
 def validate_password(
@@ -70,13 +69,17 @@ def validate_password(
     *,
     field_name: str = "密码",
 ) -> str:
-    if len(value) < 8 or len(value) > 72:
-        raise auth_error(
-            400,
-            "PASSWORD_INVALID",
-            f"{field_name}长度须为 8～72 位",
+    try:
+        return validate_user_password(
+            value,
+            field_name=field_name,
         )
-    return value
+    except CredentialPolicyError as exc:
+        raise auth_error(
+            exc.status_code,
+            exc.code,
+            exc.message,
+        ) from exc
 
 
 def verify_password(value: str, encoded: str) -> bool:
