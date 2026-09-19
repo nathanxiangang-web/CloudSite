@@ -174,6 +174,36 @@ async def list_public_collections(
     return [await collection_view(state, index, row) for row in rows]
 
 
+async def list_home_collections(
+    state: AsyncSession,
+    index: AsyncSession,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Home-only public collection projection preserving legacy ordering."""
+
+    rows = list(
+        (
+            await state.scalars(
+                select(Collection)
+                .where(
+                    Collection.visible_on_home.is_(True),
+                    Collection.status == "active",
+                )
+                .order_by(
+                    Collection.sort_order,
+                    desc(Collection.updated_at),
+                )
+                .limit(max(int(limit), 0))
+            )
+        ).all()
+    )
+    return [
+        await collection_view(state, index, row)
+        for row in rows
+    ]
+
+
 async def get_public_collection(
     state: AsyncSession,
     index: AsyncSession,
