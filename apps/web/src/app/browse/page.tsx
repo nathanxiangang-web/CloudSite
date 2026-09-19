@@ -8,6 +8,7 @@ import { PublicShell } from "@/components/PublicShell";
 import { ResourceCard } from "@/components/ResourceCard";
 import { GalleryCard } from "@/components/GalleryCard";
 import { api, Resource } from "@/lib/api";
+import { catalogEntryHref } from "@/lib/catalog";
 
 const typeMeta = {
   software: { label: "软件", icon: PanelsTopLeft },
@@ -97,7 +98,7 @@ export default function BrowsePage() {
       })}
     </section>
 
-    {data && data.catalog_entries.length > 0 && <><h2 className="subheading">推荐条目</h2><section className="resource-grid">{data.catalog_entries.map((entry) => <Link href={`/catalog/${entry.slug}`} className="popular-card" key={entry.entry_id}><strong title={entry.title}>{entry.title}</strong><small>{entry.summary}</small>{entry.featured && <span className="type-pill type-software">精选</span>}</Link>)}</section></>}
+    {data && data.catalog_entries.length > 0 && <><h2 className="subheading">推荐条目</h2><section className="resource-grid">{data.catalog_entries.map((entry) => <Link href={catalogEntryHref(entry.entry_id)} className="popular-card" key={entry.entry_id}><strong title={entry.title}>{entry.title}</strong><small>{entry.summary}</small>{entry.featured && <span className="type-pill type-software">精选</span>}</Link>)}</section></>}
 
     <div className="library-toolbar"><h2>全部资源</h2><div><label className="library-sort">排序<select value={sort} onChange={(event) => navigate({ sort: normalizeSort(event.target.value), page: 1 })}><option value="modified_at">最近更新</option><option value="name">名称</option></select></label><button className="selected" aria-label="网格视图"><Grid2X2 /></button></div></div>
     <section className={activeType === "image" ? "gallery-grid" : "resource-grid"}>{browse.isLoading ? <div className="loading">正在加载资源索引…</div> : browse.error ? <div className="empty error-state">加载失败：{browse.error.message}</div> : data && data.items.length ? data.items.map((item) => activeType === "image" ? <GalleryCard key={item.id} item={item} /> : <ResourceCard key={item.id} item={item} />) : <div className="empty">当前筛选条件下暂无资源。完成 AList 配置和同步后会自动显示。</div>}</section>
