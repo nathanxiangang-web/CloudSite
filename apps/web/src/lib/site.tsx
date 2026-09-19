@@ -40,7 +40,7 @@ const fallback: PublicSiteSettings = {
   footer_text: "",
   submission_email: "",
   github_url: "",
-  registration_enabled: true,
+  registration_enabled: false,
   default_share_duration: "24h",
   version: "",
   content_counts: {},
