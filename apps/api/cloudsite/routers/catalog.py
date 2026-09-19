@@ -11,14 +11,20 @@ from ..download_rate_limit import (
     get_effective_client_ip,
     rate_limit_payload,
 )
-from ..models import AListConnection, CatalogAsset, CatalogEntry, CatalogRelease, Resource
 from ..services.downloads import _download_event
 from .admin.catalog import _build_entry_detail, _entry_to_summary
-from ..services.catalog_views import (
-    catalog_asset_view,
-    catalog_entry_view,
-    catalog_release_view,
+from ..modules.catalog.contracts.public import (
+    public_catalog_asset_view,
+    public_catalog_entry_view,
+    public_catalog_release_view,
     published_catalog_page,
+)
+from ..modules.providers.contracts.public import enabled_root_ids, provider_runtime
+from ..modules.resources.contracts.public import (
+    ResourceInactiveError,
+    ResourceNotAvailableError,
+    ResourceNotFoundError,
+    resource_queries,
 )
 from ..services.catalog_search import search_published_catalog
 
@@ -121,11 +127,8 @@ async def catalog_entry(entry_id: str):
     from ..main import IndexSession, StateSession
 
     async with StateSession() as state, IndexSession() as index:
-        entry = await state.get(CatalogEntry, entry_id)
-        if entry is None or entry.status != "published":
-            raise _not_found()
-        result = await catalog_entry_view(state, index, entry, public=True)
-        if result["availability"] != "available":
+        result = await public_catalog_entry_view(state, index, entry_id)
+        if result is None:
             raise _not_found()
         return result
 
@@ -135,15 +138,12 @@ async def catalog_release(release_id: str):
     from ..main import IndexSession, StateSession
 
     async with StateSession() as state, IndexSession() as index:
-        release = await state.get(CatalogRelease, release_id)
-        if release is None or release.status != "published":
-            raise HTTPException(404, {"code": "CATALOG_RELEASE_NOT_FOUND", "message": "Catalog release not found"})
-        entry = await state.get(CatalogEntry, release.entry_id)
-        if entry is None or entry.status != "published":
-            raise HTTPException(404, {"code": "CATALOG_RELEASE_NOT_FOUND", "message": "Catalog release not found"})
-        result = await catalog_release_view(state, index, release, public=True)
-        if not any(asset["availability"] == "available" for asset in result["assets"]):
-            raise HTTPException(404, {"code": "CATALOG_RELEASE_NOT_FOUND", "message": "Catalog release not found"})
+        result = await public_catalog_release_view(state, index, release_id)
+        if result is None:
+            raise HTTPException(
+                404,
+                {"code": "CATALOG_RELEASE_NOT_FOUND", "message": "Catalog release not found"},
+            )
         return result
 
 
@@ -152,18 +152,12 @@ async def catalog_asset(asset_id: str):
     from ..main import IndexSession, StateSession
 
     async with StateSession() as state, IndexSession() as index:
-        asset = await state.get(CatalogAsset, asset_id)
-        if asset is None or asset.status != "active":
-            raise HTTPException(404, {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"})
-        release = await state.get(CatalogRelease, asset.release_id)
-        entry = await state.get(CatalogEntry, release.entry_id) if release is not None else None
-        if release is None or release.status != "published" or entry is None or entry.status != "published":
-            raise HTTPException(404, {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"})
-        result = await catalog_asset_view(
-            state, index, asset, content_type=entry.content_type, public=True
-        )
-        if result["availability"] != "available":
-            raise HTTPException(404, {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"})
+        result = await public_catalog_asset_view(state, index, asset_id)
+        if result is None:
+            raise HTTPException(
+                404,
+                {"code": "CATALOG_ASSET_NOT_FOUND", "message": "Catalog asset not found"},
+            )
         return result
 
 
@@ -221,10 +215,33 @@ async def catalog_asset_download(entry_id: str, asset_id: str, request: Request)
         except service.CatalogError as exc:
             raise _not_found() from exc
 
-        resource = await index.get(Resource, target.resource_id)
-        if resource is None or resource.status != "active":
-            await _download_event(state, target.resource_id, "failed", "DL-001", started, source="catalog")
-            raise HTTPException(409, {"code": "CATALOG_ASSET_NOT_DOWNLOADABLE", "message": "underlying resource unavailable", "reason": "resource_inactive"})
+        try:
+            roots = await enabled_root_ids(state)
+            resource = await resource_queries(index).download_resource(
+                resource_id=target.resource_id,
+                enabled_root_ids=roots,
+            )
+        except (
+            ResourceNotFoundError,
+            ResourceInactiveError,
+            ResourceNotAvailableError,
+        ):
+            await _download_event(
+                state,
+                target.resource_id,
+                "failed",
+                "DL-001",
+                started,
+                source="catalog",
+            )
+            raise HTTPException(
+                409,
+                {
+                    "code": "CATALOG_ASSET_NOT_DOWNLOADABLE",
+                    "message": "underlying resource unavailable",
+                    "reason": "resource_inactive",
+                },
+            )
 
         rate = await check_download_rate(get_effective_client_ip(request))
         if not rate.allowed:
@@ -235,9 +252,11 @@ async def catalog_asset_download(entry_id: str, asset_id: str, request: Request)
                 headers={"Retry-After": str(rate.retry_after)},
             )
 
-        connection = await state.get(AListConnection, 1)
         try:
-            resolution = await resolve_download_entry(resource, connection)
+            resolution = await resolve_download_entry(
+                resource,
+                provider_runtime(state),
+            )
         except DownloadError as exc:
             await _download_event(state, target.resource_id, "failed", exc.code, started, source="catalog")
             raise HTTPException(502, {"code": exc.code, "message": "download resolution failed"}) from exc
