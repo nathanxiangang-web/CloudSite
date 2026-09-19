@@ -16,6 +16,7 @@ from ..domain.views import (
     AdminIndexCountsView,
     AdminIndexFolderView,
     CatalogResourceView,
+    DiagnosticResourceView,
     FolderDetailView,
     FolderSummaryView,
     ParentSummaryView,
@@ -184,6 +185,23 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             name=row.name,
             extension=row.extension,
             size=row.size,
+            status=row.status,
+            root_mapping_id=row.root_mapping_id,
+            content_type=row.content_type,
+        )
+
+    async def diagnostic_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> DiagnosticResourceView | None:
+        row = await self._session.get(Resource, resource_id)
+        if row is None:
+            return None
+        return DiagnosticResourceView(
+            id=row.id,
+            name=row.name,
+            path=row.path,
             status=row.status,
             root_mapping_id=row.root_mapping_id,
             content_type=row.content_type,

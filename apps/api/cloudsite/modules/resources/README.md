@@ -94,3 +94,10 @@ active Folder/Resource counts, indexed folder listings with storage paths, and
 folder detail with direct active-resource counts. These views are separate from
 the public browsing DTOs so admin-only path/status metadata does not leak into
 the public resource contract.
+
+## Delivery Diagnostic View
+
+Resources exposes a narrow `DiagnosticResourceView` for Delivery diagnostics.
+It includes the internal storage path and current resource state required to
+probe delivery, but is not serialized by public Resources endpoints. This keeps
+diagnostic storage-path access explicit and avoids reusing Catalog/public DTOs.
