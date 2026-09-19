@@ -317,10 +317,5 @@ class NotificationUpdate(BaseModel):
     expires_at: datetime | None = None
 
 
-class PathSyncInput(BaseModel):
-    paths: list[str]
-    force_refresh: bool = False
-
-
 class CloudDownloadTaskInput(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
