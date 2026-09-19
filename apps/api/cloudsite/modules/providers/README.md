@@ -92,8 +92,15 @@ Migration status: partial. `AListConnection`, `ContentRootMapping`, and
 exact compatibility re-export. The module's provider-info service now uses the
 module-owned connection ORM and no longer imports `cloudsite.models`.
 
-Low-level AList transport still lives in the legacy `cloudsite.alist` surface,
-and admin connection CRUD / runtime provider resolution remain transitional.
-Providers now exposes a runtime gateway through its public contract for resolving an
+Low-level AList transport still lives in the legacy `cloudsite.alist` surface
+as a transitional transport adapter, but all admin connection lifecycle work now
+stays inside Providers:
+
+- connection settings are exposed as persistence-neutral dictionaries;
+- credential decryption/encryption happens inside the Providers boundary;
+- test/save operations own status persistence and audit logging;
+- directory browsing consumes stored credentials without exposing ciphertext;
+- `routers/admin/alist.py` is ORM/SQLAlchemy/crypto/AListClient-free.
+
+Providers also exposes a runtime gateway through its public contract for resolving an
 enabled content root to download/preview operations without exporting credentials.
-Admin connection CRUD and compatibility-record persistence remain transitional.

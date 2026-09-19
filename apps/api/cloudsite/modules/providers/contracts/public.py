@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from ..application.connection_admin import (
+    ProviderAdminError,
+    admin_connection_settings,
+    browse_admin_directories,
+    save_admin_connection,
+    test_admin_connection,
+)
 from ..application.provider_service import (
     ContentRootView,
     ProviderLoginTarget,
@@ -62,4 +69,9 @@ __all__ = [
     "DEFAULT_PROVIDER_TYPE",
     "ProviderRegistry",
     "registry",
+    "ProviderAdminError",
+    "admin_connection_settings",
+    "browse_admin_directories",
+    "save_admin_connection",
+    "test_admin_connection",
 ]
