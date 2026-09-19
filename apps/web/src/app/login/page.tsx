@@ -10,9 +10,11 @@ import { api } from "@/lib/api";
 import { AUTH_QUERY_KEY, PublicUser } from "@/lib/auth";
 import { clearUserScopedQueries } from "@/lib/user-query-keys";
 import { safeNext } from "@/lib/navigation";
+import { useSite } from "@/lib/site";
 
 function LoginContent() {
   const queryClient = useQueryClient();
+  const site = useSite();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const params = useSearchParams();
@@ -40,7 +42,9 @@ function LoginContent() {
       {login.error && <p className="form-error">{login.error.message}</p>}
       <button className="primary user-auth-submit" disabled={login.isPending}><LogIn />{login.isPending ? "正在登录…" : "登录"}</button>
     </form>
-    <p className="user-auth-switch">还没有账号？<Link href="/register">注册</Link></p>
+    {site.registration_enabled
+      ? <p className="user-auth-switch">还没有账号？<Link href="/register">注册</Link></p>
+      : <p className="user-auth-switch">当前站点未开放自助注册。</p>}
   </section></main>;
 }
 
