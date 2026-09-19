@@ -499,6 +499,8 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
         content_type: str | None,
         page: int,
         page_size: int,
+        sort: str,
+        order: str,
     ) -> ResourcePageView:
         if not enabled_root_ids:
             return ResourcePageView(
@@ -518,11 +520,19 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             count_query = count_query.where(
                 Resource.content_type == content_type
             )
+        sort_columns = {
+            "name": Resource.name,
+            "modified_at": Resource.modified_at,
+            "size": Resource.size,
+        }
+        sort_column = sort_columns[sort]
+        order_by = sort_column.asc() if order == "asc" else sort_column.desc()
+
         total = int(await self._session.scalar(count_query) or 0)
         rows = list(
             (
                 await self._session.scalars(
-                    query.order_by(desc(Resource.modified_at), Resource.id)
+                    query.order_by(order_by, Resource.id)
                     .offset((page - 1) * page_size)
                     .limit(page_size)
                 )
