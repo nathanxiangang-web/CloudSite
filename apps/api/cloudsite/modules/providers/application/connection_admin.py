@@ -267,10 +267,35 @@ async def browse_admin_directories(
     }
 
 
+async def check_provider_health(
+    state: AsyncSession,
+) -> tuple[str, str | None]:
+    """Readiness probe for the configured provider connection."""
+
+    try:
+        row = await state.get(AListConnection, 1)
+    except Exception as exc:
+        return "degraded", str(exc)
+    if row is None or not row.enabled:
+        return "healthy", None
+    try:
+        password = decrypt_secret(row.password_ciphertext)
+        async with AListClient(
+            row.base_url,
+            row.username,
+            password,
+        ) as client:
+            await client.test()
+        return "healthy", None
+    except Exception as exc:
+        return "degraded", str(exc)
+
+
 __all__ = [
     "ProviderAdminError",
     "admin_connection_settings",
     "test_admin_connection",
     "save_admin_connection",
     "browse_admin_directories",
+    "check_provider_health",
 ]
