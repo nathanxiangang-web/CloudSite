@@ -7,12 +7,12 @@ temporarily, but it may only decrease.
 
 ## Current baseline
 
-The current reviewed baseline records **55 exact debt IDs**:
+The current reviewed baseline records **52 exact debt IDs**:
 
 | Rule | Baseline | Meaning |
 | --- | ---: | --- |
 | `module_legacy_import` | 0 | A business module still imports `cloudsite.models`, `cloudsite.database`, `cloudsite.services`, or `cloudsite.main`. |
-| `router_orm_import` | 55 | A legacy router still imports SQLAlchemy, shared ORM models, or the legacy database layer directly. |
+| `router_orm_import` | 52 | A legacy router still imports SQLAlchemy, shared ORM models, or the legacy database layer directly. |
 | `cross_module_internal_import` | 0 | A business module bypasses another module's `contracts/*` boundary. This stays locked at zero. |
 
 The baseline tightened from 90 to 88 after the Identity admin diagnostics
@@ -30,7 +30,8 @@ and to 71 when Notifications took ORM/query ownership and its user/admin routers
 and to 67 when Catalog core application stopped importing shared models/services and moved its state ORM behind module ownership,
 and to 59 when Automation's parser subdomain took ownership of parser task ORM, deterministic parsing, and Resource parser reads,
 and to 58 when frozen legacy sync reads moved behind the Indexing contract and Automation seeding stopped importing shared sync/resource ORM,
-and to 55 when Automation took ownership of suggestion state and routed all Resource/Catalog interaction through public contracts.
+and to 55 when Automation took ownership of suggestion state and routed all Resource/Catalog interaction through public contracts,
+and to 52 when three thin router debts were removed: two unused ORM/SQLAlchemy imports and admin auth's provider lookup moved behind the Providers public contract.
 
 The machine-readable list lives in
 `docs/development/architecture-debt-baseline.json`.
@@ -74,7 +75,7 @@ allow-list entry and later reappear.
 Example:
 
 ```text
-90 -> 88 -> 87 -> 86 -> 85 -> 84 -> 83 -> 82 -> 81 -> 79 -> 76 -> 71 -> 67 -> 59 -> 58 -> 55 -> ... -> 0
+90 -> 88 -> 87 -> 86 -> 85 -> 84 -> 83 -> 82 -> 81 -> 79 -> 76 -> 71 -> 67 -> 59 -> 58 -> 55 -> 52 -> ... -> 0
 ```
 
 The ratchet therefore records the actual current debt, not the historical
