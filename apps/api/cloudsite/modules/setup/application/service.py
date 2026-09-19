@@ -327,7 +327,13 @@ async def _process_brand(
         or data.get("card_radius") is not None
     ):
         presentation = await get_admin_presentation(state)
-        cfg = PresentationConfig(**presentation["config"])
+        config = presentation["config"]
+        cfg = PresentationConfig(
+            preset=config.get("preset", "custom"),
+            theme_tokens=config.get("theme_tokens", {}),
+            navigation=config.get("navigation", []),
+            home_blocks=config.get("home_blocks", []),
+        )
         theme = cfg.theme_tokens.model_copy()
         if data.get("accent_color") is not None:
             theme.accent_color = str(data["accent_color"])
