@@ -102,8 +102,10 @@ Users is now **partial** rather than a skeleton.
 - Administrator user list/create/rename/status/password-reset/soft-delete
   workflows now live in `application/admin_management.py`; root
   `cloudsite.users` is an HTTP/query edge with no ORM access.
-- Admin sessions, favorites, history, and playback progress remain
-  follow-up work.
+- Favorites, resource history, and playback-progress ORM + persistence now
+  live in `application/user_data.py`; root `cloudsite.userdata` composes
+  visible resources through Resources/Providers contracts.
+- Admin sessions remain follow-up work.
 
 ## Role Policy Ownership
 
