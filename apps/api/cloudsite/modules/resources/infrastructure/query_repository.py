@@ -115,7 +115,41 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             extension=row.extension,
             mime_type=row.mime_type,
             status=row.status,
+            content_type=row.content_type,
+            size=row.size,
+            indexed_at=row.indexed_at,
         )
+
+    async def list_parser_resources(
+        self,
+        *,
+        content_type: str | None,
+        limit: int,
+    ) -> list[ParserResourceView]:
+        query = select(Resource).where(Resource.status == "active")
+        if content_type is not None:
+            query = query.where(Resource.content_type == content_type)
+        rows = list(
+            (
+                await self._session.scalars(
+                    query.order_by(Resource.indexed_at, Resource.id).limit(limit)
+                )
+            ).all()
+        )
+        return [
+            ParserResourceView(
+                id=row.id,
+                name=row.name,
+                path=row.path,
+                extension=row.extension,
+                mime_type=row.mime_type,
+                status=row.status,
+                content_type=row.content_type,
+                size=row.size,
+                indexed_at=row.indexed_at,
+            )
+            for row in rows
+        ]
 
     async def list_resources(
         self,
