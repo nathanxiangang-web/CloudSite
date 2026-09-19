@@ -10,6 +10,7 @@ from sqlalchemy import select, func
 from . import __version__
 from .database import StateSession, IndexSession
 from .models import ContentRootMapping, Resource, SitePresentation, SiteSettings
+from .platform.observability import write_operation_log
 
 
 from .services.presentation import default_presentation, validate_config
@@ -46,6 +47,66 @@ def public_site_settings(row: SiteSettings | None) -> dict:
         "default_share_duration": row.default_share_duration or "24h",
         "version": __version__,
     }
+
+
+def admin_site_settings_payload(row: SiteSettings) -> dict:
+    return {
+        **public_site_settings(row),
+        "share_image_url": (
+            "/api/public/share-page/image"
+            if row.share_image_name
+            else ""
+        ),
+    }
+
+
+async def get_admin_site_settings(state) -> dict:
+    row = await state.get(SiteSettings, 1) or SiteSettings(id=1)
+    return admin_site_settings_payload(row)
+
+
+async def update_admin_site_settings(
+    state,
+    *,
+    values: dict,
+) -> dict:
+    row = await state.get(SiteSettings, 1) or SiteSettings(id=1)
+    changed: list[str] = []
+    for key, value in values.items():
+        if getattr(row, key) != value:
+            setattr(row, key, value)
+            changed.append(key)
+    state.add(row)
+    await write_operation_log(
+        state,
+        module="site",
+        action="site_settings_updated",
+        message=f"更新站点设置：{', '.join(changed) or '无变化'}",
+    )
+    await state.commit()
+    return {"ok": True, **admin_site_settings_payload(row)}
+
+
+async def replace_share_page_image_name(
+    state,
+    *,
+    new_name: str,
+) -> str:
+    row = await state.get(SiteSettings, 1) or SiteSettings(id=1)
+    old_name = row.share_image_name or ""
+    row.share_image_name = new_name
+    state.add(row)
+    await state.commit()
+    return old_name
+
+
+async def clear_share_page_image_name(state) -> str:
+    row = await state.get(SiteSettings, 1)
+    old_name = row.share_image_name if row else ""
+    if row is not None:
+        row.share_image_name = ""
+        await state.commit()
+    return old_name
 
 
 async def share_page_settings_payload(state) -> dict:
