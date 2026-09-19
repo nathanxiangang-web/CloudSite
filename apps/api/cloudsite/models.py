@@ -21,6 +21,7 @@ from .modules.delivery.infrastructure.models import (
     DownloadDiagnostic,
     DownloadEvent,
 )
+from .modules.notifications.infrastructure.models import Notification
 
 
 def utcnow() -> datetime:
@@ -169,22 +170,6 @@ class Submission(StateBase):
     reviewed_by: Mapped[str] = mapped_column(String(100), default="")
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     published_resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-
-class Notification(StateBase):
-    __tablename__ = "notifications"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    title: Mapped[str] = mapped_column(String(200))
-    body: Mapped[str] = mapped_column(Text, default="")
-    level: Mapped[str] = mapped_column(String(20), default="info", index=True)
-    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    source: Mapped[str] = mapped_column(String(30), default="manual")
-    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

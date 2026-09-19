@@ -86,7 +86,17 @@ catalog, submissions, and shares emit events; notifications consumes them.
 
 ## Current Migration Status
 
-Code is currently in `services/notifications.py` and
-`routers/notifications.py`. These move to `modules/notifications/` in Phase 3.
-The module skeleton exists with empty layers. The event consumer wiring will
-be set up during migration, connecting to the platform event bus.
+Migration status: partial. The `Notification` ORM declaration, user/admin
+notification queries, and notification CRUD commands are now owned by this
+module. `cloudsite.models.Notification` remains an exact compatibility
+re-export for legacy producers.
+
+Both notification routers are ORM-free and depend on
+`modules/notifications/contracts/public.py`. Admin notification audit writes
+use the platform observability audit writer instead of `OperationLog` ORM in
+the router.
+
+Legacy business producers may still create notifications through the shared
+compatibility model. Event-consumer/channel delivery work remains future scope;
+the module should not be described as isolated until those producer paths move
+to the public contract/event boundary.

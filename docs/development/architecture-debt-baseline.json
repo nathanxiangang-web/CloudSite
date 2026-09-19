@@ -2,8 +2,8 @@
   "schema_version": 1,
   "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
   "counts": {
-    "module_legacy_import": 17,
-    "router_orm_import": 59
+    "module_legacy_import": 16,
+    "router_orm_import": 55
   },
   "violations": [
     {
@@ -103,12 +103,6 @@
       "id": "module_legacy_import::apps/api/cloudsite/modules/catalog/application/catalog_release.py::cloudsite.services"
     },
     {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/notifications/application/notification_service.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/notifications/application/notification_service.py::cloudsite.models"
-    },
-    {
       "rule": "router_orm_import",
       "file": "apps/api/cloudsite/routers/admin/alist.py",
       "target": "cloudsite.models",
@@ -191,18 +185,6 @@
       "file": "apps/api/cloudsite/routers/admin/index.py",
       "target": "sqlalchemy",
       "id": "router_orm_import::apps/api/cloudsite/routers/admin/index.py::sqlalchemy"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/admin/notifications.py",
-      "target": "cloudsite.models",
-      "id": "router_orm_import::apps/api/cloudsite/routers/admin/notifications.py::cloudsite.models"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/admin/notifications.py",
-      "target": "sqlalchemy",
-      "id": "router_orm_import::apps/api/cloudsite/routers/admin/notifications.py::sqlalchemy"
     },
     {
       "rule": "router_orm_import",
@@ -413,18 +395,6 @@
       "file": "apps/api/cloudsite/routers/home.py",
       "target": "sqlalchemy",
       "id": "router_orm_import::apps/api/cloudsite/routers/home.py::sqlalchemy"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/notifications.py",
-      "target": "cloudsite.models",
-      "id": "router_orm_import::apps/api/cloudsite/routers/notifications.py::cloudsite.models"
-    },
-    {
-      "rule": "router_orm_import",
-      "file": "apps/api/cloudsite/routers/notifications.py",
-      "target": "sqlalchemy",
-      "id": "router_orm_import::apps/api/cloudsite/routers/notifications.py::sqlalchemy"
     },
     {
       "rule": "router_orm_import",
