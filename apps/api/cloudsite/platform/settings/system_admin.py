@@ -46,6 +46,27 @@ async def read_admin_system_settings(
     }
 
 
+async def read_setup_completed(
+    state: AsyncSession,
+) -> bool:
+    row = (
+        await state.execute(
+            text(
+                "SELECT value FROM system_settings "
+                "WHERE key = 'setup_completed' LIMIT 1"
+            )
+        )
+    ).first()
+    if row is None:
+        return False
+    return str(row[0] or "").lower() in {
+        "true",
+        "1",
+        "yes",
+        "on",
+    }
+
+
 async def save_admin_system_settings(
     state: AsyncSession,
     *,
@@ -101,5 +122,6 @@ async def save_admin_system_settings(
 __all__ = [
     "SYNC_INTERVAL_OPTIONS",
     "read_admin_system_settings",
+    "read_setup_completed",
     "save_admin_system_settings",
 ]
