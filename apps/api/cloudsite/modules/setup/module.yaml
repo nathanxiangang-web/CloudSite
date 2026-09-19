@@ -12,6 +12,7 @@ allowed_dependencies:
   - "platform/settings"
   - "modules/providers/contracts"
   - "modules/presentation/contracts"
+  - "modules/site/contracts"
 
 owned_tables:
   - "setup_wizard_state"
