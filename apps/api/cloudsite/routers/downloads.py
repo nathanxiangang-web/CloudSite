@@ -19,7 +19,7 @@ from ..modules.resources.domain.errors import (
     ResourceNotAvailableError,
     ResourceNotFoundError,
 )
-from ..services.downloads import _download_event
+from ..modules.delivery.contracts.public import _download_event
 from ..shares.service import enabled_root_ids
 
 router = APIRouter()

@@ -16,7 +16,7 @@ from cloudsite.models import (
     utcnow,
 )
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
-from cloudsite.services.collections import collection_dict
+from cloudsite.modules.collections.contracts.public import collection_view
 from cloudsite.services.collection_seeds import seed_default_collections
 
 
@@ -65,7 +65,7 @@ async def test_collection_item_strong_typing_resource_and_catalog_entry(tmp_path
         await index.commit()
 
         collection = await state.get(Collection, 100)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
         types = {item.get("item_type") for item in payload["items"]}
         assert types == {"resource", "catalog_entry"}
         assert payload["item_count"] == 2
@@ -120,7 +120,7 @@ async def test_collection_topic_fields_read_write(tmp_path, monkeypatch):
 
     async with state_factory() as state, index_factory() as index:
         collection = await state.get(Collection, 300)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
         assert payload["goal"] == "完成常用工具安装"
         assert payload["audience"] == "刚搭建环境的开发者"
         assert payload["prerequisites"] == "一台可联网电脑"
@@ -195,13 +195,13 @@ async def test_collection_item_removal_count_correct(tmp_path, monkeypatch):
         await index.commit()
 
         collection = await state.get(Collection, 400)
-        before = await collection_dict(state, index, collection, include_items=True)
+        before = await collection_view(state, index, collection, include_items=True)
         assert before["item_count"] == 3
 
         await state.execute(delete(CollectionItem).where(CollectionItem.id == 1))
         await state.commit()
 
-        after = await collection_dict(state, index, collection, include_items=True)
+        after = await collection_view(state, index, collection, include_items=True)
         assert after["item_count"] == 2
         assert len(after["items"]) == 2
 

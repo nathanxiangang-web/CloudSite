@@ -10,7 +10,7 @@ from ..shares.service import (
     resource_in_publication_scope,
     target_valid_for_share,
 )
-from .collections import collection_dict
+from ..modules.collections.contracts.public import collection_view
 from .resources import folder_dict, resource_dict
 
 
@@ -63,7 +63,7 @@ async def build_share_target_payload(state, index, row: Share) -> dict:
     target = await state.get(Collection, int(row.object_id)) if row.object_id.isdigit() else None
     if not target or not await target_valid_for_share(state, index, row):
         raise HTTPException(404, {"code": "SHARE_TARGET_INVALID", "message": "分享的合集不存在或不可用"})
-    return await collection_dict(state, index, target, include_items=True)
+    return await collection_view(state, index, target, include_items=True)
 
 
 async def resolve_share_download_resource(state, index, row: Share, resource_id: str | None):
