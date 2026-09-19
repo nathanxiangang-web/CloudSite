@@ -86,7 +86,6 @@ async def create_package(body: CreatePackageRequest):
                 expires_at=body.expires_at,
             )
             await state.commit()
-            from sqlalchemy import func
             item_count = 0
             return PackageSummaryResponse(
                 package_id=package.package_id,
