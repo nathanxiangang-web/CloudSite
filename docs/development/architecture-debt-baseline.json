@@ -2,7 +2,7 @@
   "schema_version": 1,
   "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
   "counts": {
-    "module_legacy_import": 25,
+    "module_legacy_import": 24,
     "router_orm_import": 63
   },
   "violations": [
@@ -137,12 +137,6 @@
       "file": "apps/api/cloudsite/modules/indexing/infrastructure/legacy_bridge.py",
       "target": "cloudsite.models",
       "id": "module_legacy_import::apps/api/cloudsite/modules/indexing/infrastructure/legacy_bridge.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/indexing/infrastructure/production_store.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/indexing/infrastructure/production_store.py::cloudsite.models"
     },
     {
       "rule": "module_legacy_import",
