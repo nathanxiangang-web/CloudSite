@@ -111,9 +111,11 @@ Resources contracts, enabled publication roots through Providers contracts,
 and release notifications through Notifications contracts.
 
 Revision writes, search-outbox enqueue, and release-subscriber notification
-write-side helpers now live in the Catalog module. Legacy `services/catalog*`
-read/search/follow compatibility surfaces and the public/admin Catalog routers
-remain migration work; Catalog should not yet be described as isolated.
+write-side helpers now live in the Catalog module. Both public and admin Catalog
+routers now consume module-owned application/query boundaries without direct
+ORM access. Legacy `services/catalog*` read/search/follow compatibility
+surfaces and remaining non-router call sites are still migration work, so
+Catalog should not yet be described as fully isolated.
 
 ## Public Query Ownership
 
