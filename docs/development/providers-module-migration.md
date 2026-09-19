@@ -29,14 +29,28 @@ Architecture debt ratchets from 85 to 84:
 
 ## P2 — runtime provider gateway
 
-Next, add a Providers-owned runtime gateway that resolves an enabled
-`ContentRootMapping` to provider operations while keeping credentials and
-decryption inside Providers.
+Status: implemented in this change.
 
-The public boundary should expose provider operations or persistence-neutral
-results, not `AListConnection` ORM instances and never decrypted credentials.
+Providers now exposes `provider_runtime(session)` through
+`modules/providers/contracts/public.py`. The returned runtime port resolves an
+enabled content root to its enabled connection, decrypts credentials inside the
+Providers boundary, opens the AList client, and exposes only provider operations:
 
-This is the prerequisite for Resources R4b: preview/cache preparation can then
+- `download_entry(root_mapping_id, path)`;
+- `preview_entry(root_mapping_id, path)`.
+
+Callers receive a persistence-neutral `ProviderEntry`; connection ORM objects
+and decrypted credentials never leave Providers.
+
+Missing/disabled roots or connections fail closed with
+`ProviderUnavailableError`. Provider/client failures are normalized into
+`ProviderAccessError.category` values such as `unreachable`,
+`authentication`, `metadata`, `configuration`, and `credentials` without
+leaking backend-specific details. Both download and preview operations return the
+same persistence-neutral `ProviderEntry` shape with URL, host, base path, and
+signature presence.
+
+This is the prerequisite for Resources R4b: preview/cache preparation can now
 depend only on `modules/providers/contracts` instead of legacy
 `services.connections`.
 
