@@ -1,12 +1,12 @@
-"""Indexing ownership tests for descendant path mutation."""
+"""Resources ownership tests for descendant path mutation."""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase
 from cloudsite.models import Folder, Resource
-from cloudsite.modules.indexing.infrastructure.production_store import (
-    ProductionIndexingStore,
+from cloudsite.modules.resources.infrastructure.inventory_repository import (
+    SqlAlchemyResourceInventoryRepository,
 )
 
 
@@ -18,7 +18,7 @@ async def _factory():
     return engine, factory
 
 
-async def test_indexing_store_rewrites_only_descendant_prefixes():
+async def test_resources_repository_rewrites_only_descendant_prefixes():
     engine, factory = await _factory()
     async with factory() as session:
         session.add_all(
@@ -44,7 +44,7 @@ async def test_indexing_store_rewrites_only_descendant_prefixes():
         )
         await session.commit()
 
-        store = ProductionIndexingStore(session)
+        store = SqlAlchemyResourceInventoryRepository(session)
         result = await store.cascade_descendant_paths("/a", "/renamed")
         assert result == {"folders_updated": 1, "resources_updated": 1}
         await session.commit()
@@ -57,7 +57,7 @@ async def test_indexing_store_rewrites_only_descendant_prefixes():
     await engine.dispose()
 
 
-async def test_indexing_store_escapes_percent_and_underscore_in_prefix():
+async def test_resources_repository_escapes_percent_and_underscore_in_prefix():
     engine, factory = await _factory()
     async with factory() as session:
         session.add_all(
@@ -78,7 +78,7 @@ async def test_indexing_store_escapes_percent_and_underscore_in_prefix():
         )
         await session.commit()
 
-        store = ProductionIndexingStore(session)
+        store = SqlAlchemyResourceInventoryRepository(session)
         pct = await store.cascade_descendant_paths("/a%", "/pct")
         assert pct["folders_updated"] == 1
         us = await store.cascade_descendant_paths("/a_b", "/us")
