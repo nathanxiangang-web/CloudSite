@@ -12,7 +12,8 @@ from sqlalchemy import select
 
 from ..models import SystemSetting
 
-from ..modules.indexing.infrastructure.legacy_bridge import run_indexing_v2_production
+from ..modules.indexing.contracts.public import v2_sync_due
+from .sync import run_indexing_v2_production
 
 SYNC_INTERVAL_OPTIONS = {180, 360, 720, 1440}
 
@@ -76,7 +77,15 @@ async def scheduler_loop() -> None:
             await main._run_cleanup_job("share_verify_attempt_cleanup", "分享验证码状态清理", main.cleanup_share_verify_attempts)
         async with main.StateSession() as session:
             values = await main.get_system_values(session)
-        if not values["automatic_sync"]:
+            if not values["automatic_sync"]:
+                continue
+            due = await v2_sync_due(
+                session,
+                values["sync_interval_minutes"],
+            )
+        if not due:
+            continue
+        if main.manual_sync_task and not main.manual_sync_task.done():
             continue
         try:
             await run_indexing_v2_production()
