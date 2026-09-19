@@ -34,9 +34,9 @@ async def admin_overview():
                 "id": 0,
                 "status": str(progress.get("status", "idle")),
                 "finished_at": None,
-                "added": 0,
-                "updated": 0,
-                "removed": 0,
+                "added": int(progress.get("added", 0) or 0),
+                "updated": int(progress.get("changed", 0) or 0),
+                "removed": int(progress.get("removed", 0) or 0),
                 "folders_scanned": int(
                     progress.get("categories_done", 0) or 0
                 ),
