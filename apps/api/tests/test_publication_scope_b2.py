@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from cloudsite import auth, main
 from cloudsite.database import StateBase
 from cloudsite.models import CatalogEntry, SiteSettings, SystemSetting, utcnow
-from cloudsite.services.publication_scope import (
+from cloudsite.modules.catalog.contracts.public import (
     build_sitemap_xml,
     invalidate_sitemap_cache,
     is_publicly_visible,
