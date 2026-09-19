@@ -2,19 +2,17 @@
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from ...auth import validate_request_origin
-from ...models import OperationLog, SiteSettings
 from ...schemas import SiteSettingsUpdate
-from ...site import public_site_settings
+from ...site import (
+    clear_share_page_image_name,
+    get_admin_site_settings,
+    replace_share_page_image_name,
+    update_admin_site_settings,
+)
 from ...site_assets import SHARE_IMAGE_MAX_BYTES, remove_share_image, save_share_image
 
 router = APIRouter()
 
-
-def site_settings_dict(row: SiteSettings) -> dict:
-    return {
-        **public_site_settings(row),
-        "share_image_url": "/api/public/share-page/image" if row.share_image_name else "",
-    }
 
 
 @router.get("/api/admin/site")
@@ -22,8 +20,7 @@ async def get_site():
     from ...main import StateSession
 
     async with StateSession() as session:
-        row = await session.get(SiteSettings, 1) or SiteSettings(id=1)
-        return site_settings_dict(row)
+        return await get_admin_site_settings(session)
 
 
 @router.put("/api/admin/site")
@@ -32,23 +29,13 @@ async def save_site(payload: SiteSettingsUpdate, request: Request):
 
     validate_request_origin(request)
     async with StateSession() as session:
-        row = await session.get(SiteSettings, 1) or SiteSettings(id=1)
-        changed: list[str] = []
-        for key, value in payload.model_dump(exclude_unset=True, exclude_none=True).items():
-            if getattr(row, key) != value:
-                setattr(row, key, value)
-                changed.append(key)
-        session.add(row)
-        session.add(
-            OperationLog(
-                level="INFO",
-                module="site",
-                action="site_settings_updated",
-                message=f"更新站点设置：{', '.join(changed) or '无变化'}",
-            )
+        return await update_admin_site_settings(
+            session,
+            values=payload.model_dump(
+                exclude_unset=True,
+                exclude_none=True,
+            ),
         )
-        await session.commit()
-        return {"ok": True, **site_settings_dict(row)}
 
 
 @router.post("/api/admin/site/share-image")
@@ -69,11 +56,10 @@ async def upload_share_page_image(request: Request, file: UploadFile = File(...)
     old_name = ""
     try:
         async with StateSession() as session:
-            row = await session.get(SiteSettings, 1) or SiteSettings(id=1)
-            old_name = row.share_image_name or ""
-            row.share_image_name = new_name
-            session.add(row)
-            await session.commit()
+            old_name = await replace_share_page_image_name(
+                session,
+                new_name=new_name,
+            )
     except Exception:
         remove_share_image(new_name)
         raise
@@ -88,11 +74,7 @@ async def delete_share_page_image(request: Request):
 
     validate_request_origin(request)
     async with StateSession() as session:
-        row = await session.get(SiteSettings, 1)
-        old_name = row.share_image_name if row else ""
-        if row:
-            row.share_image_name = ""
-            await session.commit()
+        old_name = await clear_share_page_image_name(session)
     if old_name:
         remove_share_image(old_name)
     return {"ok": True}
