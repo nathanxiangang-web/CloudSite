@@ -76,7 +76,7 @@ from .services.resources import (
     folder_dict,
     resource_dict,
 )
-from .services.collections import collection_dict
+from .modules.collections.contracts.public import collection_view as collection_dict
 from .services.shares import (
     build_share_target_payload,
     resolve_share_download_resource,
@@ -84,6 +84,6 @@ from .services.shares import (
     share_is_expired,
 )
 from .services.submissions import submission_dict, validate_optional_http_url
-from .services.notifications import notification_dict
-from .services.downloads import _download_event
+from .modules.notifications.contracts.public import notification_dict
+from .modules.delivery.contracts.public import _download_event
 from .schemas import SyncInput
