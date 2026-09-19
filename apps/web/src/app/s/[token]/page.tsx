@@ -87,7 +87,7 @@ export default function SharePage() {
         <small><Clock3 />{meta.data.expires_at ? `有效至 ${new Date(meta.data.expires_at).toLocaleString("zh-CN")}` : "长期有效"}</small>
       </div>
     </header>
-    {!content.data ? <section className="share-code-panel">
+    {content.isFetching ? <section className="share-code-panel"><div className="share-loading"><Loader2 />正在读取分享内容...</div></section> : content.error ? <section className="share-code-panel"><p className="form-error">分享内容加载失败：{content.error.message}</p><button type="button" className="primary" onClick={() => content.refetch()}>重试</button></section> : !content.data ? <section className="share-code-panel">
       <form onSubmit={submit}>
         <label htmlFor="share-code-input">请输入提取码</label>
         <input
