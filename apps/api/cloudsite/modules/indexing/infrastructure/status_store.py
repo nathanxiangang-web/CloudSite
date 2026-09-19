@@ -30,6 +30,52 @@ async def read_v2_sync_progress(
     return payload if isinstance(payload, dict) else {}
 
 
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")
+        )
+        return (
+            parsed
+            if parsed.tzinfo
+            else parsed.replace(tzinfo=timezone.utc)
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+async def read_sync_circuit_status(
+    state: AsyncSession,
+) -> dict[str, object]:
+    rows = (
+        await state.execute(
+            text(
+                "SELECT key, value FROM system_settings "
+                "WHERE key IN ("
+                "'sync_circuit_until', "
+                "'sync_circuit_reason', "
+                "'sync_circuit_failures'"
+                ")"
+            )
+        )
+    ).all()
+    values = {str(key): str(value or "") for key, value in rows}
+    until = _parse_time(values.get("sync_circuit_until"))
+    now = datetime.now(timezone.utc)
+    try:
+        failures = int(values.get("sync_circuit_failures", "0") or 0)
+    except (TypeError, ValueError):
+        failures = 0
+    return {
+        "open": bool(until and until > now),
+        "until": until,
+        "reason": values.get("sync_circuit_reason", ""),
+        "failures": failures,
+    }
+
+
 async def toggle_automatic_sync(
     state: AsyncSession,
 ) -> bool:
@@ -79,4 +125,8 @@ async def toggle_automatic_sync(
     return enabled
 
 
-__all__ = ["read_v2_sync_progress", "toggle_automatic_sync"]
+__all__ = [
+    "read_v2_sync_progress",
+    "read_sync_circuit_status",
+    "toggle_automatic_sync",
+]
