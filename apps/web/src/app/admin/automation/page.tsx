@@ -205,6 +205,8 @@ export default function AdminAutomationPage() {
             </div>
             {query.isLoading ? (
               <div className="loading">正在读取建议…</div>
+            ) : query.error ? (
+              <div className="empty error-state">加载建议失败：{query.error.message}<button type="button" onClick={() => query.refetch()}>重试</button></div>
             ) : items.length ? (
               items.map((item) => (
                 <div className="table-row automation-table-row" key={item.suggestion_id}>
@@ -236,9 +238,9 @@ export default function AdminAutomationPage() {
 
           {query.data && query.data.total_pages > 1 && (
             <div className="pagination">
-              <button disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button>
+              <button disabled={page <= 1 || query.isFetching} onClick={() => setPage(page - 1)}>上一页</button>
               <span>第 {page} / {query.data.total_pages} 页</span>
-              <button disabled={page >= query.data.total_pages} onClick={() => setPage(page + 1)}>下一页</button>
+              <button disabled={page >= query.data.total_pages || query.isFetching} onClick={() => setPage(page + 1)}>下一页</button>
             </div>
           )}
         </section>
@@ -286,8 +288,8 @@ export default function AdminAutomationPage() {
           </section>
         )}
 
-        {(applyOne.error || rejectOne.error || revertOne.error || generate.error) && (
-          <p className="form-error">{(applyOne.error || rejectOne.error || revertOne.error || generate.error)?.message}</p>
+        {(applyOne.error || rejectOne.error || revertOne.error || generate.error || batchApply.error || batchReject.error) && (
+          <p className="form-error">{(applyOne.error || rejectOne.error || revertOne.error || generate.error || batchApply.error || batchReject.error)?.message}</p>
         )}
       </div>
     </AdminShell>
