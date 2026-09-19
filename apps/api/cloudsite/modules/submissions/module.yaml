@@ -4,16 +4,19 @@ kind: "business"
 migration_status: "partial"
 responsibility: "User submissions and the admin review workflow, including approval/rejection/request-changes and application of approved changes."
 public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
 
 allowed_dependencies:
   - "platform/db"
+  - "platform/observability"
   - "modules/catalog/contracts"
   - "modules/notifications/contracts"
+  - "modules/resources/contracts"
+  - "modules/providers/contracts"
   - "modules/users/contracts"
 
 owned_tables:
   - "submissions"
-  - "submission_reviews"
 
 forbidden_dependencies:
   - "cloudsite.main"

@@ -26,6 +26,19 @@ async def connection_login_target(
     return ProviderLoginTarget(base_url=connection.base_url)
 
 
+async def connection_admin_username(
+    session: AsyncSession,
+    *,
+    default: str = "admin",
+) -> str:
+    """Return the configured admin identity without exposing provider ORM."""
+
+    connection = await session.get(AListConnection, 1)
+    if connection is None or not connection.username:
+        return default
+    return connection.username
+
+
 async def provider_info(session: AsyncSession) -> dict:
     connection = await session.get(AListConnection, 1)
 
@@ -66,4 +79,4 @@ async def enabled_root_ids(session: AsyncSession) -> set[int]:
     )
 
 
-__all__ = ["ProviderLoginTarget", "connection_login_target", "provider_info", "enabled_root_ids"]
+__all__ = ["ProviderLoginTarget", "connection_login_target", "connection_admin_username", "provider_info", "enabled_root_ids"]

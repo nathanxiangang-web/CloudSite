@@ -32,6 +32,8 @@ from .modules.indexing.infrastructure.legacy_models import (
 )
 from .modules.automation.infrastructure.models import CatalogSuggestion, ParserCandidateTask
 from .modules.collections.infrastructure.models import Collection, CollectionItem
+from .modules.users.infrastructure.models import User
+from .modules.submissions.infrastructure.models import Submission
 from .modules.catalog.infrastructure.models import (
     CatalogAsset,
     CatalogEntry,
@@ -125,43 +127,6 @@ class ShareVerifyAttempt(StateBase):
     challenge_required_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     __table_args__ = (UniqueConstraint("share_token", "ip_hash"),)
-
-
-class User(StateBase):
-    __tablename__ = "users"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(String(32))
-    username_normalized: Mapped[str] = mapped_column(String(32), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    created_by_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    role: Mapped[str] = mapped_column(String(20), default="viewer", index=True)
-
-
-class Submission(StateBase):
-    __tablename__ = "submissions"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    resource_name: Mapped[str] = mapped_column(String(120))
-    resource_type: Mapped[str] = mapped_column(String(20))
-    description: Mapped[str] = mapped_column(Text, default="")
-    source_url: Mapped[str] = mapped_column(String(1000), default="")
-    download_url: Mapped[str] = mapped_column(String(2000), default="")
-    copyright_note: Mapped[str] = mapped_column(Text, default="")
-    note: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
-    admin_note: Mapped[str] = mapped_column(Text, default="")
-    reviewed_by: Mapped[str] = mapped_column(String(100), default="")
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    published_resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class UserSession(StateBase):

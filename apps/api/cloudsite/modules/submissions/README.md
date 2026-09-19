@@ -83,7 +83,16 @@ changes are requested and resubmitted.
 
 ## Current Migration Status
 
-Code is currently in `services/submissions.py` and `routers/submissions.py`.
-These move to `modules/submissions/` in Phase 3. The module skeleton exists
-with empty layers. The review workflow state machine will be formalized in the
-domain layer during migration.
+Submissions is now a real **partial** module.
+
+- `Submission` ORM is declared in `infrastructure/models.py`;
+  `cloudsite.models.Submission` is an exact compatibility re-export.
+- Creation, user/admin listing, detail, review state transitions, publish
+  binding, notification, audit logging, and rejected-submission deletion live
+  in `application/submission_service.py`.
+- Resource publication validation uses Resources + Providers contracts.
+- User display names use the Users reference contract.
+- Review notifications use the Notifications contract.
+- Both public and admin Submission routers are ORM/SQLAlchemy-free.
+- `services/submissions.py` remains only as a compatibility adapter for the
+  legacy URL-validation surface.

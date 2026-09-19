@@ -1,9 +1,10 @@
 schema_version: 1
 name: "users"
 kind: "business"
-migration_status: "skeleton"
+migration_status: "partial"
 responsibility: "User accounts, authentication, sessions, admin authentication, roles/permissions, favorites, history, and playback progress."
 public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
 
 allowed_dependencies:
   - "platform/db"
@@ -13,11 +14,6 @@ allowed_dependencies:
 
 owned_tables:
   - "users"
-  - "user_sessions"
-  - "admin_sessions"
-  - "user_favorites"
-  - "user_resource_history"
-  - "user_playback_progress"
 
 forbidden_dependencies:
   - "cloudsite.main"

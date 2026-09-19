@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ..application.provider_service import (
     ProviderLoginTarget,
+    connection_admin_username,
     connection_login_target,
     enabled_root_ids,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "provider_runtime",
     "enabled_root_ids",
     "ProviderLoginTarget",
+    "connection_admin_username",
     "connection_login_target",
     "CAPABILITY_SCHEMA_VERSION",
     "CapabilityState",
