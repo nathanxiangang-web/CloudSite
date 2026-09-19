@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, Clock3, Heart, PlayCircle, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { PublicShell } from "@/components/PublicShell";
 import { api, formatBytes, Resource } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -41,13 +41,13 @@ export function UserLibraryPage({ kind }: { kind: Kind }) {
   const key = [...baseKey, page];
   const query = useQuery({ queryKey: key, queryFn: () => api<ListResponse>(`/api/me/${kind}?page=${page}&page_size=${PAGE_SIZE}`), enabled: Boolean(auth.data?.authenticated), placeholderData: (previous) => previous });
   const totalPages = Math.ceil((query.data?.total ?? 0) / PAGE_SIZE);
-  const navigatePage = (nextPage: number, replace = false) => {
+  const navigatePage = useCallback((nextPage: number, replace = false) => {
     const values = new URLSearchParams();
     if (nextPage > 1) values.set("page", String(nextPage));
     const href = `/account/${kind}${values.size ? `?${values.toString()}` : ""}`;
     if (replace) router.replace(href);
     else router.push(href);
-  };
+  }, [kind, router]);
 
   useEffect(() => {
     if (!auth.isLoading && !auth.data?.authenticated) router.replace("/login");
@@ -57,7 +57,7 @@ export function UserLibraryPage({ kind }: { kind: Kind }) {
     if (!query.data) return;
     const lastPage = Math.max(1, Math.ceil(query.data.total / PAGE_SIZE));
     if (page > lastPage) navigatePage(lastPage, true);
-  }, [page, query.data]);
+  }, [page, query.data, navigatePage]);
 
   const remove = useMutation({
     mutationFn: (resourceId: string) => api(`/api/me/${kind}/${resourceId}`, { method: "DELETE" }),
