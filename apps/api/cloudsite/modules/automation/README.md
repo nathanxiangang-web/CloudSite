@@ -99,7 +99,10 @@ resource metadata only through the Resources public contract. Historical
 `cloudsite.models.ParserCandidateTask` and
 `cloudsite.services.resource_name_parser` paths remain compatibility facades.
 
-The remaining shared-core debt is intentionally limited to the legacy sync
-seeding bridge plus suggestion generation/review. Those four debt IDs are the
-next Automation migration slice; suggestion apply must move through Catalog
-contracts rather than importing Catalog ORM or legacy services directly.
+Parser-candidate seeding now reads frozen sync runs/changes through the Indexing
+public contract; it no longer imports shared Resource/Sync ORM.
+
+The remaining shared-core debt is intentionally limited to suggestion
+generation/review. Those three debt IDs are the next Automation migration
+slice; suggestion apply must move through Catalog contracts rather than
+importing Catalog ORM or legacy services directly.
