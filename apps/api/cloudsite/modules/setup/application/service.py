@@ -32,6 +32,9 @@ from ...presentation.contracts.public import (
 )
 from ...providers.contracts.public import (
     ProviderAdminError,
+    browse_admin_directories,
+    create_root_mapping,
+    list_root_mappings,
     save_setup_connection,
     update_root_mapping_preferences,
 )
@@ -179,6 +182,16 @@ async def get_wizard_state(
     config = presentation["config"]
     theme = config.get("theme_tokens", {})
     payload = _state_payload(row)
+    scope_error = ""
+    root_mappings = await list_root_mappings(state)
+    root_directories: list[dict[str, Any]] = []
+    if row.current_step == "scope" and row.connect_done:
+        try:
+            directories = await browse_admin_directories(state, path="/")
+            root_directories = list(directories.get("items") or [])
+        except ProviderAdminError as exc:
+            scope_error = str(exc)
+
     payload["draft"] = {
         "preset": str(config.get("preset") or "software"),
         "site_name": str(site.get("site_name") or ""),
@@ -188,6 +201,9 @@ async def get_wizard_state(
         "accent_color": str(theme.get("accent_color") or "#2563eb"),
         "card_radius": int(theme["card_radius"]) if theme.get("card_radius") is not None else 12,
     }
+    payload["root_mappings"] = root_mappings
+    payload["root_directories"] = root_directories
+    payload["scope_error"] = scope_error
     state.add(row)
     await state.commit()
     return payload
@@ -301,17 +317,13 @@ async def _process_connect(
                 status_code=403,
             )
 
-    remember = data.get("remember_credentials")
-    remember_credentials = (
-        bool(remember) if remember is not None else True
-    )
     try:
         result = await save_setup_connection(
             state,
             base_url=base_url,
             username=username,
             password=password,
-            remember_credentials=remember_credentials,
+            remember_credentials=True,
         )
     except ProviderAdminError as exc:
         raise _provider_error(exc) from exc
@@ -329,20 +341,72 @@ async def _process_scope(
     state: AsyncSession,
     data: dict[str, Any],
 ) -> dict[str, Any]:
-    mappings = data.get("root_mappings")
-    if mappings is None:
-        return {"updated": 0}
-    updated = await update_root_mapping_preferences(
-        state,
-        updates=list(mappings),
-    )
+    mappings = list(data.get("root_mappings") or [])
+    existing = await list_root_mappings(state)
+    existing_by_path = {
+        str(item["alist_path"]): item
+        for item in existing
+    }
+    updated = 0
+    created = 0
+    preference_updates: list[dict[str, Any]] = []
+
+    for index, item in enumerate(mappings):
+        mapping_id = item.get("id")
+        if mapping_id is not None:
+            preference_updates.append(
+                {
+                    "id": mapping_id,
+                    "enabled": bool(item.get("enabled", True)),
+                    "sort_order": int(item.get("sort_order", index)),
+                }
+            )
+            continue
+
+        path = str(item.get("alist_path") or "").strip()
+        if not path or not item.get("enabled", True):
+            continue
+        known = existing_by_path.get(path)
+        if known is not None:
+            preference_updates.append(
+                {
+                    "id": known["id"],
+                    "enabled": True,
+                    "sort_order": int(item.get("sort_order", index)),
+                }
+            )
+            continue
+
+        values = {
+            "connection_id": 1,
+            "content_type": str(item.get("content_type") or "file"),
+            "display_name": str(item.get("display_name") or path.rsplit("/", 1)[-1] or "内容"),
+            "alist_path": path,
+            "enabled": True,
+            "sort_order": int(item.get("sort_order", index)),
+        }
+        try:
+            mapping_id = await create_root_mapping(
+                state,
+                values=values,
+            )
+        except ProviderAdminError as exc:
+            raise _provider_error(exc) from exc
+        existing_by_path[path] = {"id": mapping_id, **values}
+        created += 1
+
+    if preference_updates:
+        updated = await update_root_mapping_preferences(
+            state,
+            updates=preference_updates,
+        )
     await write_operation_log(
         state,
         module="setup",
         action="wizard_scope",
-        message=f"向导：更新 {updated} 个根目录映射启用状态",
+        message=f"向导：创建 {created} 个、更新 {updated} 个根目录映射",
     )
-    return {"updated": updated}
+    return {"created": created, "updated": updated}
 
 
 async def _process_preset(
