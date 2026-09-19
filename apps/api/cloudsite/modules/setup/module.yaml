@@ -22,6 +22,6 @@ forbidden_dependencies:
   - "other modules' domain/application/infrastructure/api internals"
 
 constraints:
-  - "Setup owns workflow progress only; provider and presentation persistence stays with owning modules."
+  - "Setup owns workflow progress only; provider, presentation, and site persistence stays with owning modules."
   - "Setup completion is explicit through publish, skip, or the one-shot setup endpoint."
   - "The setup token is required for the first connection unless that connection step was already completed."
