@@ -82,7 +82,7 @@ class CatalogResourceView:
 
 @dataclass(frozen=True, slots=True)
 class ParserResourceView:
-    """Persistence-neutral resource input exposed to Automation parsers."""
+    """Persistence-neutral resource input exposed to Automation."""
 
     id: str
     name: str
@@ -90,6 +90,9 @@ class ParserResourceView:
     extension: str
     mime_type: str
     status: str
+    content_type: str
+    size: int
+    indexed_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
