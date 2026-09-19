@@ -1,14 +1,13 @@
-"""V2 indexing engine bridge.
+"""Indexing v2 production bridge.
 
-When CLOUDSITE_INDEXING_ENGINE=v2, :func:`run_indexing_v2` is called
-instead of the legacy rolling window. It wires the new
-``ScanCategoryService`` and ``ReconcileService`` to a provider adapter
-and indexing store, executes a scan+reconcile pass for each requested
-category, and returns a summary dict.
+This module wires the v2 ScanCategoryService and ReconcileService to the
+provider adapter and injected indexing store. Indexing v2 is the only
+production indexing engine; historical 1.x sync data is read-only compatibility
+state and is not an execution fallback.
 
-:func:`run_indexing_v2_production` owns scan orchestration while callers inject
-the production store factory. This keeps Folder/Resource persistence outside
-the Indexing module boundary.
+run_indexing_v2_production owns production scan orchestration while callers
+inject the store factory, keeping Folder/Resource persistence outside the
+Indexing module boundary.
 """
 from __future__ import annotations
 
