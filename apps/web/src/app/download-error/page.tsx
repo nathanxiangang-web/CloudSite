@@ -18,6 +18,7 @@ const messages: Record<string, string> = {
   "DL-006": "上游存储暂时不可用",
   "DL-007": "资源当前禁止下载",
   "DL-008": "下载地址未通过安全校验",
+  "RESOURCE_NOT_AVAILABLE": "资源暂时不可用",
   "DL-999": "下载服务暂时不可用",
 };
 
