@@ -122,9 +122,29 @@ completely ORM-free.
 
 ### R4b — preview/provider composition
 
-Next, move connection/provider resolution and preview preparation behind explicit
-Resources/Providers contracts so the router no longer coordinates legacy
-`services.connections`, `preview.py`, and `office.py` helpers directly.
+Status: implemented in this change.
+
+Resources now owns a `ResourcePreviewService` plus preview-cache primitives.
+The service depends on Providers only through
+`modules/providers/contracts/public.py`.
+
+The resources router no longer coordinates:
+
+- `services.connections.resolve_resource_connection`;
+- `load_text_preview`;
+- `ensure_preview_cached`;
+- `office_cache_filename`;
+- preview ticket construction.
+
+Provider credentials and AList client construction stay inside Providers.
+Resources receives only a source URL when a cache miss requires upstream access.
+
+The previous cache-first behavior is preserved: a fresh local preview cache is
+served without contacting the provider, so a temporary provider outage does not
+break already-cached text/PDF/Office previews.
+
+No architecture-debt count changes in this slice; it removes orchestration debt
+without introducing a new legacy import.
 
 Delivery continues to own redirect preparation plus download event/diagnostic
 tracking. Providers owns storage backend access and credentials.

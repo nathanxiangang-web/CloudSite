@@ -255,6 +255,11 @@ class TestResourcesRouterSqlBoundary:
         assert "session.get(" not in source
         assert "session.scalar(" not in source
         assert "session.scalars(" not in source
+        assert "services.connections" not in source
+        assert "resolve_resource_connection" not in source
+        assert "ensure_preview_cached" not in source
+        assert "load_text_preview" not in source
+        assert "office_cache_filename" not in source
 
 
 class TestResourcesListRouterBoundary:

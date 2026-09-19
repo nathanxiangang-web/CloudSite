@@ -1,15 +1,14 @@
 """resources 路由：资源列表、详情、文件夹。"""
-from urllib.parse import urlencode
-
 from fastapi import APIRouter, HTTPException, Query
+from ..modules.resources.api.preview import resource_preview_service
 from ..modules.resources.api.queries import resource_queries
 from ..modules.resources.domain.errors import (
     FolderNotFoundError,
     ResourceNotAvailableError,
     ResourceNotFoundError,
 )
-from ..office import OfficePreviewError, ensure_preview_cached, office_cache_filename, render_pdf_pages
-from ..preview import PreviewError, create_preview_ticket, load_text_preview, preview_capability
+from ..modules.resources.domain.preview import ResourcePreviewError
+from ..preview import preview_capability
 from ..schemas import (
     FolderDetailOutput,
     FolderListOutput,
@@ -17,24 +16,16 @@ from ..schemas import (
     ResourcePageOutput,
     TextPreviewOutput,
 )
-from ..services.connections import resolve_resource_connection
 from ..shares.service import enabled_root_ids
 
 router = APIRouter()
 
 
-async def _preview_resource(index, state, resource_id: str):
-    enabled_ids = await enabled_root_ids(state)
-    try:
-        return await resource_queries(index).preview_resource(
-            resource_id=resource_id,
-            enabled_root_ids=enabled_ids,
-        )
-    except (ResourceNotFoundError, ResourceNotAvailableError) as exc:
-        raise HTTPException(
-            404,
-            {"code": "PV-001", "message": "资源不存在或已不可用"},
-        ) from exc
+def _preview_http_error(exc: ResourcePreviewError) -> HTTPException:
+    return HTTPException(
+        exc.status_code,
+        {"code": exc.code, "message": exc.message},
+    )
 
 
 @router.get("/api/resources", response_model=ResourcePageOutput)
@@ -100,9 +91,15 @@ async def resource_detail(resource_id: str):
 async def resource_preview_capability(resource_id: str):
     from ..main import IndexSession, StateSession
 
-    async with IndexSession() as session, StateSession() as state:
-        resource = await _preview_resource(session, state, resource_id)
-        return preview_capability(resource)
+    async with IndexSession() as index, StateSession() as state:
+        enabled_ids = await enabled_root_ids(state)
+        try:
+            return await resource_preview_service(index, state).capability(
+                resource_id=resource_id,
+                enabled_root_ids=enabled_ids,
+            )
+        except ResourcePreviewError as exc:
+            raise _preview_http_error(exc) from exc
 
 
 @router.get("/api/resources/{resource_id}/text-preview", response_model=TextPreviewOutput)
@@ -110,12 +107,14 @@ async def resource_text_preview(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as index, StateSession() as state:
-        resource = await _preview_resource(index, state, resource_id)
-        connection = await resolve_resource_connection(state, resource)
+        enabled_ids = await enabled_root_ids(state)
         try:
-            return await load_text_preview(resource, connection)
-        except PreviewError as exc:
-            raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
+            return await resource_preview_service(index, state).text_preview(
+                resource_id=resource_id,
+                enabled_root_ids=enabled_ids,
+            )
+        except ResourcePreviewError as exc:
+            raise _preview_http_error(exc) from exc
 
 
 @router.get("/api/resources/{resource_id}/pdf-preview")
@@ -123,15 +122,16 @@ async def resource_pdf_preview(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as index, StateSession() as state:
-        resource = await _preview_resource(index, state, resource_id)
-        if preview_capability(resource)["preview_type"] != "pdf":
-            raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 PDF 在线预览"})
-        connection = await resolve_resource_connection(state, resource)
+        enabled_ids = await enabled_root_ids(state)
         try:
-            await ensure_preview_cached(resource, connection)
-        except OfficePreviewError as exc:
-            raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
-        return {"url": f"/office-files/{office_cache_filename(resource)}?{urlencode({'ticket': create_preview_ticket(resource.id)})}"}
+            url = await resource_preview_service(index, state).cached_preview_url(
+                resource_id=resource_id,
+                enabled_root_ids=enabled_ids,
+                expected_type="pdf",
+            )
+            return {"url": url}
+        except ResourcePreviewError as exc:
+            raise _preview_http_error(exc) from exc
 
 
 @router.get("/api/resources/{resource_id}/office-preview")
@@ -139,15 +139,16 @@ async def resource_office_preview(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as index, StateSession() as state:
-        resource = await _preview_resource(index, state, resource_id)
-        if preview_capability(resource)["preview_type"] != "office":
-            raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 Office 在线预览"})
-        connection = await resolve_resource_connection(state, resource)
+        enabled_ids = await enabled_root_ids(state)
         try:
-            await ensure_preview_cached(resource, connection)
-        except OfficePreviewError as exc:
-            raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
-        return {"url": f"/office-files/{office_cache_filename(resource)}?{urlencode({'ticket': create_preview_ticket(resource.id)})}"}
+            url = await resource_preview_service(index, state).cached_preview_url(
+                resource_id=resource_id,
+                enabled_root_ids=enabled_ids,
+                expected_type="office",
+            )
+            return {"url": url}
+        except ResourcePreviewError as exc:
+            raise _preview_http_error(exc) from exc
 
 
 @router.get("/api/folders", response_model=FolderListOutput)
