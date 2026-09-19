@@ -9,7 +9,6 @@ export default function AdminSetupPage() {
   const [baseUrl, setBaseUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(true);
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,7 +44,7 @@ export default function AdminSetupPage() {
         "Content-Type": "application/json",
         "X-CloudSite-Setup-Token": token,
       },
-      body: JSON.stringify({ base_url: baseUrl, username, password, remember_credentials: remember }),
+      body: JSON.stringify({ base_url: baseUrl, username, password, remember_credentials: true }),
     });
     // 立即清理敏感字段（不持久化到浏览器）
     setToken("");
@@ -71,7 +70,6 @@ export default function AdminSetupPage() {
         <label>AList 地址<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://alist.example.com" required /></label>
         <label>AList 管理员用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
         <label>AList 管理员密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required /></label>
-        <label className="checkbox-label"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /> 记住登录凭据</label>
         <label>一次性初始化令牌<input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" required /></label>
         {error && <p className="form-error">{error}</p>}
         {!ready && error && <button type="button" onClick={() => window.location.reload()}>重新检查后台状态</button>}
