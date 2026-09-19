@@ -1,12 +1,12 @@
 """admin/sync 路由：同步触发与状态。"""
 import asyncio
-import json
-
 from fastapi import APIRouter
-from sqlalchemy import select
-
-from ...indexer import log_operation, sync_preflight
-from ...models import ContentRootMapping, SystemSetting
+from ...modules.indexing.contracts.public import (
+    read_v2_sync_progress,
+    toggle_automatic_sync,
+    validate_manual_sync_paths,
+)
+from ...platform.observability import write_operation_log
 from ...schemas import PathSyncInput, SyncInput
 
 router = APIRouter()
@@ -46,14 +46,8 @@ async def admin_sync_status():
     manual_running = bool(
         _main.manual_sync_task and not _main.manual_sync_task.done()
     )
-    progress = {}
     async with StateSession() as session:
-        row = await session.get(SystemSetting, "v2_sync_progress")
-        if row and row.value:
-            try:
-                progress = json.loads(row.value)
-            except (ValueError, TypeError):
-                progress = {}
+        progress = await read_v2_sync_progress(session)
     return {
         "engine_version": "v2",
         "manual_sync_running": manual_running,
@@ -69,20 +63,39 @@ async def admin_sync_status():
 @router.post("/api/admin/sync/path", status_code=202)
 async def sync_path(payload: PathSyncInput):
     from ...main import StateSession
-    from ...sync.path_sync import ManualSyncOrchestrator, validate_paths_under_roots
+    from ...sync.path_sync import ManualSyncOrchestrator
 
     async with StateSession() as state_session:
-        roots = list((await state_session.scalars(select(ContentRootMapping).where(ContentRootMapping.enabled == True))).all())
-    accepted, rejected = validate_paths_under_roots(payload.paths, roots)
+        accepted, rejected = await validate_manual_sync_paths(
+            state_session,
+            payload.paths,
+        )
     if not accepted:
         return {"status": "invalid_path", "rejected_paths": rejected}
     orchestrator = ManualSyncOrchestrator.instance()
     if not orchestrator.try_reserve():
         return {"status": "already_running"}
     force_refresh_paths = set(accepted) if payload.force_refresh else set()
-    asyncio.create_task(orchestrator.start(accepted, force_refresh_paths), name="cloudsite-path-sync")
-    await log_operation("sync", "path_sync_triggered", f"手动同步路径: {accepted}, 强制刷新: {payload.force_refresh}")
-    return {"status": "accepted", "accepted_paths": accepted, "rejected_paths": rejected}
+    asyncio.create_task(
+        orchestrator.start(accepted, force_refresh_paths),
+        name="cloudsite-path-sync",
+    )
+    async with StateSession() as state_session:
+        await write_operation_log(
+            state_session,
+            module="sync",
+            action="path_sync_triggered",
+            message=(
+                f"手动同步路径: {accepted}, "
+                f"强制刷新: {payload.force_refresh}"
+            ),
+        )
+        await state_session.commit()
+    return {
+        "status": "accepted",
+        "accepted_paths": accepted,
+        "rejected_paths": rejected,
+    }
 
 
 @router.post("/api/admin/sync/auto-toggle")
@@ -90,9 +103,5 @@ async def toggle_auto_sync():
     from ...main import StateSession
 
     async with StateSession() as session:
-        row = await session.get(SystemSetting, "automatic_sync") or SystemSetting(key="automatic_sync")
-        current = row.value == "true"
-        row.value = "false" if current else "true"
-        session.add(row)
-        await session.commit()
-        return {"ok": True, "automatic_sync": not current}
+        enabled = await toggle_automatic_sync(session)
+        return {"ok": True, "automatic_sync": enabled}
