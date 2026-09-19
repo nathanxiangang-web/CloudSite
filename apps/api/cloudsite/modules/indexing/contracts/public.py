@@ -7,7 +7,6 @@ from ..api.admin_status import (
     read_sync_circuit_status,
     read_v2_sync_progress,
     toggle_automatic_sync,
-    validate_manual_sync_paths,
 )
 from ..api.legacy_sync import legacy_sync_queries
 from ..application.reconcile import ReconcileResult
@@ -49,5 +48,4 @@ __all__ = [
     "read_v2_sync_progress",
     "read_sync_circuit_status",
     "toggle_automatic_sync",
-    "validate_manual_sync_paths",
 ]

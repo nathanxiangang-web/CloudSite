@@ -4,10 +4,8 @@ from fastapi import APIRouter
 from ...modules.indexing.contracts.public import (
     read_v2_sync_progress,
     toggle_automatic_sync,
-    validate_manual_sync_paths,
 )
-from ...platform.observability import write_operation_log
-from ...schemas import PathSyncInput, SyncInput
+from ...schemas import SyncInput
 
 router = APIRouter()
 
@@ -59,43 +57,6 @@ async def admin_sync_status():
         "entries_scanned": progress.get("entries_scanned", 0),
     }
 
-
-@router.post("/api/admin/sync/path", status_code=202)
-async def sync_path(payload: PathSyncInput):
-    from ...main import StateSession
-    from ...sync.path_sync import ManualSyncOrchestrator
-
-    async with StateSession() as state_session:
-        accepted, rejected = await validate_manual_sync_paths(
-            state_session,
-            payload.paths,
-        )
-    if not accepted:
-        return {"status": "invalid_path", "rejected_paths": rejected}
-    orchestrator = ManualSyncOrchestrator.instance()
-    if not orchestrator.try_reserve():
-        return {"status": "already_running"}
-    force_refresh_paths = set(accepted) if payload.force_refresh else set()
-    asyncio.create_task(
-        orchestrator.start(accepted, force_refresh_paths),
-        name="cloudsite-path-sync",
-    )
-    async with StateSession() as state_session:
-        await write_operation_log(
-            state_session,
-            module="sync",
-            action="path_sync_triggered",
-            message=(
-                f"手动同步路径: {accepted}, "
-                f"强制刷新: {payload.force_refresh}"
-            ),
-        )
-        await state_session.commit()
-    return {
-        "status": "accepted",
-        "accepted_paths": accepted,
-        "rejected_paths": rejected,
-    }
 
 
 @router.post("/api/admin/sync/auto-toggle")
