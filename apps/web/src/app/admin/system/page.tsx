@@ -4,12 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Check, CheckCircle2, ChevronRight, Database, Eye, EyeOff, Folder, FolderPlus, FolderSearch, Link2, Pencil, Power, RefreshCw, Save, Server, Trash2, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
-import { isRollingFixedSchedule, normalizeSyncInterval } from "@/lib/sync-interval";
+import { normalizeSyncInterval } from "@/lib/sync-interval";
 import { api } from "@/lib/api";
 
 type AListSettings = { base_url: string; username: string; enabled: boolean; remember_credentials: boolean; connection_status: string; last_test_status: string; last_test_message: string; last_test_at: string | null; has_password: boolean };
 type Mapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean; sort_order: number };
-type SystemSettings = { automatic_sync: boolean; sync_interval_minutes: number; sync_on_startup: boolean; version: string; database: string; timezone: string; resources: number; folders: number; operation_logs: number; provider: ProviderInfo; sync_engine_version: string; initial_index_completed_at: string | null };
+type SystemSettings = { automatic_sync: boolean; sync_interval_minutes: number; sync_on_startup: boolean; version: string; database: string; timezone: string; resources: number; folders: number; operation_logs: number; provider: ProviderInfo; initial_index_completed_at: string | null };
 type ProviderInfo = { provider_type: string; adapter_version: string; strategy: string; fallback_reason: string; capabilities: Record<string, string> };
 type DirectoryItem = { name: string; path: string; modified: string | null };
 type DirectoryResponse = { path: string; parent_path: string; items: DirectoryItem[] };
@@ -149,7 +149,7 @@ export default function SystemPage() {
     </div>}
 
     {tab === "sync" && <div className="admin-tab-panel admin-tab-panel-narrow">
-    <section className="panel"><h2><RefreshCw />自动同步</h2><div className="setting-row"><span><strong>自动同步</strong><small>按同步周期低速全量扫描 AList 变化</small></span><input className="toggle" type="checkbox" checked={systemForm.automatic_sync} onChange={(e) => setSystemForm({ ...systemForm, automatic_sync: e.target.checked })} /></div>{isRollingFixedSchedule(system.data ?? {}) ? <div className="setting-row"><span><strong>同步周期</strong><small>24 小时一轮 / 每 6 小时一个窗口</small></span><span className="readonly-value">Rolling 1.1 固定调度</span></div> : <label className="select-label">同步间隔<select value={systemForm.sync_interval_minutes} onChange={(e) => setSystemForm({ ...systemForm, sync_interval_minutes: Number(e.target.value) })}><option value={180}>3 小时</option><option value={360}>6 小时</option><option value={720}>12 小时</option><option value={1440}>24 小时</option></select></label>}<div className="setting-row"><span><strong>启动到期检查</strong><small>仅当距离上次成功同步已超过设定周期，才在启动后延迟同步</small></span><input className="toggle" type="checkbox" checked={systemForm.sync_on_startup} onChange={(e) => setSystemForm({ ...systemForm, sync_on_startup: e.target.checked })} /></div><button className="primary" onClick={() => saveSystem.mutate()}><Save />保存同步设置</button></section>
+    <section className="panel"><h2><RefreshCw />自动同步</h2><div className="setting-row"><span><strong>自动同步</strong><small>按同步周期低速全量扫描 AList 变化</small></span><input className="toggle" type="checkbox" checked={systemForm.automatic_sync} onChange={(e) => setSystemForm({ ...systemForm, automatic_sync: e.target.checked })} /></div><label className="select-label">同步间隔<select value={systemForm.sync_interval_minutes} onChange={(e) => setSystemForm({ ...systemForm, sync_interval_minutes: Number(e.target.value) })}><option value={180}>3 小时</option><option value={360}>6 小时</option><option value={720}>12 小时</option><option value={1440}>24 小时</option></select></label><div className="setting-row"><span><strong>启动到期检查</strong><small>仅当距离上次同步结束已超过设定周期，才在启动后延迟同步</small></span><input className="toggle" type="checkbox" checked={systemForm.sync_on_startup} onChange={(e) => setSystemForm({ ...systemForm, sync_on_startup: e.target.checked })} /></div><button className="primary" onClick={() => saveSystem.mutate()}><Save />保存同步设置</button></section>
     </div>}
 
     {tab === "status" && <div className="admin-tab-panel">
