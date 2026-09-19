@@ -17,7 +17,6 @@ const fallbackSite: PublicSiteSettings = {
   registration_enabled: false,
   default_share_duration: "24h",
   version: "",
-  content_counts: {},
 };
 
 const getSite = cache(async (): Promise<PublicSiteSettings> => {
