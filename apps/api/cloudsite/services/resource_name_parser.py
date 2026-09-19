@@ -1,9 +1,4 @@
-"""Compatibility facade for the Automation-owned deterministic resource parser.
-
-New code imports the parser from ``cloudsite.modules.automation.domain``.
-This module preserves the historical ``cloudsite.services.resource_name_parser``
-surface while migration callers move to the Automation boundary.
-"""
+"""Compatibility facade for Automation-owned resource-name parser."""
 
 from ..modules.automation.domain.resource_name_parser import (
     PARSER_VERSION,

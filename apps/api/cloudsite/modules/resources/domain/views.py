@@ -80,9 +80,10 @@ class CatalogResourceView:
     root_mapping_id: int | None
     content_type: str
 
+
 @dataclass(frozen=True, slots=True)
 class ParserResourceView:
-    """Persistence-neutral resource input exposed to Automation parsers."""
+    """Minimal indexed resource input consumed by Automation parser."""
 
     id: str
     name: str

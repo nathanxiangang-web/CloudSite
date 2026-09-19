@@ -22,7 +22,6 @@ from .modules.delivery.infrastructure.models import (
     DownloadEvent,
 )
 from .modules.notifications.infrastructure.models import Notification
-from .modules.automation.infrastructure.models import ParserCandidateTask
 from .modules.catalog.infrastructure.models import (
     CatalogAsset,
     CatalogEntry,
@@ -37,6 +36,7 @@ from .modules.catalog.infrastructure.models import (
     CatalogTag,
     CatalogTagAssignment,
 )
+from .modules.automation.infrastructure.models import ParserCandidateTask
 
 
 def utcnow() -> datetime:

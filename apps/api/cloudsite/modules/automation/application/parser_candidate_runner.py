@@ -9,13 +9,13 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...resources.contracts.public import ParserResourceView, resource_queries
-from ..domain.resource_name_parser import PARSER_VERSION, ParseResult, parse_resource_name
 from ..infrastructure.models import ParserCandidateTask
 from .parser_candidates import (
     claim_parser_candidate,
     complete_parser_candidate,
     fail_parser_candidate,
 )
+from ..domain.resource_name_parser import PARSER_VERSION, ParseResult, parse_resource_name
 
 
 @dataclass(frozen=True)

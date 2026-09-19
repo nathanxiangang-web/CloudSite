@@ -50,7 +50,6 @@ semantically belongs to automation; it will be reassigned during migration.
 - platform/db
 - platform/tasks (for batch processing and AI generation jobs)
 - modules/catalog (via contracts) - to read entries and apply approved changes.
-- modules/resources (via contracts) - persistence-neutral parser input lookup.
 - plugins/ai (optional, env-gated) - for AI-powered suggestion generation.
 
 ## Events/Tasks
@@ -92,14 +91,22 @@ semantically belongs to automation; it will be reassigned during migration.
 
 ## Current Migration Status
 
-The parser subdomain is now module-owned. `ParserCandidateTask` lives in
-`infrastructure/models.py`, the deterministic resource-name parser lives in
-`domain/resource_name_parser.py`, and parser candidate execution reads indexed
-resource metadata only through the Resources public contract. Historical
-`cloudsite.models.ParserCandidateTask` and
-`cloudsite.services.resource_name_parser` paths remain compatibility facades.
+Migration status: partial.
 
-The remaining shared-core debt is intentionally limited to the legacy sync
-seeding bridge plus suggestion generation/review. Those four debt IDs are the
-next Automation migration slice; suggestion apply must move through Catalog
-contracts rather than importing Catalog ORM or legacy services directly.
+A5a moves the deterministic resource-name parser and durable
+`ParserCandidateTask` ORM ownership into Automation. The legacy
+`cloudsite.services.resource_name_parser` and `cloudsite.models.ParserCandidateTask`
+surfaces remain exact compatibility facades/re-exports.
+
+Parser resource reads now use the Resources public contract through a narrow
+`ParserResourceView`. Sync-run/change seeding reads use the Indexing public
+contract and no longer import legacy `SyncRun`, `SyncChange`, or `Resource` ORM.
+
+The parser candidate state machine, retry behavior, input fingerprint, batch
+limits, restart recovery, deterministic parser version, and caller-owned
+transaction semantics are unchanged.
+
+The remaining tracked Automation shared-core debt is isolated to suggestion
+generation/review. A5b will migrate `CatalogSuggestion` ownership and route
+Catalog/resource interactions through public contracts before Automation is
+described as isolated.

@@ -8,15 +8,15 @@
   "violations": [
     {
       "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/parser_candidate_seeding.py",
+      "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
       "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/parser_candidate_seeding.py::cloudsite.models"
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.models"
     },
     {
       "rule": "module_legacy_import",
       "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.models"
+      "target": "cloudsite.services",
+      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.services"
     },
     {
       "rule": "module_legacy_import",

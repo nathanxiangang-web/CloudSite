@@ -11,6 +11,7 @@ allowed_dependencies:
   - "platform/tasks"
   - "modules/catalog/contracts"
   - "modules/resources/contracts"
+  - "modules/indexing/contracts"
   - "plugins/ai"
 
 owned_tables:
