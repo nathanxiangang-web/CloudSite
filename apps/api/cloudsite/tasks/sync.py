@@ -8,6 +8,7 @@ import random
 from contextlib import suppress
 
 from ..config import settings
+from ..modules.indexing.contracts.public import v2_sync_due
 from ..modules.indexing.infrastructure.legacy_bridge import (
     run_indexing_v2_production as _run_indexing_v2_production,
 )
