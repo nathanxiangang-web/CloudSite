@@ -157,7 +157,7 @@ async def run_indexing_v2_production(
                     result = await run_indexing_v2(
                         adapter=adapter,
                         store=store,
-                        category_ids=[root.content_type],
+                        category_ids=[f"root:{root.id}"],
                         on_progress=_on_progress,
                     )
                     await session.commit()
