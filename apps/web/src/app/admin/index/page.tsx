@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Database, File, Folder, RefreshCw, Search, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Database, Folder, RefreshCw, Search, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Folder as FolderType } from "@/lib/api";
@@ -25,12 +25,9 @@ type SyncRun = {
 };
 type IndexSummary = { folders: number; resources: number; syncing: boolean; latest_sync: SyncRun | null };
 type Mapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
-type Change = { id: number; object_type: string; change_type: string; old_path: string | null; new_path: string | null; created_at: string };
 
 const typeNames: Record<string, string> = { software: "软件", image: "图库", video: "视频", document: "教程", file: "普通文件" };
-const syncTypeLabel: Record<string, string> = { full: "全量同步", windowed: "v2 扫描", window: "v2 扫描", rolling_window: "v2 扫描", manual_path: "手动同步", delta: "增量同步", auto: "自动同步" };
 const runStatusLabel: Record<string, string> = { success: "已完成", failed: "失败", running: "进行中", pending: "等待中", partial: "部分完成", cancelled: "已取消", skipped: "已跳过" };
-const changeTypeLabel: Record<string, string> = { added: "新增", updated: "修改", removed: "移除", renamed: "重命名", moved: "移动" };
 function labelOf(map: Record<string, string>, value: string) { return map[value] ?? value; }
 
 function TreeNode({ node, childrenByParent, expanded, selectedId, toggle, select }: {
@@ -54,14 +51,11 @@ export default function IndexPage() {
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const summary = useQuery({ queryKey: ["index-summary"], queryFn: () => api<IndexSummary>("/api/admin/index/summary"), refetchInterval: (query) => query.state.data?.syncing ? 2000 : false });
   const folders = useQuery({ queryKey: ["admin-folders/"], queryFn: () => api<{ items: FolderType[] }>("/api/admin/index/folders") });
   const mappings = useQuery({ queryKey: ["mappings"], queryFn: () => api<{ items: Mapping[] }>("/api/admin/root-mappings") });
-  const runs = useQuery({ queryKey: ["sync-runs"], queryFn: () => api<{ items: SyncRun[] }>("/api/admin/sync-runs?limit=8"), refetchInterval: summary.data?.syncing ? 3000 : false });
   const detail = useQuery({ queryKey: ["admin-folder", selectedId], queryFn: () => api<FolderType & { direct_resource_count: number }>(`/api/admin/index/folders/${selectedId}`), enabled: Boolean(selectedId) });
-  const changes = useQuery({ queryKey: ["sync-changes", selectedRunId], queryFn: () => api<{ items: Change[] }>(`/api/admin/sync-runs/${selectedRunId}/changes?limit=50`), enabled: Boolean(selectedRunId) });
-  const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["sync-runs"] }); };
+  const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); };
   const sync = useMutation({ mutationFn: (full: boolean) => api("/api/admin/sync", { method: "POST", body: JSON.stringify({ full }) }), onSuccess: refresh });
   const cancelSync = useMutation({ mutationFn: () => api("/api/admin/sync/cancel", { method: "POST" }), onSuccess: refresh });
 
@@ -109,12 +103,6 @@ export default function IndexPage() {
       </article>
       <aside className="panel folder-detail-panel"><h2>目录详情</h2>{detail.data ? <dl><div><dt>名称</dt><dd>{detail.data.name}</dd></div><div><dt>真实路径</dt><dd>{detail.data.path}</dd></div><div><dt>内容类型</dt><dd>{typeNames[detail.data.content_type] ?? detail.data.content_type}</dd></div><div><dt>目录深度</dt><dd>{detail.data.depth}</dd></div><div><dt>子目录</dt><dd>{detail.data.child_folder_count}</dd></div><div><dt>直接资源</dt><dd>{detail.data.direct_resource_count}</dd></div><div><dt>最近修改</dt><dd>{detail.data.modified_at ? new Date(detail.data.modified_at).toLocaleString("zh-CN") : "上游未提供"}</dd></div><div><dt>索引状态</dt><dd className="ok-text">已激活</dd></div></dl> : <div className="empty compact">从左侧选择目录查看详情</div>}</aside>
     </section>
-    <section className="panel sync-history-panel">
-      <div className="panel-toolbar"><div><h2>同步记录与变化</h2><p>选择一次同步查看新增、修改和移除的索引对象。</p></div></div>
-      <div className="sync-history-layout">
-        <div className="sync-run-list">{runs.data?.items.map((run) => <button type="button" className={selectedRunId === run.id ? "selected" : ""} key={run.id} onClick={() => setSelectedRunId(run.id)}><span><strong>#{run.id} · {labelOf(syncTypeLabel, run.sync_type)}</strong><small>{new Date(run.started_at).toLocaleString("zh-CN")} · {(run.duration_ms / 1000).toFixed(1)} 秒</small></span><b className={`sync-status ${run.status}`}>{labelOf(runStatusLabel, run.status)}</b><em>+{run.added_count} / ~{run.updated_count} / -{run.removed_count}</em></button>)}</div>
-        <div className="sync-change-list">{selectedRunId ? changes.isLoading ? <div className="empty compact">正在读取变化…</div> : changes.data?.items.length ? changes.data.items.map((change) => <div key={change.id}><span className={`change-type ${change.change_type}`}>{labelOf(changeTypeLabel, change.change_type)}</span>{change.object_type === "folder" ? <Folder /> : <File />}<p>{change.new_path || change.old_path}</p></div>) : <div className="empty compact">本次同步没有索引变化</div> : <div className="empty compact">选择左侧同步记录</div>}</div>
-      </div>
-    </section>
+
   </div></AdminShell>;
 }
