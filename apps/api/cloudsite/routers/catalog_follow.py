@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 
 from ..auth import require_user, validate_request_origin
-from ..models import CatalogEntry
 from ..services.catalog_follow import (
     CatalogEntryNotFollowable,
     follow_entry,
