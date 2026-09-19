@@ -11,13 +11,15 @@ from .database import IndexSession, StateSession
 from .modules.presentation.contracts.public import public_presentation
 from .modules.providers.contracts.public import enabled_root_ids
 from .modules.resources.contracts.public import resource_queries
-from .modules.site.contracts.public import (
+from .modules.site.application.service import (
     admin_site_settings_payload,
+    public_site_settings_payload,
+)
+from .modules.site.contracts.public import (
     clear_share_page_image_name,
     get_admin_site_settings,
     home_site_settings,
     public_site_settings as get_public_site_settings,
-    public_site_settings_payload,
     registration_enabled,
     replace_share_page_image_name,
     share_page_image_name,
