@@ -4,16 +4,18 @@ kind: "business"
 migration_status: "partial"
 responsibility: "Automation rules, suggestion generation/review, parser candidates, and parser evaluation. Automation output is advisory and requires editor approval."
 public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
 
 allowed_dependencies:
   - "platform/db"
   - "platform/tasks"
   - "modules/catalog/contracts"
+  - "modules/resources/contracts"
   - "plugins/ai"
 
 owned_tables:
   - "catalog_suggestions"
-  - "parser_candidates"
+  - "parser_candidate_tasks"
   - "parser_candidate_batches"
   - "review_suggestions"
   - "automation rule tables"
