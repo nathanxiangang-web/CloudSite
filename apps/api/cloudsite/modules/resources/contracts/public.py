@@ -14,6 +14,7 @@ from ..domain.views import (
     AdminIndexCountsView,
     AdminIndexFolderView,
     CatalogResourceView,
+    DiagnosticResourceView,
     ParserResourceView,
     ResourceReferenceView,
 )
@@ -79,6 +80,7 @@ class ResourceInventoryPort(Protocol):
 
 
 __all__ = [
+    "DiagnosticResourceView",
     "AdminIndexFolderView",
     "AdminIndexCountsView",
     "CatalogResourceView",

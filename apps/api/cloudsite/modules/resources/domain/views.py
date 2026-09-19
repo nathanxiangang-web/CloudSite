@@ -159,6 +159,18 @@ class ResourceReferenceView:
 
 
 @dataclass(frozen=True, slots=True)
+class DiagnosticResourceView:
+    """Internal delivery-diagnostic resource input."""
+
+    id: str
+    name: str
+    path: str
+    status: str
+    root_mapping_id: int | None
+    content_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class ResourcePreviewView:
     """Internal preview input. Storage path is never serialized to API output."""
 
@@ -243,6 +255,7 @@ class FolderDetailView:
 
 
 __all__ = [
+    "DiagnosticResourceView",
     "AdminIndexFolderView",
     "AdminIndexCountsView",
     "CatalogResourceView",

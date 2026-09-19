@@ -103,3 +103,15 @@ lifecycle events and resources owning rate limit events.
 - Delivery keeps only a compatibility re-export of the Resources rate-limit
   contract; it no longer imports shared database/model layers for rate limiting.
 - Next: migrate the delivery-package legacy service/router boundary.
+
+## D3 Admin Diagnostics Boundary
+
+Delivery now owns the admin download-diagnostic workflow in
+`application/diagnostics.py`.
+
+- Resources supplies a persistence-neutral diagnostic resource view;
+- Providers supplies the runtime gateway;
+- Delivery resolves the download entry, records step outcomes, persists
+  `DownloadDiagnostic`, and exposes diagnostic history;
+- `routers/admin/diagnostics.py` is ORM/SQLAlchemy-free and keeps only the
+  historical `download_diagnostic_dict` compatibility symbol.

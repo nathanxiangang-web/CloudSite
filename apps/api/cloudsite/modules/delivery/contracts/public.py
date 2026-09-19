@@ -1,3 +1,8 @@
+from ..application.diagnostics import (
+    diagnose_download,
+    download_diagnostic_dict,
+    list_download_diagnostics,
+)
 from ..domain.download import (
     DownloadError,
     DownloadResolution,
@@ -42,4 +47,7 @@ __all__ = [
     "check_download_rate",
     "cleanup_download_rate_limits",
     "rate_limit_payload",
+    "diagnose_download",
+    "download_diagnostic_dict",
+    "list_download_diagnostics",
 ]

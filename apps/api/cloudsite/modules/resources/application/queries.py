@@ -8,6 +8,7 @@ from ..domain.views import (
     AdminIndexCountsView,
     AdminIndexFolderView,
     CatalogResourceView,
+    DiagnosticResourceView,
     FolderDetailView,
     FolderSummaryView,
     ParserResourceView,
@@ -36,6 +37,12 @@ class ResourceQueryRepository(Protocol):
         *,
         resource_id: str,
     ) -> CatalogResourceView | None: ...
+
+    async def diagnostic_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> DiagnosticResourceView | None: ...
 
     async def parser_resource(
         self,
@@ -153,6 +160,15 @@ class ResourceQueries:
         resource_id: str,
     ) -> CatalogResourceView | None:
         return await self._repository.catalog_resource(
+            resource_id=resource_id,
+        )
+
+    async def diagnostic_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> DiagnosticResourceView | None:
+        return await self._repository.diagnostic_resource(
             resource_id=resource_id,
         )
 
