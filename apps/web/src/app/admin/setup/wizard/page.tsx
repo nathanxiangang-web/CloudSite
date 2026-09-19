@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, SkipForward } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { api } from "@/lib/api";
 
@@ -93,19 +93,27 @@ export default function SetupWizardPage() {
     },
   });
 
+  const hydratedStep = useRef<string | null>(null);
   useEffect(() => {
+    const step = wizard.data?.current_step;
     const draft = wizard.data?.draft;
-    if (!draft) return;
-    setPreset(draft.preset || "software");
-    setBrandForm({
-      site_name: draft.site_name,
-      home_title: draft.home_title,
-      description: draft.description,
-      hero_subtitle: draft.hero_subtitle,
-      accent_color: draft.accent_color || "#2563eb",
-      card_radius: draft.card_radius ?? 12,
-    });
+    if (!step || !draft || hydratedStep.current === step) return;
+    if (step === "preset") {
+      setPreset(draft.preset || "software");
+    }
+    if (step === "brand") {
+      setBrandForm({
+        site_name: draft.site_name,
+        home_title: draft.home_title,
+        description: draft.description,
+        hero_subtitle: draft.hero_subtitle,
+        accent_color: draft.accent_color || "#2563eb",
+        card_radius: draft.card_radius ?? 12,
+      });
+    }
+    hydratedStep.current = step;
   }, [
+    wizard.data?.current_step,
     wizard.data?.draft?.preset,
     wizard.data?.draft?.site_name,
     wizard.data?.draft?.home_title,
@@ -126,7 +134,7 @@ export default function SetupWizardPage() {
 
   if (!state) return null;
   if (state.wizard_completed) {
-    return <main className="login-page"><section className="login-card"><Brand admin /><h1>建站完成</h1><p>向导已完成，现在可以登录管理后台。</p><Link href="/admin/login" className="primary">前往登录</Link></section></main>;
+    return <main className="login-page"><section className="login-card"><Brand admin /><h1>建站完成</h1><p>向导已完成，现在可以登录管理后台。</p><Link href="/admin/login?next=/admin/index" className="primary">登录并开始索引</Link></section></main>;
   }
 
   const currentStep = state.current_step as string;
