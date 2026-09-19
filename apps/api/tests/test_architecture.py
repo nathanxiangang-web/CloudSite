@@ -292,6 +292,115 @@ class TestDeliveryPackageInitialization:
         assert imports == []
 
 
+class TestAutomationParserCoreBoundary:
+    """Automation parser core uses owned code and public module contracts."""
+
+    def test_parser_application_has_no_shared_core_imports(self):
+        paths = [
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "parser_candidate_batch.py",
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "parser_candidate_runner.py",
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "parser_candidate_seeding.py",
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "parser_candidates.py",
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "parser_evaluation.py",
+        ]
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            assert "cloudsite.models" not in source
+            assert "from ....models" not in source
+            assert "cloudsite.services" not in source
+            assert "from ....services" not in source
+
+    def test_parser_resource_reads_use_resources_contract(self):
+        for relative in (
+            "parser_candidate_batch.py",
+            "parser_candidate_runner.py",
+            "parser_candidate_seeding.py",
+        ):
+            path = (
+                CLOUDSITE
+                / "modules"
+                / "automation"
+                / "application"
+                / relative
+            )
+            source = path.read_text(encoding="utf-8")
+            assert "resources.contracts.public" in source
+            assert "index.get(Resource" not in source
+
+    def test_parser_seeding_uses_indexing_contract(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "parser_candidate_seeding.py"
+        )
+        source = path.read_text(encoding="utf-8")
+        assert "indexing.contracts.public" in source
+        assert "parser_seed_run(" in source
+        assert "parser_seed_changes(" in source
+        assert "from ....models" not in source
+
+    def test_parser_domain_and_orm_are_automation_owned(self):
+        parser_file = (
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "domain"
+            / "resource_name_parser.py"
+        )
+        model_file = (
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "infrastructure"
+            / "models.py"
+        )
+        parser_source = parser_file.read_text(encoding="utf-8")
+        model_source = model_file.read_text(encoding="utf-8")
+
+        assert "cloudsite.services" not in parser_source
+        assert "cloudsite.models" not in model_source
+        assert "class ParserCandidateTask(" in model_source
+        assert "platform.db" in model_source
+
+    def test_legacy_parser_service_is_implementation_free_facade(self):
+        path = CLOUDSITE / "services" / "resource_name_parser.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        assert "modules.automation.domain.resource_name_parser" in source
+        implementations = [
+            node
+            for node in tree.body
+            if isinstance(
+                node,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+            )
+        ]
+        assert implementations == []
+
+
 class TestCatalogModuleCoreBoundary:
     """Catalog core application depends on module models and public contracts."""
 

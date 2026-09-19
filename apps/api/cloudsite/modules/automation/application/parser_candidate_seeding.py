@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Resource, SyncChange, SyncRun
+from ...indexing.contracts.public import parser_seed_changes, parser_seed_run
+from ...resources.contracts.public import resource_queries
 from .parser_candidate_batch import enqueue_indexed_resource
 from .parser_candidates import ParserCandidateError
 
@@ -69,24 +69,19 @@ async def seed_parser_candidates_from_sync_run(
     if not isinstance(after_change_id, int) or isinstance(after_change_id, bool) or after_change_id < 0:
         raise ParserCandidateError("after_change_id must be a non-negative integer")
 
-    sync_run = await index.get(SyncRun, sync_run_id)
+    sync_run = await parser_seed_run(index, sync_run_id=sync_run_id)
     if sync_run is None:
         raise ParserCandidateError("sync run not found")
     if sync_run.status not in _SEEDABLE_RUN_STATUSES:
         raise ParserCandidateError("sync run is not completed or partial")
 
     rows = list(
-        (
-            await index.scalars(
-                select(SyncChange)
-                .where(
-                    SyncChange.sync_run_id == sync_run_id,
-                    SyncChange.id > after_change_id,
-                )
-                .order_by(SyncChange.id)
-                .limit(max_items + 1)
-            )
-        ).all()
+        await parser_seed_changes(
+            index,
+            sync_run_id=sync_run_id,
+            after_change_id=after_change_id,
+            limit=max_items + 1,
+        )
     )
 
     has_more = len(rows) > max_items
@@ -103,7 +98,9 @@ async def seed_parser_candidates_from_sync_run(
         if change.object_type != "resource" or change.change_type not in _SEED_CHANGE_TYPES:
             skipped += 1
             continue
-        resource = await index.get(Resource, change.object_id)
+        resource = await resource_queries(index).parser_resource(
+            resource_id=change.object_id
+        )
         if resource is None or resource.status != "active":
             skipped += 1
             continue

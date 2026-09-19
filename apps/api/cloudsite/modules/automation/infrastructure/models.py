@@ -1,4 +1,4 @@
-"""Automation-owned SQLAlchemy models."""
+"""Automation-owned durable parser candidate ORM."""
 
 from __future__ import annotations
 
@@ -22,19 +22,26 @@ class ParserCandidateTask(StateBase):
     input_fingerprint: Mapped[str] = mapped_column(String(64))
     parser_version: Mapped[str] = mapped_column(String(40), index=True)
     status: Mapped[str] = mapped_column(
-        String(20), default="pending", server_default="pending", index=True
+        String(20),
+        default="pending",
+        server_default="pending",
+        index=True,
     )
     retry_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True),
+        default=utcnow,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
     )
     completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     __table_args__ = (
@@ -46,4 +53,4 @@ class ParserCandidateTask(StateBase):
     )
 
 
-__all__ = ["ParserCandidateTask"]
+__all__ = ["ParserCandidateTask", "utcnow"]

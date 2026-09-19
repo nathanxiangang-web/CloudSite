@@ -28,7 +28,7 @@ and to 79 when rate-limit persistence moved from Delivery legacy imports to Reso
 and to 76 when Indexing removed its remaining shared ORM/session imports,
 and to 71 when Notifications took ORM/query ownership and its user/admin routers became ORM-free,
 and to 67 when Catalog core application stopped importing shared models/services and moved its state ORM behind module ownership,
-and to 59 when Automation's parser subdomain took ownership of parser task ORM, deterministic parsing, and Resource parser reads.
+and to 59 when Automation parser candidates, parser execution, and sync seeding moved behind Automation/Resources/Indexing boundaries.
 
 The machine-readable list lives in
 `docs/development/architecture-debt-baseline.json`.

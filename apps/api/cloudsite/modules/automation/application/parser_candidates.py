@@ -8,8 +8,8 @@ from dataclasses import asdict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..domain.resource_name_parser import ParseResult
 from ..infrastructure.models import ParserCandidateTask, utcnow
+from ..domain.resource_name_parser import ParseResult
 
 TASK_ID_PREFIX = "pt_"
 DEFAULT_MAX_RETRIES = 3

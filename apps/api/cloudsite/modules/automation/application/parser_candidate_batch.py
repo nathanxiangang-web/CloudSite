@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...resources.contracts.public import resource_queries
-from ..domain.resource_name_parser import PARSER_VERSION
 from ..infrastructure.models import ParserCandidateTask
 from .parser_candidate_runner import (
     ParserCandidateRunResult,
@@ -26,6 +25,7 @@ from .parser_candidates import (
     enqueue_parser_candidate,
     fail_parser_candidate,
 )
+from ..domain.resource_name_parser import PARSER_VERSION
 
 INTERRUPTED_MESSAGE = "parser candidate interrupted by restart"
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..api.parser_seed import parser_seed_changes, parser_seed_run
+from ..domain.parser_seed import ParserSeedChangeView, ParserSeedRunView
 from typing import Protocol, runtime_checkable
 
 from ..application.reconcile import ReconcileResult
@@ -30,4 +32,10 @@ class IndexingServicePort(Protocol):
         ...
 
 
-__all__ = ['IndexingServicePort']
+__all__ = [
+    "IndexingServicePort",
+    "ParserSeedRunView",
+    "ParserSeedChangeView",
+    "parser_seed_run",
+    "parser_seed_changes",
+]
