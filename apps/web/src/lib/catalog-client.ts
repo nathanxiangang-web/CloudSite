@@ -141,8 +141,12 @@ export async function fetchCatalogTags(): Promise<{ items: CatalogTag[] }> {
   return api<{ items: CatalogTag[] }>("/api/catalog/tags");
 }
 
-export async function fetchAdminCatalogEntries(): Promise<CatalogPage<AdminCatalogEntry>> {
-  return api<CatalogPage<AdminCatalogEntry>>("/api/admin/catalog/entries");
+export async function fetchAdminCatalogEntries(params: { page?: number; page_size?: number } = {}): Promise<CatalogPage<AdminCatalogEntry>> {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.page_size) query.set("page_size", String(params.page_size));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return api<CatalogPage<AdminCatalogEntry>>(`/api/admin/catalog/entries${suffix}`);
 }
 
 export async function fetchAdminCatalogEntry(entryId: string): Promise<AdminCatalogEntry> {

@@ -90,7 +90,7 @@ export default function AdminCatalogEntryEditor() {
   });
 
   if (entry.isLoading) return <AdminShell title="编辑目录条目"><div className="panel loading">正在加载条目…</div></AdminShell>;
-  if (entry.error) return <AdminShell title="编辑目录条目"><div className="panel empty error-state">加载失败：{entry.error.message}<div className="card-actions"><Link className="button" href="/admin/catalog/entries">返回列表</Link></div></div></AdminShell>;
+  if (entry.error) return <AdminShell title="编辑目录条目"><div className="panel empty error-state">加载失败：{entry.error.message}<div className="card-actions"><button type="button" onClick={() => entry.refetch()}>重试</button><Link className="button" href="/admin/catalog/entries">返回列表</Link></div></div></AdminShell>;
   if (!entry.data) return null;
 
   return <AdminShell title={`编辑条目：${entry.data.title}`}><div className="admin-page">
@@ -156,9 +156,10 @@ function ReleaseManager({ entryId }: { entryId: string }) {
       <button className="primary" disabled={create.isPending}><Plus />新增版本</button>
     </form>
     {create.error && <p className="form-error">{create.error.message}</p>}
-    {toggleRecommend.error && <p className="form-error">{toggleRecommend.error.message}</p>}
+    {(toggleRecommend.error || remove.error) && <p className="form-error">{(toggleRecommend.error || remove.error)?.message}</p>}
 
     {releases.isLoading ? <div className="loading">正在加载版本…</div>
+      : releases.error ? <div className="empty error-state">版本加载失败：{releases.error.message}<button type="button" onClick={() => releases.refetch()}>重试</button></div>
       : items.length ? <div className="catalog-release-list">{items.map((release) => <div className="catalog-release-row" key={release.release_id}>
         <button type="button" className={selectedRelease === release.release_id ? "selected" : ""} onClick={() => setSelectedRelease(release.release_id)}>
           <strong>{release.title}</strong>
@@ -180,7 +181,7 @@ function ReleaseStatusSelect({ entryId, releaseId, current }: { entryId: string;
     mutationFn: (next: CatalogStatus) => updateAdminCatalogRelease(releaseId, { status: next }),
     onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-catalog-releases", entryId] }); },
   });
-  return <select value={current} onChange={(event) => { const next = event.target.value as CatalogStatus; update.mutate(next); }}>{RELEASE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select>;
+  return <><select value={current} onChange={(event) => { const next = event.target.value as CatalogStatus; update.mutate(next); }}>{RELEASE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select>{update.error && <small className="form-error">{update.error.message}</small>}</>;
 }
 
 function AssetManager({ entryId, releaseId }: { entryId: string; releaseId: string }) {
@@ -215,9 +216,10 @@ function AssetManager({ entryId, releaseId }: { entryId: string; releaseId: stri
       <select value={kind} onChange={(event) => setKind(event.target.value as CatalogAssetKind)}>{ASSET_KINDS.map((value) => <option key={value} value={value}>{value}</option>)}</select>
       <button className="primary" disabled={create.isPending}><Plus />新增资源</button>
     </form>
-    {create.error && <p className="form-error">{create.error.message}</p>}
+    {(create.error || remove.error) && <p className="form-error">{(create.error || remove.error)?.message}</p>}
 
     {assets.isLoading ? <div className="loading">正在加载资源…</div>
+      : assets.error ? <div className="empty error-state">版本资源加载失败：{assets.error.message}<button type="button" onClick={() => assets.refetch()}>重试</button></div>
       : items.length ? <div className="catalog-asset-list">{items.map((asset) => <div className="catalog-asset-row" key={asset.asset_id}>
         <button type="button" className={selectedAsset === asset.asset_id ? "selected" : ""} onClick={() => setSelectedAsset(asset.asset_id)}>
           <strong>{asset.display_name}</strong>
@@ -248,6 +250,7 @@ function LocationManager({ entryId, releaseId, assetId }: { entryId: string; rel
   return <div className="catalog-location-manager">
     <h4>下载位置（{items.length}）</h4>
     {locations.isLoading ? <div className="loading">正在加载位置…</div>
+      : locations.error ? <div className="empty error-state">下载位置加载失败：{locations.error.message}<button type="button" onClick={() => locations.refetch()}>重试</button></div>
       : items.length ? <div className="picker-items">{items.map((location) => <div className="picker-item" key={location.location_id}>
         <span className="picker-item-icon type-software"><File /></span>
         <span className="picker-item-copy"><strong>{location.label || location.resource?.name || location.resource_id}</strong><small>{location.availability === "available" ? "可用" : "不可用"}{location.resource?.size ? ` · ${formatBytes(location.resource.size)}` : ""}</small></span>
@@ -260,6 +263,7 @@ function LocationManager({ entryId, releaseId, assetId }: { entryId: string; rel
     <h4>绑定已索引文件</h4>
     <div className="small-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索资源名称，选择后绑定为下载位置" /></div>
     <div className="picker-results">{search.isLoading ? <div className="loading">搜索中…</div>
+      : search.error ? <div className="empty error-state">资源搜索失败：{search.error.message}<button type="button" onClick={() => search.refetch()}>重试</button></div>
       : search.data?.items.filter((resource) => resource.object_type === "resource").map((resource) => { const attached = attachedIds.has(resource.id); return <div className="picker-item" key={resource.id}>
         <span className="picker-item-icon type-software"><File /></span>
         <span className="picker-item-copy"><strong>{resource.name}</strong><small>{resource.extension ? resource.extension.toUpperCase() : ""}{resource.size != null ? ` · ${formatBytes(resource.size)}` : ""}</small></span>

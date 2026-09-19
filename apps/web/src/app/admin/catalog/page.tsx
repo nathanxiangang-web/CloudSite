@@ -12,7 +12,7 @@ import {
 import { fetchAdminCatalogEntries } from "@/lib/catalog-client";
 
 export default function AdminCatalogOverview() {
-  const entries = useQuery({ queryKey: ["admin-catalog-entries"], queryFn: fetchAdminCatalogEntries });
+  const entries = useQuery({ queryKey: ["admin-catalog-entries"], queryFn: () => fetchAdminCatalogEntries() });
   const items = entries.data?.items ?? [];
 
   return <AdminShell title="目录管理"><div className="admin-page">
@@ -25,7 +25,7 @@ export default function AdminCatalogOverview() {
     </section>
 
     {entries.isLoading ? <div className="loading">正在加载目录条目…</div>
-      : entries.error ? <div className="empty error-state">加载失败：{entries.error.message}</div>
+      : entries.error ? <div className="empty error-state">加载失败：{entries.error.message}<button type="button" onClick={() => entries.refetch()}>重试</button></div>
       : items.length ? <section className="collection-admin-grid">{items.map((entry) => <article className="panel collection-admin-card" key={entry.entry_id}>
         <div className="collection-admin-head">
           <span className="stat-icon purple"><Boxes /></span>
