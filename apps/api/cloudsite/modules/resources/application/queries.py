@@ -30,6 +30,13 @@ class ResourceQueryRepository(Protocol):
         resource_id: str,
     ) -> ParserResourceView | None: ...
 
+    async def list_parser_resources(
+        self,
+        *,
+        content_type: str | None,
+        limit: int,
+    ) -> list[ParserResourceView]: ...
+
     async def list_resources(
         self,
         *,
@@ -104,6 +111,17 @@ class ResourceQueries:
     ) -> ParserResourceView | None:
         return await self._repository.parser_resource(
             resource_id=resource_id,
+        )
+
+    async def list_parser_resources(
+        self,
+        *,
+        content_type: str | None = None,
+        limit: int = 200,
+    ) -> list[ParserResourceView]:
+        return await self._repository.list_parser_resources(
+            content_type=content_type,
+            limit=max(int(limit), 0),
         )
 
     async def list_resources(
