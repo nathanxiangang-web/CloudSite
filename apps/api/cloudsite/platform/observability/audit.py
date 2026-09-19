@@ -49,4 +49,33 @@ async def count_operation_logs(
     return int(row[0] or 0) if row is not None else 0
 
 
-__all__ = ["write_operation_log", "count_operation_logs"]
+async def recent_operation_logs(
+    session: AsyncSession,
+    *,
+    limit: int = 6,
+) -> list[dict]:
+    rows = (
+        await session.execute(
+            text(
+                "SELECT level, message, created_at "
+                "FROM operation_logs "
+                "ORDER BY id DESC LIMIT :limit"
+            ),
+            {"limit": max(int(limit), 0)},
+        )
+    ).all()
+    return [
+        {
+            "level": str(level),
+            "message": str(message),
+            "created_at": created_at,
+        }
+        for level, message, created_at in rows
+    ]
+
+
+__all__ = [
+    "write_operation_log",
+    "count_operation_logs",
+    "recent_operation_logs",
+]
