@@ -14,30 +14,6 @@ from ...schemas import AListInput
 router = APIRouter()
 
 
-def alist_http_exception(
-    exc: Exception,
-    fallback_status: int = 502,
-) -> HTTPException:
-    """Compatibility mapper for legacy admin routers during Providers migration."""
-
-    code = getattr(exc, "code", None)
-    status_code = getattr(exc, "status_code", None)
-    if code and status_code:
-        return HTTPException(
-            int(status_code),
-            {"code": str(code), "message": str(exc)},
-        )
-    if isinstance(exc, ValueError):
-        return HTTPException(
-            400,
-            {"code": "AL-006", "message": str(exc)},
-        )
-    return HTTPException(
-        fallback_status,
-        {"code": "AL-999", "message": "AList 操作失败，请稍后重试"},
-    )
-
-
 def _provider_http_exception(exc: ProviderAdminError) -> HTTPException:
     detail = (
         {"code": exc.code, "message": str(exc)}
