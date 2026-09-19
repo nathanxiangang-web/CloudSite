@@ -5,8 +5,6 @@
 """
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, HTTPException, Query
 
 from ...quality_schemas import (
@@ -42,15 +40,6 @@ def _translate_error(exc: Exception) -> HTTPException:
     if isinstance(exc, service.ContentFeedbackNotFound):
         return HTTPException(404, {"code": "FEEDBACK_NOT_FOUND", "message": str(exc)})
     return HTTPException(500, {"code": "QUALITY_ERROR", "message": "质量服务错误"})
-
-
-def _decode_json(raw: str) -> dict | None:
-    if not raw or raw == "{}":
-        return None
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
 
 
 def _todo_to_response(summary) -> QualityTodoSummary:
@@ -207,40 +196,40 @@ async def trigger_detection(body: DetectInput):
         )
 
 
-@router.get("/api/admin/quality/detection-runs", response_model=DetectionRunListOutput)
+@router.get(
+    "/api/admin/quality/detection-runs",
+    response_model=DetectionRunListOutput,
+)
 async def list_detection_runs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ):
     from ...main import StateSession
-    from ...models import QualityDetectionRun
-    from sqlalchemy import func, select
 
+    service = _quality_service()
     async with StateSession() as state:
-        total = int(await state.scalar(
-            select(func.count()).select_from(QualityDetectionRun)
-        ) or 0)
-        offset = (page - 1) * page_size
-        rows = (await state.scalars(
-            select(QualityDetectionRun)
-            .order_by(QualityDetectionRun.started_at.desc())
-            .offset(offset).limit(page_size)
-        )).all()
-        items = [
-            DetectionRunSummary(
-                run_id=r.run_id,
-                started_at=r.started_at,
-                completed_at=r.completed_at,
-                items_found=r.items_found,
-                items_deduplicated=r.items_deduplicated,
-                budget_ms=r.budget_ms,
-                actual_ms=r.actual_ms,
-                status=r.status,
-                breakdown=_decode_json(r.detail_json),
-            )
-            for r in rows
-        ]
-        return DetectionRunListOutput(items=items, total=total)
+        rows, total = await service.list_detection_runs(
+            state,
+            page=page,
+            page_size=page_size,
+        )
+        return DetectionRunListOutput(
+            items=[
+                DetectionRunSummary(
+                    run_id=row.run_id,
+                    started_at=row.started_at,
+                    completed_at=row.completed_at,
+                    items_found=row.items_found,
+                    items_deduplicated=row.items_deduplicated,
+                    budget_ms=row.budget_ms,
+                    actual_ms=row.actual_ms,
+                    status=row.status,
+                    breakdown=row.breakdown or None,
+                )
+                for row in rows
+            ],
+            total=total,
+        )
 
 
 @router.get("/api/admin/quality/feedback", response_model=ContentFeedbackListOutput)
