@@ -95,8 +95,11 @@ Users is now **partial** rather than a skeleton.
 - `UserSession` ORM and server-side session create/validate/revoke/cleanup
   now live behind the Users contract; `cloudsite.sessions` is an HTTP/
   compatibility shim for cookies and request metadata.
-- Authentication credential workflows, admin sessions, favorites, history,
-  playback progress, and the legacy admin user routes remain follow-up work.
+- Public registration/login/logout/password-change persistence and audit
+  now live in `application/authentication.py`; root `cloudsite.auth` is
+  the HTTP/origin/cookie compatibility edge.
+- Admin sessions, favorites, history, playback progress, and the legacy
+  admin user routes remain follow-up work.
 
 ## Role Policy Ownership
 
