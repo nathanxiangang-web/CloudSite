@@ -259,7 +259,7 @@ async def complete_initial_alist_setup(
             base_url=base_url,
             username=username,
             password=password,
-            remember_credentials=remember_credentials,
+            remember_credentials=True,
         )
     except ProviderAdminError as exc:
         raise _provider_error(exc) from exc
