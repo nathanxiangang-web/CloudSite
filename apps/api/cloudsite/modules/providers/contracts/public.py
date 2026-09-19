@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from ..application.provider_service import enabled_root_ids
+from ..application.provider_service import (
+    ProviderLoginTarget,
+    connection_login_target,
+    enabled_root_ids,
+)
 from ..domain.capabilities import (
     CAPABILITY_SCHEMA_VERSION,
     CapabilityState,
@@ -37,6 +41,8 @@ __all__ = [
     "ProviderAccessError",
     "provider_runtime",
     "enabled_root_ids",
+    "ProviderLoginTarget",
+    "connection_login_target",
     "CAPABILITY_SCHEMA_VERSION",
     "CapabilityState",
     "ProviderCapabilities",
