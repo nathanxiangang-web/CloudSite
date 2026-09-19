@@ -34,8 +34,6 @@ from ..download_rate_limit import (
 )
 from ..request_context import request_is_https
 from ..schemas import ShareInput, ShareUpdate, ShareVerifyInput
-from ..services.collections import collection_dict
-from ..services.resources import folder_dict, resource_dict
 from ..services.shares import (
     build_share_target_payload,
     resolve_share_download_resource,
