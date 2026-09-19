@@ -101,3 +101,15 @@ Resources exposes a narrow `DiagnosticResourceView` for Delivery diagnostics.
 It includes the internal storage path and current resource state required to
 probe delivery, but is not serialized by public Resources endpoints. This keeps
 diagnostic storage-path access explicit and avoids reusing Catalog/public DTOs.
+
+## Search Projection Boundary
+
+Resources exposes Search-specific persistence-neutral projections:
+
+- active Folder/Resource documents used to rebuild the FTS index;
+- batch hydration of Search candidates with root visibility enforced by
+  Resources;
+- parent/breadcrumb metadata needed for the public search response.
+
+Search never imports Resources ORM classes and public browsing DTOs are not
+expanded with Search-only storage metadata.

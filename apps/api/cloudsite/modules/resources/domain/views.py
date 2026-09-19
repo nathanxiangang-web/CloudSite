@@ -159,6 +159,51 @@ class ResourceReferenceView:
 
 
 @dataclass(frozen=True, slots=True)
+class SearchDocumentView:
+    """Authoritative active resource/folder data projected into Search."""
+
+    object_id: str
+    object_type: str
+    name: str
+    extension: str
+    content_type: str
+    breadcrumb_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class SearchResourceView:
+    id: str
+    name: str
+    parent_id: str | None
+    content_type: str
+    extension: str
+    mime_type: str
+    size: int
+    modified_at: datetime | None
+    parent: ParentSummaryView | None
+    breadcrumbs: tuple[ParentSummaryView, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SearchFolderView:
+    id: str
+    name: str
+    parent_id: str | None
+    content_type: str
+    depth: int
+    child_folder_count: int
+    resource_count: int
+    modified_at: datetime | None
+    breadcrumbs: tuple[ParentSummaryView, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SearchObjectBatchView:
+    resources: tuple[SearchResourceView, ...]
+    folders: tuple[SearchFolderView, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DiagnosticResourceView:
     """Internal delivery-diagnostic resource input."""
 
@@ -255,6 +300,10 @@ class FolderDetailView:
 
 
 __all__ = [
+    "SearchObjectBatchView",
+    "SearchFolderView",
+    "SearchResourceView",
+    "SearchDocumentView",
     "DiagnosticResourceView",
     "AdminIndexFolderView",
     "AdminIndexCountsView",

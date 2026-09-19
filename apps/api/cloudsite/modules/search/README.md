@@ -87,7 +87,30 @@ Search does not own the data; it owns the index over data owned by others.
 
 ## Current Migration Status
 
-Code is currently in `search.py` and `services/catalog_search*.py`. These move
-to `modules/search/` in Phase 3. The FTS5 table is rebuilt, not migrated, so
-no data migration is needed. The module skeleton with projection schemas in
-`public/` is in place.
+Search is now **partial (S1)** rather than a skeleton.
+
+S1 establishes the real public query/rebuild boundary:
+
+- query normalization, match classification, filters and sort policy live in
+  `domain/query.py`;
+- SQLite FTS candidate matching and rebuild persistence live in
+  `infrastructure/fts_repository.py`;
+- public search orchestration lives in `application/service.py`;
+- Resources supplies authoritative active/root-scoped search projections via
+  its public contract instead of Search importing Folder/Resource ORM;
+- `routers/search.py` and `routers/admin/search.py` no longer import ORM or
+  SQLAlchemy;
+- the legacy `cloudsite.search` module reuses the Search domain query policy
+  so normalization/classification rules cannot drift.
+
+Still transitional after S1:
+
+- row-level FTS delta application and dirty-index recovery remain in
+  `cloudsite.search`;
+- the Catalog search projection still lives behind the existing
+  `services/catalog_search_projection.py` compatibility surface;
+- rebuild remains synchronous for compatibility even though the target design
+  is task-driven.
+
+A later Search slice should migrate delta/recovery and Catalog projection
+ownership before deleting the legacy facade.
