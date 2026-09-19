@@ -68,7 +68,18 @@ async def test_resources_contract_returns_parser_safe_projection():
         assert view.extension == "zip"
         assert view.mime_type == "application/zip"
         assert view.status == "active"
+        assert view.content_type == "software"
+        assert view.size == 42
+        assert view.indexed_at is not None
         assert not hasattr(view, "root_mapping_id")
+
+        listed = await resource_queries(session).list_parser_resources(
+            content_type="software",
+            limit=10,
+        )
+        assert [item.id for item in listed] == ["r_parser_boundary"]
+        assert listed[0].size == 42
+        assert listed[0].content_type == "software"
 
         assert (
             await resource_queries(session).parser_resource(resource_id="missing")
