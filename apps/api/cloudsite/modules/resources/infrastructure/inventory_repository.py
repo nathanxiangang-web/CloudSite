@@ -113,7 +113,6 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                     existing.parent_id = record.parent_id
                     existing.content_type = record.content_type or record.category_id
                     existing.root_mapping_id = record.root_mapping_id
-                    existing.depth = record.depth
                     existing.modified_at = record.modified_at
                     existing.indexed_at = record.indexed_at or now
                     existing.status = "active"
