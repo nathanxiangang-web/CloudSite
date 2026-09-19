@@ -5,7 +5,6 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..infrastructure.indexing_engine import use_indexing_v2
-from ..application.admin_sync import validate_manual_sync_paths
 from ..infrastructure.status_store import (
     read_sync_circuit_status as _read_sync_circuit_status,
     read_v2_sync_progress as _read_v2_sync_progress,
@@ -40,5 +39,4 @@ __all__ = [
     "read_v2_sync_progress",
     "read_sync_circuit_status",
     "toggle_automatic_sync",
-    "validate_manual_sync_paths",
 ]
