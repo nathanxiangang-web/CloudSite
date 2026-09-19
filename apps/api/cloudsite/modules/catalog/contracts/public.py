@@ -46,6 +46,13 @@ from ..application.catalog_release import (
     CreateCatalogReleaseResult,
 )
 
+from ..application.publication_scope import (
+    CatalogPublicationNotFound,
+    CatalogPublicationNotPublic,
+    list_publication_scope_entries,
+    public_catalog_entry,
+    update_publication_scope,
+)
 from ..application.public_queries import (
     CatalogViewNotFound,
     catalog_asset_view,
@@ -99,5 +106,10 @@ __all__ = [
     "collection_entry_references",
     "BrowseCatalogEntryView",
     "published_browse_entries",
+    "CatalogPublicationNotFound",
+    "CatalogPublicationNotPublic",
+    "list_publication_scope_entries",
+    "public_catalog_entry",
+    "update_publication_scope",
 ]
 
