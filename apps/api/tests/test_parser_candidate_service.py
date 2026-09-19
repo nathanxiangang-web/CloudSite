@@ -14,7 +14,7 @@ from cloudsite.modules.automation.contracts.public import (
     fail_parser_candidate,
     retry_parser_candidate,
 )
-from cloudsite.services.resource_name_parser import parse_resource_name
+from cloudsite.modules.automation.domain.resource_name_parser import parse_resource_name
 
 
 async def _state(tmp_path):
