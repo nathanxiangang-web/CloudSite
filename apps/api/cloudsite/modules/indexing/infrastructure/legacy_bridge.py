@@ -110,10 +110,8 @@ async def run_indexing_v2_production(
     import asyncio
     import time
 
-    from cloudsite.database import IndexSession, StateSession
     from cloudsite.indexer import load_all_connections_and_roots, log_operation
-    from cloudsite.models import ContentRootMapping, SystemSetting
-    from sqlalchemy import select
+    from cloudsite.platform.db import index_session
 
     from .alist_adapter import AListProviderAdapter
 
@@ -155,7 +153,7 @@ async def run_indexing_v2_production(
                         "running", categories_done, total_categories,
                         int(time.time() - t0), path, entries_scanned + count,
                     )
-                async with IndexSession() as session:
+                async with index_session() as session:
                     store = store_factory(session)
                     result = await run_indexing_v2(
                         adapter=adapter,
@@ -232,8 +230,8 @@ async def _update_v2_sync_status(
     """Persist v2 sync progress to SystemSetting for status endpoint."""
     import json
 
-    from cloudsite.database import StateSession
-    from cloudsite.models import SystemSetting
+    from cloudsite.platform.db import state_session
+    from sqlalchemy import text
 
     payload = json.dumps({
         "status": status,
@@ -243,10 +241,18 @@ async def _update_v2_sync_status(
         "current_path": current_path,
         "entries_scanned": entries_scanned,
     })
-    async with StateSession() as session:
-        row = await session.get(SystemSetting, "v2_sync_progress") or SystemSetting(key="v2_sync_progress")
-        row.value = payload
-        session.add(row)
+    async with state_session() as session:
+        await session.execute(
+            text(
+                "INSERT INTO system_settings(key, value, value_type, updated_at) "
+                "VALUES (:key, :value, 'string', CURRENT_TIMESTAMP) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "value = excluded.value, "
+                "value_type = excluded.value_type, "
+                "updated_at = CURRENT_TIMESTAMP"
+            ),
+            {"key": "v2_sync_progress", "value": payload},
+        )
         await session.commit()
 
 

@@ -97,3 +97,17 @@ of rolling sync is a Phase 2-4 milestone; until then both may coexist with
 feature flags selecting the pipeline.
 
 Resource persistence is now outside the Indexing ownership boundary: the production reconciliation adapter consumes `modules/resources/contracts` only, while top-level task composition injects the Resources SQLAlchemy repository. Indexing no longer imports Folder/Resource ORM classes.
+
+## I1 Shared-Core Debt Closure
+
+The production AList adapter now uses a structural content-root protocol rather
+than importing Provider ORM. The v2 production bridge uses `platform/db`
+sessions and writes its progress payload without importing shared
+`cloudsite.models`.
+
+This removes all three tracked Indexing `module_legacy_import` debt IDs.
+
+Indexing remains **active**, not yet **isolated**: the compatibility production
+bridge still calls legacy `cloudsite.indexer.load_all_connections_and_roots`
+and `log_operation`. Those orchestration helpers should move behind Providers
+and observability contracts before the legacy bridge can be deleted.

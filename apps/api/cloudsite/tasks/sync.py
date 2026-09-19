@@ -55,4 +55,4 @@ async def _safe_startup_sync():
     if not values["sync_on_startup"]:
         return
     with suppress(Exception):
-        await run_indexing_v2_production(store_factory=_production_indexing_store)
+        await run_indexing_v2_production()

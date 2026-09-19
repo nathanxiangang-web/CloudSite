@@ -292,6 +292,44 @@ class TestDeliveryPackageInitialization:
         assert imports == []
 
 
+class TestIndexingSharedCoreBoundary:
+    """Indexing runtime code may not depend on shared ORM/session modules."""
+
+    def test_alist_adapter_uses_structural_root_type(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "indexing"
+            / "infrastructure"
+            / "alist_adapter.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "ContentRootView(Protocol)" in source
+
+    def test_legacy_bridge_uses_platform_db_not_shared_database_or_models(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "indexing"
+            / "infrastructure"
+            / "legacy_bridge.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "cloudsite.database" not in source
+        assert "cloudsite.models" not in source
+        assert "cloudsite.platform.db" in source
+
+    def test_startup_sync_uses_zero_argument_compatibility_entry(self):
+        path = CLOUDSITE / "tasks" / "sync.py"
+        source = path.read_text(encoding="utf-8")
+
+        assert "await run_indexing_v2_production(store_factory=" not in source
+        assert "await run_indexing_v2_production()" in source
+
+
 class TestRateLimitOwnershipBoundary:
     """Download rate limiting is Resources-owned, not Delivery-owned."""
 
