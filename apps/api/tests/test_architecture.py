@@ -257,6 +257,35 @@ class TestResourcesRouterSqlBoundary:
         assert "session.scalars(" not in source
 
 
+class TestPreviewProviderBoundary:
+    """Legacy preview facades may not own provider credentials or clients."""
+
+    def test_preview_helpers_use_providers_contract_only(self):
+        for relative in ("preview.py", "office.py"):
+            source = (CLOUDSITE / relative).read_text(encoding="utf-8")
+            assert "AListClient" not in source
+            assert "decrypt_secret" not in source
+            assert "modules.providers.contracts" in source
+
+
+class TestPreviewRouterBoundary:
+    """Preview router delegates resource lookup and provider access."""
+
+    def test_preview_router_has_no_orm_or_legacy_connection_dependency(self):
+        router_file = CLOUDSITE / "routers" / "previews.py"
+        source = router_file.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "from ..models" not in source
+        assert "sqlalchemy" not in source
+        assert "session.get(" not in source
+        assert "index.get(" not in source
+        assert "resolve_resource_connection" not in source
+        assert "resource_in_publication_scope" not in source
+        assert "resource_queries(" in source
+        assert "provider_runtime(" in source
+
+
 class TestResourcesListRouterBoundary:
     """Migrated list routes delegate SQL ownership to Resources."""
 

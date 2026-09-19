@@ -120,11 +120,37 @@ This removes the remaining `routers/resources.py -> cloudsite.models` debt ID
 and ratchets architecture debt from 86 to 85. The Resources router is now
 completely ORM-free.
 
-### R4b — preview/provider composition
+### R4b — provider runtime preview composition
 
-Next, move connection/provider resolution and preview preparation behind explicit
-Resources/Providers contracts so the router no longer coordinates legacy
-`services.connections`, `preview.py`, and `office.py` helpers directly.
+Status: implemented in this change.
+
+Preview and Office cache helpers now consume the Providers public
+`ProviderRuntimePort` instead of connection ORM objects. Credential
+decryption, AList client construction, root-to-connection resolution, and
+provider selection remain inside Providers.
+
+The following preview paths now receive `provider_runtime(state)`:
+
+- text preview;
+- PDF/Office cache preparation;
+- direct `/p/{resource_id}` redirect resolution.
+
+`routers/previews.py` now loads resource visibility through the Resources query
+boundary and no longer imports shared Resource ORM or calls
+`resource_in_publication_scope()` directly.
+
+The legacy `cloudsite.preview` and `cloudsite.office` modules remain temporary
+compatibility facades, but CI forbids them from importing `AListClient` or
+`decrypt_secret`.
+
+This removes the `routers/previews.py -> cloudsite.models` debt ID and ratchets
+architecture debt from 84 to 83.
+
+### R4c — preview helper ownership cleanup
+
+Move the remaining compatibility helper implementation from top-level
+`preview.py` / `office.py` into Resources domain/application/infrastructure
+packages while preserving their import facades.
 
 Delivery continues to own redirect preparation plus download event/diagnostic
 tracking. Providers owns storage backend access and credentials.

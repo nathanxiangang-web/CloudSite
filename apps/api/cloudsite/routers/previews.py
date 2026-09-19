@@ -8,14 +8,26 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from ..config import settings
 from ..download import validate_resource_id
-from ..models import Resource
 from ..office import OFFICE_CONTENT_TYPES, OfficePreviewError, office_content_type, render_pdf_pages
 from ..preview import PreviewError, resolve_preview_url
-from ..services.connections import resolve_resource_connection
-from ..shares.service import resource_in_publication_scope
+from ..modules.providers.contracts.public import provider_runtime
+from ..modules.resources.api.queries import resource_queries
+from ..modules.resources.domain.errors import (
+    ResourceNotAvailableError,
+    ResourceNotFoundError,
+)
+from ..shares.service import enabled_root_ids
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _preview_resource(index, state, resource_id: str):
+    enabled_ids = await enabled_root_ids(state)
+    return await resource_queries(index).preview_resource(
+        resource_id=resource_id,
+        enabled_root_ids=enabled_ids,
+    )
 
 
 @router.get("/office-files/{filename}")
@@ -29,9 +41,13 @@ async def serve_office_file(filename: str):
         raise HTTPException(403, {"code": "PV-002", "message": "该格式不支持在线预览"})
     resource_id = filename.rsplit(".", 1)[0] if "." in filename else filename
     async with IndexSession() as index, StateSession() as state:
-        resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
-            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
+        try:
+            resource = await _preview_resource(index, state, resource_id)
+        except (ResourceNotFoundError, ResourceNotAvailableError) as exc:
+            raise HTTPException(
+                404,
+                {"code": "PV-001", "message": "资源不存在或已不可用"},
+            ) from exc
     path = settings.office_cache_dir / filename
     if not path.is_file():
         raise HTTPException(404, "预览文件不存在或已过期")
@@ -49,9 +65,13 @@ async def serve_pdf_page(filename: str, page: int):
         raise HTTPException(403, {"code": "PV-002", "message": "该格式不支持在线预览"})
     resource_id = filename.rsplit(".", 1)[0] if "." in filename else filename
     async with IndexSession() as index, StateSession() as state:
-        resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
-            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
+        try:
+            resource = await _preview_resource(index, state, resource_id)
+        except (ResourceNotFoundError, ResourceNotAvailableError) as exc:
+            raise HTTPException(
+                404,
+                {"code": "PV-001", "message": "资源不存在或已不可用"},
+            ) from exc
     try:
         names = render_pdf_pages(resource)
     except OfficePreviewError as exc:
@@ -74,15 +94,14 @@ async def preview(resource_id: str, refresh: bool = False):
     if not validate_resource_id(resource_id):
         return _preview_error_redirect(resource_id[:64], "PV-001")
     async with IndexSession() as index, StateSession() as state:
-        resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active":
+        try:
+            resource = await _preview_resource(index, state, resource_id)
+        except (ResourceNotFoundError, ResourceNotAvailableError):
             return _preview_error_redirect(resource_id, "PV-001")
-        if not await resource_in_publication_scope(state, resource):
-            return _preview_error_redirect(resource_id, "PV-001")
-        connection = await resolve_resource_connection(state, resource)
+        runtime = provider_runtime(state)
         try:
             resolve_started = time.perf_counter()
-            resolution = await resolve_preview_url(resource, connection, force_refresh=refresh)
+            resolution = await resolve_preview_url(resource, runtime, force_refresh=refresh)
             resolve_ms = (time.perf_counter() - resolve_started) * 1000
             redirect_ms = (time.perf_counter() - started) * 1000
             logger.debug(

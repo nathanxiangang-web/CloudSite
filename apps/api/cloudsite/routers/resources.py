@@ -2,6 +2,7 @@
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query
+from ..modules.providers.contracts.public import provider_runtime
 from ..modules.resources.api.queries import resource_queries
 from ..modules.resources.domain.errors import (
     FolderNotFoundError,
@@ -17,7 +18,6 @@ from ..schemas import (
     ResourcePageOutput,
     TextPreviewOutput,
 )
-from ..services.connections import resolve_resource_connection
 from ..shares.service import enabled_root_ids
 
 router = APIRouter()
@@ -111,9 +111,9 @@ async def resource_text_preview(resource_id: str):
 
     async with IndexSession() as index, StateSession() as state:
         resource = await _preview_resource(index, state, resource_id)
-        connection = await resolve_resource_connection(state, resource)
+        runtime = provider_runtime(state)
         try:
-            return await load_text_preview(resource, connection)
+            return await load_text_preview(resource, runtime)
         except PreviewError as exc:
             raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
 
@@ -126,9 +126,9 @@ async def resource_pdf_preview(resource_id: str):
         resource = await _preview_resource(index, state, resource_id)
         if preview_capability(resource)["preview_type"] != "pdf":
             raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 PDF 在线预览"})
-        connection = await resolve_resource_connection(state, resource)
+        runtime = provider_runtime(state)
         try:
-            await ensure_preview_cached(resource, connection)
+            await ensure_preview_cached(resource, runtime)
         except OfficePreviewError as exc:
             raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
         return {"url": f"/office-files/{office_cache_filename(resource)}?{urlencode({'ticket': create_preview_ticket(resource.id)})}"}
@@ -142,9 +142,9 @@ async def resource_office_preview(resource_id: str):
         resource = await _preview_resource(index, state, resource_id)
         if preview_capability(resource)["preview_type"] != "office":
             raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 Office 在线预览"})
-        connection = await resolve_resource_connection(state, resource)
+        runtime = provider_runtime(state)
         try:
-            await ensure_preview_cached(resource, connection)
+            await ensure_preview_cached(resource, runtime)
         except OfficePreviewError as exc:
             raise HTTPException(exc.status_code, {"code": exc.code, "message": exc.message}) from exc
         return {"url": f"/office-files/{office_cache_filename(resource)}?{urlencode({'ticket': create_preview_ticket(resource.id)})}"}

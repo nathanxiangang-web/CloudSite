@@ -5,10 +5,13 @@ from pathlib import Path
 
 import httpx
 
-from .alist import AListClient
 from .config import settings
-from .crypto import decrypt_secret
 from .download import validate_download_url
+from .modules.providers.contracts.public import (
+    ProviderAccessError,
+    ProviderRuntimePort,
+    ProviderUnavailableError,
+)
 
 
 OFFICE_CONTENT_TYPES = {
@@ -94,22 +97,34 @@ def render_pdf_pages(resource) -> list[str]:
     return [p.name for p in rendered]
 
 
-async def ensure_preview_cached(resource, connection) -> Path:
-    """Return the local cached path for a binary preview file (Office/PDF), downloading it if stale/missing."""
+async def ensure_preview_cached(
+    resource,
+    provider_runtime: ProviderRuntimePort,
+) -> Path:
+    """Return a locally cached preview file through the Providers runtime boundary."""
     settings.office_cache_dir.mkdir(parents=True, exist_ok=True)
     sweep_office_cache()
     path = office_cache_path(resource)
     if path.exists() and (time.time() - path.stat().st_mtime) < settings.office_cache_ttl_seconds:
         return path
-    if not connection or not connection.enabled:
+
+    root_mapping_id = getattr(resource, "root_mapping_id", None)
+    if root_mapping_id is None:
         raise OfficePreviewError("PV-005", "上游存储暂时不可用", 503)
+
     try:
-        password = decrypt_secret(connection.password_ciphertext)
-        async with AListClient(connection.base_url, connection.username, password) as client:
-            url = await client.get_download_url(resource.path)
-        url, _ = validate_download_url(url)
+        entry = await provider_runtime.download_entry(
+            root_mapping_id=root_mapping_id,
+            path=resource.path,
+        )
+        url, _ = validate_download_url(entry.url, entry.host)
+    except ProviderUnavailableError as exc:
+        raise OfficePreviewError("PV-005", "上游存储暂时不可用", 503) from exc
+    except ProviderAccessError as exc:
+        raise OfficePreviewError("PV-003", "无法获取 Office 预览入口", 503) from exc
     except Exception as exc:
         raise OfficePreviewError("PV-003", "无法获取 Office 预览入口", 503) from exc
+
     tmp_path = path.with_name(path.name + ".part")
     try:
         async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
@@ -130,3 +145,4 @@ async def ensure_preview_cached(resource, connection) -> Path:
         tmp_path.unlink(missing_ok=True)
         raise OfficePreviewError("PV-999", "Office 预览缓存下载失败") from exc
     return path
+

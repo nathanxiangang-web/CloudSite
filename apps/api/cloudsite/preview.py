@@ -7,10 +7,13 @@ from urllib.parse import urlencode
 
 import httpx
 
-from .alist import AListClient, AListError
 from .config import settings
-from .crypto import decrypt_secret
 from .download import DownloadUrlCache, validate_download_url
+from .modules.providers.contracts.public import (
+    ProviderAccessError,
+    ProviderRuntimePort,
+    ProviderUnavailableError,
+)
 
 
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif", "avif", "svg"}
@@ -101,18 +104,25 @@ def preview_capability(resource) -> dict:
     }
 
 
-def _map_alist_preview_error(exc: Exception) -> PreviewError:
-    if isinstance(exc, AListError):
-        if exc.code == "AL-002":
+def _map_provider_preview_error(exc: Exception) -> PreviewError:
+    if isinstance(exc, ProviderUnavailableError):
+        return PreviewError("PV-005", "上游存储暂时不可用", 503)
+    if isinstance(exc, ProviderAccessError):
+        if exc.category == "unreachable":
             return PreviewError("PV-005", "上游存储暂时不可用", 503)
-        if exc.code in {"AL-003", "AL-004"}:
+        if exc.category in {"authentication", "credentials"}:
             return PreviewError("PV-005", "预览服务认证状态失效", 503)
-        if exc.code == "AL-005":
+        if exc.category == "metadata":
             return PreviewError("PV-003", "无法获取预览入口")
+        return PreviewError("PV-999", "预览服务暂时不可用", exc.status_code)
     return PreviewError("PV-999", "预览服务暂时不可用")
 
 
-async def resolve_preview_url(resource, connection, force_refresh: bool = False) -> PreviewResolution:
+async def resolve_preview_url(
+    resource,
+    provider_runtime: ProviderRuntimePort,
+    force_refresh: bool = False,
+) -> PreviewResolution:
     capability = preview_capability(resource)
     if not capability["can_preview"] or capability["preview_type"] in {"text", "markdown"}:
         raise PreviewError("PV-002", capability["reason"] or "资源不支持直接预览", 400)
@@ -125,20 +135,24 @@ async def resolve_preview_url(resource, connection, force_refresh: bool = False)
             return PreviewResolution(url, host, True)
         except Exception:
             preview_url_cache.invalidate(resource.id)
-    if not connection or not connection.enabled:
+
+    root_mapping_id = getattr(resource, "root_mapping_id", None)
+    if root_mapping_id is None:
         raise PreviewError("PV-005", "上游存储暂时不可用", 503)
+
     try:
-        password = decrypt_secret(connection.password_ciphertext)
-        async with AListClient(connection.base_url, connection.username, password) as client:
-            provider_started = time.perf_counter()
-            entry = await client.get_preview_entry(resource.path)
-            logger.debug(
-                "preview metrics resource_id=%s provider_lookup_ms=%.2f",
-                resource.id,
-                (time.perf_counter() - provider_started) * 1000,
-            )
+        provider_started = time.perf_counter()
+        entry = await provider_runtime.preview_entry(
+            root_mapping_id=root_mapping_id,
+            path=resource.path,
+        )
+        logger.debug(
+            "preview metrics resource_id=%s provider_lookup_ms=%.2f",
+            resource.id,
+            (time.perf_counter() - provider_started) * 1000,
+        )
     except Exception as exc:
-        raise _map_alist_preview_error(exc) from exc
+        raise _map_provider_preview_error(exc) from exc
     try:
         url, host = validate_download_url(entry.url, entry.host)
     except Exception as exc:
@@ -147,7 +161,7 @@ async def resolve_preview_url(resource, connection, force_refresh: bool = False)
     return PreviewResolution(url, host, False)
 
 
-async def load_text_preview(resource, connection) -> dict:
+async def load_text_preview(resource, provider_runtime: ProviderRuntimePort) -> dict:
     capability = preview_capability(resource)
     if not capability["can_preview"] or capability["preview_type"] not in {"text", "markdown"}:
         raise PreviewError("PV-002", capability["reason"] or "资源不支持文本预览", 400)
@@ -155,7 +169,7 @@ async def load_text_preview(resource, connection) -> dict:
         raise PreviewError("PV-007", "文本文件过大，不提供在线预览", 413)
     from .office import OfficePreviewError, ensure_preview_cached
     try:
-        cached_path = await ensure_preview_cached(resource, connection)
+        cached_path = await ensure_preview_cached(resource, provider_runtime)
     except OfficePreviewError as exc:
         raise PreviewError(exc.code, exc.message, exc.status_code) from exc
     try:
