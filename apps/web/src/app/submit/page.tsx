@@ -40,7 +40,8 @@ export default function SubmitPage() {
   const update = (key: keyof FormState, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const invalidUrl = !isOptionalHttpUrl(form.sourceUrl) || !isOptionalHttpUrl(form.downloadUrl);
   const incomplete = !form.resourceName.trim() || !form.resourceType || !form.description.trim();
-  const notLoggedIn = !auth.data?.authenticated;
+  const authFailed = Boolean(auth.error);
+  const notLoggedIn = !auth.isLoading && !authFailed && !auth.data?.authenticated;
 
   const submit = useMutation({
     mutationFn: () => api("/api/submissions", {
@@ -60,7 +61,7 @@ export default function SubmitPage() {
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (incomplete || invalidUrl || notLoggedIn) return;
+    if (incomplete || invalidUrl || auth.isLoading || authFailed || notLoggedIn) return;
     submit.mutate();
   };
 
@@ -76,8 +77,10 @@ export default function SubmitPage() {
         <label className="wide">版权 / 授权说明<textarea maxLength={1000} rows={3} value={form.copyrightNote} onChange={(event) => update("copyrightNote", event.target.value)} placeholder="公开来源、授权方式或允许转载的说明" /></label>
         <label className="wide">备注<textarea maxLength={1000} rows={3} value={form.note} onChange={(event) => update("note", event.target.value)} placeholder="可补充解压密码、版本或其他注意事项" /></label>
         {invalidUrl && <p className="form-error wide">网址只能使用 http:// 或 https://</p>}
+        {auth.isLoading && <p className="wide">正在读取账号状态…</p>}
+        {auth.error && <p className="form-error wide">账号状态加载失败：{auth.error.message} <button type="button" onClick={() => auth.refetch()}>重试</button></p>}
         {notLoggedIn && <p className="form-error wide">请先登录后再投稿。</p>}
-        <div className="submit-actions wide"><button className="primary" disabled={incomplete || invalidUrl || submit.isPending || notLoggedIn} type="submit"><Send />{submit.isPending ? "正在提交…" : "提交投稿"}</button></div>
+        <div className="submit-actions wide"><button className="primary" disabled={incomplete || invalidUrl || submit.isPending || auth.isLoading || authFailed || notLoggedIn} type="submit"><Send />{submit.isPending ? "正在提交…" : "提交投稿"}</button></div>
         {submit.isSuccess && <p className="submit-message wide"><Check />投稿已提交，等待审核。可在&ldquo;我的投稿&rdquo;查看状态。</p>}
         {submit.error && <p className="form-error wide">{submit.error.message}</p>}
       </form>
