@@ -29,6 +29,10 @@ async def test_v2_sync_status_persists_same_system_setting_payload(monkeypatch):
         17,
         "/docs/current",
         42,
+        3,
+        4,
+        5,
+        30,
     )
 
     async with factory() as session:
@@ -42,6 +46,10 @@ async def test_v2_sync_status_persists_same_system_setting_payload(monkeypatch):
             "elapsed_seconds": 17,
             "current_path": "/docs/current",
             "entries_scanned": 42,
+            "added": 3,
+            "changed": 4,
+            "removed": 5,
+            "unchanged": 30,
         }
         assert row.value_type == "string"
 

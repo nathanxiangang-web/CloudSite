@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Database, File, Folder, RefreshCw, RotateCcw, Search, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Database, File, Folder, RefreshCw, Search, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Folder as FolderType } from "@/lib/api";
@@ -97,7 +97,6 @@ export default function IndexPage() {
       <div className="index-actions">
         {syncing ? <button type="button" className="danger" disabled={cancelSync.isPending} onClick={() => cancelSync.mutate()}><AlertTriangle />取消同步</button> : <>
           <button type="button" className="primary" disabled={sync.isPending} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>
-          <button type="button" disabled={sync.isPending} onClick={() => sync.mutate(true)}><RotateCcw />完整重建</button>
         </>}
       </div>
       {sync.error && <p className="form-error">{sync.error.message}</p>}

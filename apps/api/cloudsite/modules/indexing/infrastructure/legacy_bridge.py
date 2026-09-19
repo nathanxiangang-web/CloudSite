@@ -203,7 +203,13 @@ async def run_indexing_v2_production(
             f"v2 sync completed with errors in {elapsed}s: {total_summary.errors[:3]}",
             level="ERROR",
         )
-        await _update_v2_sync_status("failed", categories_done, total_categories, elapsed, "", entries_scanned)
+        await _update_v2_sync_status(
+            "failed", categories_done, total_categories, elapsed, "", entries_scanned,
+            total_summary.writes.added,
+            total_summary.writes.changed,
+            total_summary.writes.removed,
+            total_summary.writes.unchanged,
+        )
     else:
         await log_operation(
             "sync", "v2_sync_completed",
@@ -214,7 +220,13 @@ async def run_indexing_v2_production(
             f"removed={total_summary.writes.removed} "
             f"unchanged={total_summary.writes.unchanged}",
         )
-        await _update_v2_sync_status("completed", categories_done, total_categories, elapsed, "", entries_scanned)
+        await _update_v2_sync_status(
+            "completed", categories_done, total_categories, elapsed, "", entries_scanned,
+            total_summary.writes.added,
+            total_summary.writes.changed,
+            total_summary.writes.removed,
+            total_summary.writes.unchanged,
+        )
     return total_summary.to_dict()
 
 
@@ -225,6 +237,10 @@ async def _update_v2_sync_status(
     elapsed_seconds: int,
     current_path: str = "",
     entries_scanned: int = 0,
+    added: int = 0,
+    changed: int = 0,
+    removed: int = 0,
+    unchanged: int = 0,
 ) -> None:
     """Persist v2 sync progress to SystemSetting for status endpoint."""
     import json
@@ -239,6 +255,10 @@ async def _update_v2_sync_status(
         "elapsed_seconds": elapsed_seconds,
         "current_path": current_path,
         "entries_scanned": entries_scanned,
+        "added": added,
+        "changed": changed,
+        "removed": removed,
+        "unchanged": unchanged,
     })
     async with state_session() as session:
         await session.execute(
