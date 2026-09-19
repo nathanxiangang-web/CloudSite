@@ -24,6 +24,7 @@ from ..application.provider_service import (
     enabled_content_roots,
     enabled_root_ids,
     provider_info,
+    provider_connected,
 )
 from ..domain.capabilities import (
     CAPABILITY_SCHEMA_VERSION,
@@ -64,6 +65,7 @@ __all__ = [
     "enabled_content_roots",
     "enabled_root_ids",
     "provider_info",
+    "provider_connected",
     "ProviderLoginTarget",
     "connection_admin_username",
     "connection_login_target",
