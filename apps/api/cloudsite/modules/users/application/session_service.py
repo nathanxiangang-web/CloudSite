@@ -86,7 +86,7 @@ def _user_view(row: User) -> AuthenticatedUserView:
         disabled_at=row.disabled_at,
         deleted_at=row.deleted_at,
         created_by_admin=bool(row.created_by_admin),
-        role=row.role,
+        role=row.role or "viewer",
     )
 
 
