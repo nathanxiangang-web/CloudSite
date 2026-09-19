@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import CatalogSuggestion, Resource
-from cloudsite.services import suggestion_generator, suggestion_review
+from cloudsite.modules.automation.contracts import public as automation_api
 
 
 @pytest.fixture
@@ -58,13 +58,13 @@ async def test_same_fingerprint_reproducible_is_idempotent(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        r1 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        r1 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         assert len(r1.created) == 1
         assert r1.skipped == 0
 
     async with StateSession() as state, IndexSession() as index:
-        r2 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        r2 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         assert len(r2.created) == 0
         assert r2.skipped == 1
@@ -81,16 +81,16 @@ async def test_applied_suggestion_not_overwritten_by_reproducible_run(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         sid = gen.created[0].suggestion_id
 
     async with StateSession() as state, IndexSession() as index:
-        await suggestion_review.apply_suggestion(state, index, sid, actor="tester")
+        await automation_api.apply_suggestion(state, index, sid, actor="tester")
         await state.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        r2 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        r2 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         assert len(r2.created) == 0
         assert r2.skipped == 1
@@ -109,16 +109,16 @@ async def test_rejected_suggestion_not_overwritten_by_reproducible_run(sessions)
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         sid = gen.created[0].suggestion_id
 
     async with StateSession() as state:
-        await suggestion_review.reject_suggestion(state, sid, actor="tester", reason="不需要")
+        await automation_api.reject_suggestion(state, sid, actor="tester", reason="不需要")
         await state.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        r2 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        r2 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         assert len(r2.created) == 0
 
@@ -136,7 +136,7 @@ async def test_changed_file_size_produces_new_suggestion(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen1 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource_v1)
+        gen1 = await automation_api.generate_suggestions_for_resource(state, index, resource_v1)
         await state.commit()
         assert len(gen1.created) == 1
         sid1 = gen1.created[0].suggestion_id
@@ -148,7 +148,7 @@ async def test_changed_file_size_produces_new_suggestion(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen2 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource_v2)
+        gen2 = await automation_api.generate_suggestions_for_resource(state, index, resource_v2)
         await state.commit()
         assert len(gen2.created) == 1
         sid2 = gen2.created[0].suggestion_id
@@ -166,7 +166,7 @@ async def test_changed_file_name_produces_new_fingerprint(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen1 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen1 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         fp1 = gen1.created[0].file_fingerprint
 
@@ -177,7 +177,7 @@ async def test_changed_file_name_produces_new_fingerprint(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen2 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource_renamed)
+        gen2 = await automation_api.generate_suggestions_for_resource(state, index, resource_renamed)
         await state.commit()
         fp2 = gen2.created[0].file_fingerprint
 
@@ -193,13 +193,13 @@ async def test_batch_generate_is_idempotent(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        r1 = await suggestion_generator.generate_suggestions_batch(state, index, limit=200)
+        r1 = await automation_api.generate_suggestions_batch(state, index, limit=200)
         await state.commit()
         assert len(r1.created) == 2
         assert r1.skipped == 0
 
     async with StateSession() as state, IndexSession() as index:
-        r2 = await suggestion_generator.generate_suggestions_batch(state, index, limit=200)
+        r2 = await automation_api.generate_suggestions_batch(state, index, limit=200)
         await state.commit()
         assert len(r2.created) == 0
         assert r2.skipped == 2
@@ -217,7 +217,7 @@ async def test_shadow_mode_does_not_create_catalog_entries(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
 
     async with StateSession() as state:
@@ -233,12 +233,12 @@ async def test_unique_constraint_prevents_duplicate_on_concurrent_insert(session
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         original = gen.created[0]
 
     async with StateSession() as state, IndexSession() as index:
-        r2 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        r2 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         assert r2.created == [] or all(
             row.suggestion_id != original.suggestion_id for row in r2.created

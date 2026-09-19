@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import Resource, SyncChange, SyncRun
-from cloudsite.services.parser_candidate_batch import enqueue_indexed_resource
-from cloudsite.services.parser_candidates import ParserCandidateError
-from cloudsite.services.parser_candidate_seeding import (
+from cloudsite.modules.automation.contracts.public import enqueue_indexed_resource
+from cloudsite.modules.automation.contracts.public import ParserCandidateError
+from cloudsite.modules.automation.contracts.public import (
     seed_parser_candidates_from_sync_run,
 )
 from cloudsite.services.resource_name_parser import PARSER_VERSION
@@ -227,7 +227,6 @@ async def test_per_item_failure_continues(tmp_path, monkeypatch):
         bad_change = await _add_change(index, run.id, object_id="r2", change_type="added")
         await _add_change(index, run.id, object_id="r3", change_type="updated")
 
-        from cloudsite.services import parser_candidate_seeding
         original_enqueue = parser_candidate_seeding_impl.enqueue_indexed_resource
 
         async def flaky_enqueue(state, index, resource_id):

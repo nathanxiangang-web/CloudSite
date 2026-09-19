@@ -1,6 +1,6 @@
 import pytest
 
-from cloudsite.services.parser_evaluation import ParserEvaluationCase, evaluate_parser_cases
+from cloudsite.modules.automation.contracts.public import ParserEvaluationCase, evaluate_parser_cases
 
 
 def _case(resource_id, name, expected, extension="", mime_type=""):

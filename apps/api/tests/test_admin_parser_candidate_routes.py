@@ -456,7 +456,7 @@ async def test_retry_failed_task(monkeypatch):
         task_id = enqueued.json()["task"]["task_id"]
 
         async with state_factory() as state:
-            from cloudsite.services.parser_candidates import (
+            from cloudsite.modules.automation.contracts.public import (
                 claim_parser_candidate,
                 fail_parser_candidate,
             )
@@ -515,7 +515,7 @@ async def test_retry_limit_reached_returns_conflict(monkeypatch):
         task_id = enqueued.json()["task"]["task_id"]
 
         async with state_factory() as state:
-            from cloudsite.services.parser_candidates import (
+            from cloudsite.modules.automation.contracts.public import (
                 claim_parser_candidate,
                 fail_parser_candidate,
                 retry_parser_candidate,
@@ -562,7 +562,7 @@ async def test_recover_interrupted_candidates(monkeypatch):
 
         task_ids: list[str] = []
         async with state_factory() as state:
-            from cloudsite.services.parser_candidates import claim_parser_candidate
+            from cloudsite.modules.automation.contracts.public import claim_parser_candidate
 
             pending = await admin.get(
                 "/api/admin/parser-candidates", params={"status": "pending"}
@@ -688,7 +688,7 @@ async def test_catalog_rows_unchanged_by_retry_and_recover(monkeypatch):
         task_id = enqueued.json()["task"]["task_id"]
 
         async with state_factory() as state:
-            from cloudsite.services.parser_candidates import (
+            from cloudsite.modules.automation.contracts.public import (
                 claim_parser_candidate,
                 fail_parser_candidate,
             )
