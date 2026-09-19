@@ -69,7 +69,7 @@ export function CatalogFollowButton({ entryId }: { entryId: string }) {
 
   const favorited = Boolean(status.data?.favorited);
   const notifyEnabled = Boolean(status.data?.notify_enabled);
-  const actionError = follow.error || unfollow.error || toggleNotify.error;
+  const followedActionError = unfollow.error || toggleNotify.error;
 
   if (!favorited) {
     return (
@@ -83,7 +83,7 @@ export function CatalogFollowButton({ entryId }: { entryId: string }) {
           <Star size={16} />
           {follow.isPending ? "关注中…" : follow.error ? "关注失败，重试" : "关注"}
         </button>
-        {actionError && <small className="form-error">{actionError.message}</small>}
+        {follow.error && <small className="form-error">{follow.error.message}</small>}
       </>
     );
   }
@@ -111,7 +111,7 @@ export function CatalogFollowButton({ entryId }: { entryId: string }) {
         {notifyEnabled ? "通知开" : "通知关"}
       </button>
     </div>
-    {actionError && <small className="form-error">{actionError.message}</small>}
+    {followedActionError && <small className="form-error">{followedActionError.message}</small>}
     </>
   );
 }
