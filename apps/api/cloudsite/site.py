@@ -109,6 +109,26 @@ async def clear_share_page_image_name(state) -> str:
     return old_name
 
 
+async def home_site_settings(state) -> dict:
+    """Persistence-neutral Site settings consumed by the Home composition."""
+
+    row = await state.get(SiteSettings, 1)
+    return {
+        "site_name": (row.site_name if row else "") or "CloudSite",
+        "home_title": (
+            (row.home_title if row else "")
+            or "把网盘变成好看的资源网站"
+        ),
+        "description": (row.description if row else "") or "",
+        "recent_limit": int(row.recent_limit if row else 6),
+        "popular_limit": int(row.popular_limit if row else 6),
+        "collection_limit": int(row.collection_limit if row else 4),
+        "popular_strategy": (
+            (row.popular_strategy if row else "") or "recent"
+        ),
+    }
+
+
 async def share_page_settings_payload(state) -> dict:
     row = await state.get(SiteSettings, 1)
     return {
