@@ -2,11 +2,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import Resource
-from cloudsite.services.parser_candidate_runner import (
+from cloudsite.modules.automation.contracts.public import (
     parser_input_fingerprint,
     run_parser_candidate,
 )
-from cloudsite.services.parser_candidates import enqueue_parser_candidate
+from cloudsite.modules.automation.contracts.public import enqueue_parser_candidate
 from cloudsite.services.resource_name_parser import PARSER_VERSION
 
 
