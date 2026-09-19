@@ -15,7 +15,7 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...providers.contracts.public import enabled_root_ids
@@ -251,6 +251,22 @@ async def list_catalog_entries(
         stmt = stmt.where(CatalogEntry.status == status)
     stmt = stmt.limit(max(int(limit), 0)).offset(max(int(offset), 0))
     return list((await state.scalars(stmt)).all())
+
+
+async def count_catalog_entries(
+    state: AsyncSession,
+    *,
+    content_type: str | None = None,
+    status: str | None = None,
+) -> int:
+    """Count Catalog entries without exposing ORM/SQLAlchemy to routers."""
+
+    stmt = select(func.count()).select_from(CatalogEntry)
+    if content_type is not None:
+        stmt = stmt.where(CatalogEntry.content_type == content_type)
+    if status is not None:
+        stmt = stmt.where(CatalogEntry.status == status)
+    return int(await state.scalar(stmt) or 0)
 
 
 async def update_catalog_entry(
