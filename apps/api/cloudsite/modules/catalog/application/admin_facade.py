@@ -169,6 +169,10 @@ async def admin_legacy_entry_detail(
     published_only: bool,
 ) -> dict:
     entry = await get_catalog_entry(state, entry_id)
+    if published_only and entry.status != "published":
+        from .catalog_entry import CatalogEntryNotFound
+
+        raise CatalogEntryNotFound(entry_id)
     roots = await enabled_root_ids(state)
     releases = list(
         (
