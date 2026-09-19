@@ -203,7 +203,13 @@ async def run_indexing_v2_production(
             f"v2 sync completed with errors in {elapsed}s: {total_summary.errors[:3]}",
             level="ERROR",
         )
-        await _update_v2_sync_status("failed", categories_done, total_categories, elapsed, "", entries_scanned)
+        await _update_v2_sync_status(
+            "failed", categories_done, total_categories, elapsed, "", entries_scanned,
+            total_summary.writes.added,
+            total_summary.writes.changed,
+            total_summary.writes.removed,
+            total_summary.writes.unchanged,
+        )
     else:
         await log_operation(
             "sync", "v2_sync_completed",
@@ -214,7 +220,13 @@ async def run_indexing_v2_production(
             f"removed={total_summary.writes.removed} "
             f"unchanged={total_summary.writes.unchanged}",
         )
-        await _update_v2_sync_status("completed", categories_done, total_categories, elapsed, "", entries_scanned)
+        await _update_v2_sync_status(
+            "completed", categories_done, total_categories, elapsed, "", entries_scanned,
+            total_summary.writes.added,
+            total_summary.writes.changed,
+            total_summary.writes.removed,
+            total_summary.writes.unchanged,
+        )
     return total_summary.to_dict()
 
 
