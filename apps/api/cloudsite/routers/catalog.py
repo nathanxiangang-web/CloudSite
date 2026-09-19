@@ -11,7 +11,7 @@ from ..download_rate_limit import (
     get_effective_client_ip,
     rate_limit_payload,
 )
-from ..services.downloads import _download_event
+from ..modules.delivery.contracts.public import _download_event
 from ..modules.catalog.contracts import public as catalog_api
 from ..modules.catalog.contracts.public import (
     public_catalog_asset_view,
