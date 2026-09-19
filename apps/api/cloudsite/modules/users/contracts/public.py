@@ -1,5 +1,13 @@
 """Stable public contract for the Users module."""
 
+from ..application.authentication import (
+    AuthenticationResult,
+    UserAuthenticationError,
+    change_user_password,
+    login_user,
+    logout_user,
+    register_user,
+)
 from ..application.session_service import (
     AuthenticatedUserView,
     SESSION_RETENTION_DAYS,
@@ -38,6 +46,12 @@ from ..domain.roles import (
 )
 
 __all__ = [
+    "AuthenticationResult",
+    "UserAuthenticationError",
+    "change_user_password",
+    "login_user",
+    "logout_user",
+    "register_user",
     "AuthenticatedUserView",
     "SESSION_RETENTION_DAYS",
     "SESSION_TOUCH_INTERVAL",
