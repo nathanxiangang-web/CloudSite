@@ -16,7 +16,7 @@ from ..modules.providers.contracts.public import (
 )
 from ..modules.resources.contracts.public import resource_queries
 from ..schemas import ContentRootListOutput
-from ..site import home_site_settings
+from ..modules.site.contracts.public import home_site_settings
 
 
 router = APIRouter()
