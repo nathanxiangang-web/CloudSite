@@ -40,6 +40,14 @@ def _translate_catalog_error(exc: Exception) -> HTTPException:
         return HTTPException(409, {"code": "CATALOG_SLUG_CONFLICT", "message": str(exc)})
     if isinstance(exc, service.CatalogLocationInvalid):
         return HTTPException(409, {"code": "CATALOG_LOCATION_INVALID", "message": str(exc)})
+    if isinstance(exc, service.CatalogDeleteConflict):
+        return HTTPException(
+            409,
+            {
+                "code": "CATALOG_DELETE_CONFLICT",
+                "message": exc.reason,
+            },
+        )
     if isinstance(exc, service.CatalogPublishValidationFailed):
         return HTTPException(
             409,
@@ -66,19 +74,13 @@ async def admin_catalog_list(
 ):
     from ...main import StateSession
 
-    service = _catalog_service()
     async with StateSession() as state:
-        entries = await service.list_catalog_entries(
-            state, limit=page_size, offset=(page - 1) * page_size
-        )
-        total = int(await state.scalar(select(func.count()).select_from(CatalogEntry)) or 0)
-        return CatalogEntryListOutput(
-            items=[_entry_to_summary(entry) for entry in entries],
+        payload = await catalog_api.admin_entry_summary_page(
+            state,
             page=page,
             page_size=page_size,
-            total=total,
-            total_pages=_total_pages(total, page_size),
         )
+        return CatalogEntryListOutput(**payload)
 
 
 @router.get("/api/admin/catalog/entries")
@@ -88,23 +90,13 @@ async def admin_catalog_entries(
 ):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
-        entries = await service.list_catalog_entries(
-            state, limit=page_size, offset=(page - 1) * page_size
+        return await catalog_api.admin_entry_view_page(
+            state,
+            index,
+            page=page,
+            page_size=page_size,
         )
-        items = [
-            await catalog_entry_view(state, index, entry, public=False)
-            for entry in entries
-        ]
-        total = int(await state.scalar(select(func.count()).select_from(CatalogEntry)) or 0)
-        return {
-            "items": items,
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "total_pages": _total_pages(total, page_size),
-        }
 
 
 @router.post("/api/admin/catalog/entries", status_code=201)
@@ -126,20 +118,22 @@ async def admin_catalog_create_entry(payload: CatalogEntryCreateInput):
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await catalog_entry_view(state, index, result.entry, public=False)
+        return await catalog_api.admin_entry_view(state, index, result.entry.entry_id)
 
 
 @router.get("/api/admin/catalog/entries/{entry_id}")
 async def admin_catalog_entry(entry_id: str):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            entry = await service.get_catalog_entry(state, entry_id)
-        except service.CatalogError as exc:
+            return await catalog_api.admin_entry_view(
+                state,
+                index,
+                entry_id,
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        return await catalog_entry_view(state, index, entry, public=False)
 
 
 @router.patch("/api/admin/catalog/entries/{entry_id}")
@@ -165,7 +159,7 @@ async def admin_catalog_patch_entry(entry_id: str, payload: CatalogEntryUpdateIn
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await catalog_entry_view(state, index, entry, public=False)
+        return await catalog_api.admin_entry_view(state, index, entry.entry_id)
 
 
 @router.post("/api/admin/catalog/entries/{entry_id}/publish")
@@ -185,20 +179,23 @@ async def admin_catalog_publish_entry(entry_id: str, payload: CatalogEntryPublis
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await catalog_entry_view(state, index, result.entry, public=False)
+        return await catalog_api.admin_entry_view(state, index, result.entry.entry_id)
 
 
 @router.get("/api/admin/catalog/{entry_id}", response_model=CatalogEntryDetail)
 async def admin_catalog_detail(entry_id: str):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            entry = await service.get_catalog_entry(state, entry_id)
-        except service.CatalogError as exc:
+            return await catalog_api.admin_legacy_entry_detail(
+                state,
+                index,
+                entry_id,
+                published_only=False,
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        return await _build_entry_detail(state, index, entry, published_only=False)
 
 
 @router.post("/api/admin/catalog", response_model=CatalogEntryDetail, status_code=201)
@@ -220,7 +217,12 @@ async def admin_catalog_create(payload: CatalogEntryCreateInput):
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await _build_entry_detail(state, index, result.entry, published_only=False)
+        return await catalog_api.admin_legacy_entry_detail(
+            state,
+            index,
+            result.entry.entry_id,
+            published_only=False,
+        )
 
 
 @router.put("/api/admin/catalog/{entry_id}", response_model=CatalogEntryDetail)
@@ -241,7 +243,12 @@ async def admin_catalog_update(entry_id: str, payload: CatalogEntryUpdateInput):
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await _build_entry_detail(state, index, entry, published_only=False)
+        return await catalog_api.admin_legacy_entry_detail(
+            state,
+            index,
+            entry.entry_id,
+            published_only=False,
+        )
 
 
 @router.post(
