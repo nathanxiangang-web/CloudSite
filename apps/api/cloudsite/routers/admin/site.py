@@ -3,7 +3,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from ...auth import validate_request_origin
 from ...schemas import SiteSettingsUpdate
-from ...site import (
+from ...modules.site.contracts.public import (
     admin_site_settings_payload,
     clear_share_page_image_name,
     get_admin_site_settings,
