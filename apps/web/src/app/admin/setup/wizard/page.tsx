@@ -93,15 +93,6 @@ export default function SetupWizardPage() {
     },
   });
 
-  if (wizard.isLoading) {
-    return <main className="login-page"><section className="login-card"><Brand admin /><p>正在加载向导…</p></section></main>;
-  }
-  if (wizard.error) {
-    return <main className="login-page"><section className="login-card"><Brand admin /><p className="form-error">无法连接后台服务：{wizard.error.message}</p><button type="button" onClick={() => wizard.refetch()}>重试</button><Link href="/admin/setup">返回</Link></section></main>;
-  }
-
-  const state = wizard.data;
-
   useEffect(() => {
     const draft = wizard.data?.draft;
     if (!draft) return;
@@ -123,6 +114,15 @@ export default function SetupWizardPage() {
     wizard.data?.draft?.accent_color,
     wizard.data?.draft?.card_radius,
   ]);
+
+  if (wizard.isLoading) {
+    return <main className="login-page"><section className="login-card"><Brand admin /><p>正在加载向导…</p></section></main>;
+  }
+  if (wizard.error) {
+    return <main className="login-page"><section className="login-card"><Brand admin /><p className="form-error">无法连接后台服务：{wizard.error.message}</p><button type="button" onClick={() => wizard.refetch()}>重试</button><Link href="/admin/setup">返回</Link></section></main>;
+  }
+
+  const state = wizard.data;
 
   if (!state) return null;
   if (state.wizard_completed) {
