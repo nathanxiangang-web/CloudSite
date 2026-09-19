@@ -62,13 +62,18 @@ async def admin_entry_summary_page(
     *,
     page: int,
     page_size: int,
+    status: str | None = None,
 ) -> dict:
     entries = await list_catalog_entries(
         state,
+        status=status,
         limit=page_size,
         offset=(page - 1) * page_size,
     )
-    total = await count_catalog_entries(state)
+    total = await count_catalog_entries(
+        state,
+        status=status,
+    )
     return {
         "items": [_entry_summary(entry) for entry in entries],
         "page": page,
