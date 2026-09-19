@@ -48,6 +48,23 @@ def public_site_settings(row: SiteSettings | None) -> dict:
     }
 
 
+async def share_page_settings_payload(state) -> dict:
+    row = await state.get(SiteSettings, 1)
+    return {
+        "site_name": (row.site_name if row else "") or "CloudSite",
+        "share_image_url": (
+            "/api/public/share-page/image"
+            if row and row.share_image_name
+            else ""
+        ),
+    }
+
+
+async def share_page_image_name(state) -> str:
+    row = await state.get(SiteSettings, 1)
+    return row.share_image_name if row else ""
+
+
 @router.get("/api/site")
 async def public_site():
     async with StateSession() as state, IndexSession() as index:
