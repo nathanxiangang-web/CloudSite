@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 29
+CURRENT_SCHEMA_VERSION = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -1648,6 +1648,21 @@ async def state_v28_to_v29_upgrade(conn: AsyncConnection) -> None:
         "ON platform_tasks (dedupe_key, status)"
     )
 
+async def state_v29_to_v30_upgrade(conn: AsyncConnection) -> None:
+    """Remove the unused durable administrator-session mechanism.
+
+    Admin authentication has remained on the signed HMAC cookie path. The
+    durable admin_sessions table and admin_session_epoch setting were never
+    integrated into the active request/authentication chain, so v30 removes
+    that abandoned parallel mechanism while preserving the historical v5->v6
+    migration for old database upgrade continuity.
+    """
+    await conn.exec_driver_sql("DROP TABLE IF EXISTS admin_sessions")
+    await conn.exec_driver_sql(
+        "DELETE FROM system_settings WHERE key='admin_session_epoch'"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1677,5 +1692,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v26_to_v27", from_version=26, to_version=27, upgrade=state_v26_to_v27_upgrade),
     Migration(id="state_v27_to_v28", from_version=27, to_version=28, upgrade=state_v27_to_v28_upgrade),
     Migration(id="state_v28_to_v29", from_version=28, to_version=29, upgrade=state_v28_to_v29_upgrade),
+    Migration(id="state_v29_to_v30", from_version=29, to_version=30, upgrade=state_v29_to_v30_upgrade),
 ]
 
