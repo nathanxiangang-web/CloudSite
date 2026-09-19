@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import Collection, CollectionItem, ContentRootMapping, Resource
-from cloudsite.services.collections import collection_dict
+from cloudsite.modules.collections.contracts.public import collection_view
 
 
 async def _store():
@@ -64,7 +64,7 @@ async def test_collection_filters_disabled_roots_and_preserves_order():
     state_engine, index_engine, state_factory, index_factory = await _store()
     async with state_factory() as state, index_factory() as index:
         collection = await state.get(Collection, 10)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
     assert [item["id"] for item in payload["items"]] == ["a_one", "a_two"]
     assert payload["item_count"] == 2
     await state_engine.dispose()
@@ -75,7 +75,7 @@ async def test_collection_with_only_disabled_items_remains_empty_and_present():
     state_engine, index_engine, state_factory, index_factory = await _store()
     async with state_factory() as state, index_factory() as index:
         collection = await state.get(Collection, 11)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
     assert payload["id"] == 11
     assert payload["items"] == []
     assert payload["item_count"] == 0
@@ -90,7 +90,7 @@ async def test_reenabling_root_restores_collection_items_without_rewrite():
         await state.commit()
     async with state_factory() as state, index_factory() as index:
         collection = await state.get(Collection, 10)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
     assert [item["id"] for item in payload["items"]] == ["a_one", "b_one", "a_two"]
     assert payload["item_count"] == 3
     await state_engine.dispose()
@@ -150,7 +150,7 @@ async def test_preload_then_disable_root_hides_items():
     state_engine, index_engine, state_factory, index_factory = await _store_both_enabled()
     async with state_factory() as state, index_factory() as index:
         collection = await state.get(Collection, 20)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
         assert {item["id"] for item in payload["items"]} == {"x_one", "y_one"}
     async with state_factory() as state:
         await state.execute(
@@ -159,7 +159,7 @@ async def test_preload_then_disable_root_hides_items():
         await state.commit()
     async with state_factory() as state, index_factory() as index:
         collection = await state.get(Collection, 20)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
         assert [item["id"] for item in payload["items"]] == ["x_one"]
         assert payload["item_count"] == 1
     await state_engine.dispose()
@@ -176,7 +176,7 @@ async def test_cross_root_same_parent_collection_items_do_not_mix():
         await state.commit()
     async with state_factory() as state, index_factory() as index:
         collection = await state.get(Collection, 20)
-        payload = await collection_dict(state, index, collection, include_items=True)
+        payload = await collection_view(state, index, collection, include_items=True)
         item_ids = {item["id"] for item in payload["items"]}
         assert "y_one" not in item_ids
         assert item_ids == {"x_one"}
