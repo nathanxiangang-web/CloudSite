@@ -79,6 +79,7 @@ export function CatalogListView() {
   const searchError = searching ? searchResults.error : entries.error;
   const isLoading = searching ? searchResults.isLoading : entries.isLoading;
   const isFetching = searching ? searchResults.isFetching : entries.isFetching;
+  const countText = searchError ? "条目数量不可用" : isLoading ? "正在读取条目…" : `${total} 个已发布条目`;
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -92,7 +93,7 @@ export function CatalogListView() {
       <div>
         <h1>资源目录</h1>
         <p>按版本与平台整理的资源条目，每个条目可包含多个版本与下载位置。</p>
-        <div className="meta">{total} 个已发布条目</div>
+        <div className="meta">{countText}</div>
       </div>
     </section>
 
@@ -123,10 +124,12 @@ export function CatalogListView() {
         </select>
       </div> : null}
     </div>
+    {tags.error && <div className="empty error-state">标签筛选暂时不可用：{tags.error.message}<button type="button" onClick={() => tags.refetch()}>重试</button></div>}
 
     {isLoading ? <div className="loading">{searching ? "正在搜索条目…" : "正在加载目录…"}</div>
       : searchError ? <div className="empty error-state">
           {searching ? "搜索暂时不可用" : "目录暂时不可用"}：{searchError.message}
+          <button type="button" onClick={() => searching ? searchResults.refetch() : entries.refetch()}>重试</button>
         </div>
       : items.length ? <section className={styles.grid}>{items.map((entry) =>
           <Link key={entry.entry_id} href={catalogEntryHref(entry.entry_id)} className={styles.card}>
