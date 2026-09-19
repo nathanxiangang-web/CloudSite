@@ -32,7 +32,7 @@ from .modules.indexing.infrastructure.legacy_models import (
 )
 from .modules.automation.infrastructure.models import CatalogSuggestion, ParserCandidateTask
 from .modules.collections.infrastructure.models import Collection, CollectionItem
-from .modules.users.infrastructure.models import User
+from .modules.users.infrastructure.models import User, UserSession
 from .modules.submissions.infrastructure.models import Submission
 from .modules.shares.infrastructure.models import Share, ShareVerifyAttempt
 from .modules.presentation.infrastructure.models import (
@@ -79,19 +79,6 @@ class OperationLog(StateBase):
     principal: Mapped[str] = mapped_column(String(200), default="")
     actor_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class UserSession(StateBase):
-    __tablename__ = "user_sessions"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    session_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    created_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class AdminSession(StateBase):
