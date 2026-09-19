@@ -2,7 +2,6 @@
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query
-from ..models import Resource
 from ..modules.resources.api.queries import resource_queries
 from ..modules.resources.domain.errors import (
     FolderNotFoundError,
@@ -19,9 +18,23 @@ from ..schemas import (
     TextPreviewOutput,
 )
 from ..services.connections import resolve_resource_connection
-from ..shares.service import enabled_root_ids, resource_in_publication_scope
+from ..shares.service import enabled_root_ids
 
 router = APIRouter()
+
+
+async def _preview_resource(index, state, resource_id: str):
+    enabled_ids = await enabled_root_ids(state)
+    try:
+        return await resource_queries(index).preview_resource(
+            resource_id=resource_id,
+            enabled_root_ids=enabled_ids,
+        )
+    except (ResourceNotFoundError, ResourceNotAvailableError) as exc:
+        raise HTTPException(
+            404,
+            {"code": "PV-001", "message": "资源不存在或已不可用"},
+        ) from exc
 
 
 @router.get("/api/resources", response_model=ResourcePageOutput)
@@ -88,9 +101,7 @@ async def resource_preview_capability(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as session, StateSession() as state:
-        resource = await session.get(Resource, resource_id)
-        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
-            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
+        resource = await _preview_resource(session, state, resource_id)
         return preview_capability(resource)
 
 
@@ -99,9 +110,7 @@ async def resource_text_preview(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as index, StateSession() as state:
-        resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
-            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
+        resource = await _preview_resource(index, state, resource_id)
         connection = await resolve_resource_connection(state, resource)
         try:
             return await load_text_preview(resource, connection)
@@ -114,9 +123,7 @@ async def resource_pdf_preview(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as index, StateSession() as state:
-        resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
-            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
+        resource = await _preview_resource(index, state, resource_id)
         if preview_capability(resource)["preview_type"] != "pdf":
             raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 PDF 在线预览"})
         connection = await resolve_resource_connection(state, resource)
@@ -132,9 +139,7 @@ async def resource_office_preview(resource_id: str):
     from ..main import IndexSession, StateSession
 
     async with IndexSession() as index, StateSession() as state:
-        resource = await index.get(Resource, resource_id)
-        if not resource or resource.status != "active" or not await resource_in_publication_scope(state, resource):
-            raise HTTPException(404, {"code": "PV-001", "message": "资源不存在或已不可用"})
+        resource = await _preview_resource(index, state, resource_id)
         if preview_capability(resource)["preview_type"] != "office":
             raise HTTPException(400, {"code": "PV-002", "message": "该资源不支持 Office 在线预览"})
         connection = await resolve_resource_connection(state, resource)

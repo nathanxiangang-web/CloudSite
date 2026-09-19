@@ -242,14 +242,17 @@ class TestIndexingResourcePersistenceBoundary:
 
 
 class TestResourcesRouterSqlBoundary:
-    """Resources router no longer owns SQLAlchemy query construction."""
+    """Resources router no longer owns ORM/query construction."""
 
-    def test_resources_router_has_no_sqlalchemy_dependency(self):
+    def test_resources_router_has_no_orm_dependency(self):
         router_file = CLOUDSITE / "routers" / "resources.py"
         source = router_file.read_text(encoding="utf-8")
 
         assert "sqlalchemy" not in source
+        assert "from ..models" not in source
+        assert "cloudsite.models" not in source
         assert "select(" not in source
+        assert "session.get(" not in source
         assert "session.scalar(" not in source
         assert "session.scalars(" not in source
 

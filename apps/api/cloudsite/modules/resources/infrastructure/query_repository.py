@@ -17,6 +17,7 @@ from ..domain.views import (
     ParentSummaryView,
     ResourceDetailView,
     ResourcePageView,
+    ResourcePreviewView,
     ResourceSummaryView,
 )
 from .models import Folder, Resource
@@ -256,6 +257,32 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             related=tuple(self._resource_view(item, parent) for item in related),
             previous=self._resource_view(previous, parent) if previous else None,
             next=self._resource_view(next_item, parent) if next_item else None,
+        )
+
+    async def preview_resource(
+        self,
+        *,
+        resource_id: str,
+        enabled_root_ids: set[int],
+    ) -> ResourcePreviewView:
+        row = await self._session.get(Resource, resource_id)
+        if row is None or row.status != "active":
+            raise ResourceNotFoundError(resource_id)
+        if (
+            row.root_mapping_id is None
+            or row.root_mapping_id not in enabled_root_ids
+        ):
+            raise ResourceNotAvailableError(resource_id)
+
+        return ResourcePreviewView(
+            id=row.id,
+            name=row.name,
+            path=row.path,
+            root_mapping_id=row.root_mapping_id,
+            extension=row.extension,
+            mime_type=row.mime_type,
+            size=row.size,
+            status=row.status,
         )
 
     async def folder_detail(

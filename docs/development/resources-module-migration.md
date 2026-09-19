@@ -100,9 +100,34 @@ Move resource-facing parts of `routers/browse.py` and retire
 
 ## R4 — Preview and delivery separation
 
-Resources owns resource metadata and preview preparation. Delivery owns redirect
-preparation plus download event/diagnostic tracking. Providers owns storage
-backend access and credentials.
+### R4a — preview lookup boundary
+
+Status: implemented in this change.
+
+The resource preview capability, text preview, PDF preview, and Office preview
+routes no longer load `Resource` ORM directly. They request an internal
+`ResourcePreviewView` from the Resources query boundary.
+
+The preview DTO deliberately includes internal `path` and `root_mapping_id`
+because legacy preview/cache/provider helpers require them, but it has no public
+serializer and is never returned directly by an API endpoint.
+
+The router still owns HTTP error mapping and enabled-root scope injection.
+Existing `preview.py`, `office.py`, and connection-resolution behavior is
+reused unchanged.
+
+This removes the remaining `routers/resources.py -> cloudsite.models` debt ID
+and ratchets architecture debt from 86 to 85. The Resources router is now
+completely ORM-free.
+
+### R4b — preview/provider composition
+
+Next, move connection/provider resolution and preview preparation behind explicit
+Resources/Providers contracts so the router no longer coordinates legacy
+`services.connections`, `preview.py`, and `office.py` helpers directly.
+
+Delivery continues to own redirect preparation plus download event/diagnostic
+tracking. Providers owns storage backend access and credentials.
 
 ## R5 — Legacy cleanup
 
