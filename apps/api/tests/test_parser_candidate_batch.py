@@ -28,7 +28,7 @@ from cloudsite.modules.automation.contracts.public import (
     enqueue_parser_candidate,
     retry_parser_candidate,
 )
-from cloudsite.services.resource_name_parser import PARSER_VERSION
+from cloudsite.modules.automation.domain.resource_name_parser import PARSER_VERSION
 
 
 async def _sessions(tmp_path):
