@@ -152,8 +152,8 @@ async def test_v2_progress_read_without_system_setting_orm():
         await state.execute(
             text(
                 "INSERT INTO system_settings"
-                "(key, value, value_type) "
-                "VALUES (:key, :value, 'string')"
+                "(key, value, value_type, updated_at) "
+                "VALUES (:key, :value, 'string', CURRENT_TIMESTAMP)"
             ),
             {
                 "key": "v2_sync_progress",
