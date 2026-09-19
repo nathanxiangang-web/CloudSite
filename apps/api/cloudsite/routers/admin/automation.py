@@ -27,15 +27,15 @@ router = APIRouter()
 
 
 def _review_service():
-    from ...services import suggestion_review  # noqa: PLC0415
+    from ...modules.automation.contracts import public as automation_api  # noqa: PLC0415
 
-    return suggestion_review
+    return automation_api
 
 
 def _generator_service():
-    from ...services import suggestion_generator  # noqa: PLC0415
+    from ...modules.automation.contracts import public as automation_api  # noqa: PLC0415
 
-    return suggestion_generator
+    return automation_api
 
 
 def _translate_error(exc: Exception) -> HTTPException:
