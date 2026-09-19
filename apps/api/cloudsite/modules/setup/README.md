@@ -1,6 +1,6 @@
 # Setup module
 
-The Setup module owns the first-run wizard progress state and coordinates the seven setup steps. It deliberately does not own provider connection/root mapping data, presentation configuration, or site settings.
+The Setup module owns the first-run wizard progress state and coordinates the five active setup steps: connect, scope, preset, brand, and publish. Legacy samples/preview progress is normalized for existing installations but is no longer exposed as product workflow. It deliberately does not own provider connection/root mapping data, presentation configuration, or site settings.
 
 Those writes are performed through their owner boundaries:
 
