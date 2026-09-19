@@ -103,27 +103,48 @@ export default function AdminAutomationPage() {
 
   const batchApply = useMutation({
     mutationFn: (ids: string[]) => api<BatchResult>("/api/admin/automation/suggestions/batch-apply", { method: "POST", body: JSON.stringify({ suggestion_ids: ids }) }),
-    onSuccess: (data) => { setBatchResult(data); setSelected(new Set()); client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }); },
+    onSuccess: (data) => {
+      const removingLastPage = statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && selected.size === items.length && data.failed === 0;
+      setBatchResult(data);
+      setSelected(new Set());
+      if (removingLastPage) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const batchReject = useMutation({
     mutationFn: (ids: string[]) => api<BatchResult>("/api/admin/automation/suggestions/batch-reject", { method: "POST", body: JSON.stringify({ suggestion_ids: ids }) }),
-    onSuccess: (data) => { setBatchResult(data); setSelected(new Set()); client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }); },
+    onSuccess: (data) => {
+      const removingLastPage = statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && selected.size === items.length && data.failed === 0;
+      setBatchResult(data);
+      setSelected(new Set());
+      if (removingLastPage) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const applyOne = useMutation({
     mutationFn: (id: string) => api<{ suggestion_id: string; success: boolean }>(`/api/admin/automation/suggestions/${id}/apply`, { method: "POST" }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }),
+    onSuccess: () => {
+      if (statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && items.length === 1) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const rejectOne = useMutation({
     mutationFn: (id: string) => api<Suggestion>(`/api/admin/automation/suggestions/${id}/reject`, { method: "POST", body: JSON.stringify({ reason: "" }) }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }),
+    onSuccess: () => {
+      if (statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && items.length === 1) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const revertOne = useMutation({
     mutationFn: (id: string) => api<Suggestion>(`/api/admin/automation/suggestions/${id}/revert`, { method: "POST" }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }),
+    onSuccess: () => {
+      if (statusFilter === "applied" && page > 1 && page === (query.data?.total_pages ?? 1) && items.length === 1) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const items = query.data?.items ?? [];
