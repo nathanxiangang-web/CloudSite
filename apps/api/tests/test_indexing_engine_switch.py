@@ -192,3 +192,50 @@ async def test_run_indexing_v2_empty_category_list_is_success() -> None:
 
     assert result["status"] == "success"
     assert result["categories_scanned"] == 0
+
+async def test_alist_adapter_keeps_same_type_roots_distinct() -> None:
+    class FakeAListClient:
+        def __init__(self) -> None:
+            self.paths: list[str] = []
+
+        async def list_path(self, path: str):
+            self.paths.append(path)
+            return [
+                {
+                    "name": "package.zip",
+                    "is_dir": False,
+                    "size": 42,
+                    "modified": "2026-09-19T00:00:00Z",
+                }
+            ]
+
+        async def get_file_info(self, path: str):
+            return {"name": path.rsplit("/", 1)[-1], "size": 42}
+
+    client = FakeAListClient()
+    roots = [
+        SimpleNamespace(
+            id=11,
+            content_type="software",
+            alist_path="/apps-a",
+            display_name="Apps A",
+        ),
+        SimpleNamespace(
+            id=12,
+            content_type="software",
+            alist_path="/apps-b",
+            display_name="Apps B",
+        ),
+    ]
+    adapter = AListProviderAdapter(client, roots)
+
+    first, _, _ = await adapter.scan_category("11")
+    second, _, _ = await adapter.scan_category("12")
+
+    assert client.paths == ["/apps-a", "/apps-b"]
+    assert first[0].path == "/apps-a"
+    assert first[0].metadata["root_mapping_id"] == 11
+    assert first[1].path == "/apps-a/package.zip"
+    assert second[0].path == "/apps-b"
+    assert second[0].metadata["root_mapping_id"] == 12
+    assert second[1].path == "/apps-b/package.zip"
