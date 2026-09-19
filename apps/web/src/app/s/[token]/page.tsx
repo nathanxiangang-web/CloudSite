@@ -8,7 +8,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Brand } from "@/components/Brand";
 import { ResourceIcon } from "@/components/ResourceIcon";
-import { api, Collection, CollectionResourceItem, Folder, formatBytes, Resource, Share } from "@/lib/api";
+import { api, ApiError, Collection, CollectionResourceItem, Folder, formatBytes, Resource, Share } from "@/lib/api";
 
 type SharePageSettings = { site_name: string; share_image_url: string };
 type ShareMeta = {
@@ -67,7 +67,11 @@ export default function SharePage() {
   }
 
   if (meta.isLoading) return <ShareFrame {...frame}><div className="share-loading">正在打开分享...</div></ShareFrame>;
-  if (!meta.data) return <ShareState {...frame} title="分享不存在" message={meta.error?.message || "请确认链接是否完整。"} />;
+  if (meta.error) {
+    const notFound = meta.error instanceof ApiError && meta.error.status === 404;
+    return <ShareState {...frame} title={notFound ? "分享不存在" : "分享暂时无法打开"} message={notFound ? meta.error.message : `分享信息加载失败：${meta.error.message}`} onRetry={notFound ? undefined : () => meta.refetch()} />;
+  }
+  if (!meta.data) return <ShareState {...frame} title="分享暂时无法打开" message="暂时没有收到分享信息，请稍后重试。" onRetry={() => meta.refetch()} />;
   if (meta.data.status === "direct") return <ShareFrame {...frame}><div className="share-loading"><Loader2 />正在准备下载...</div></ShareFrame>;
   if (meta.data.status !== "code_required") {
     const [title, message] = statusCopy[meta.data.status] ?? ["分享不可用", "这个分享暂时无法访问。"];
@@ -117,8 +121,8 @@ function ShareResourceCard({ item, token, single }: { item: Resource; token: str
   </article>;
 }
 
-function ShareState({ title, message, siteName, imageUrl }: { title: string; message: string; siteName: string; imageUrl: string }) {
-  return <ShareFrame siteName={siteName} imageUrl={imageUrl}><div className="share-state"><KeyRound /><h1>{title}</h1><p>{message}</p><Link href="/">返回首页</Link></div></ShareFrame>;
+function ShareState({ title, message, siteName, imageUrl, onRetry }: { title: string; message: string; siteName: string; imageUrl: string; onRetry?: () => void }) {
+  return <ShareFrame siteName={siteName} imageUrl={imageUrl}><div className="share-state"><KeyRound /><h1>{title}</h1><p>{message}</p>{onRetry && <button type="button" onClick={onRetry}>重试</button>}<Link href="/">返回首页</Link></div></ShareFrame>;
 }
 
 function ShareFrame({ children, siteName, imageUrl }: { children: ReactNode; siteName: string; imageUrl: string }) {
