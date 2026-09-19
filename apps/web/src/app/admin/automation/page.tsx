@@ -95,6 +95,7 @@ export default function AdminAutomationPage() {
       return api<SuggestionList>(`/api/admin/automation/suggestions?${params.toString()}`);
     },
   });
+  const items = query.data?.items ?? [];
 
   const generate = useMutation({
     mutationFn: () => api<GenerateResult>("/api/admin/automation/generate", { method: "POST", body: JSON.stringify({ limit: 500 }) }),
@@ -103,30 +104,51 @@ export default function AdminAutomationPage() {
 
   const batchApply = useMutation({
     mutationFn: (ids: string[]) => api<BatchResult>("/api/admin/automation/suggestions/batch-apply", { method: "POST", body: JSON.stringify({ suggestion_ids: ids }) }),
-    onSuccess: (data) => { setBatchResult(data); setSelected(new Set()); client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }); },
+    onSuccess: (data) => {
+      const allCurrentSelected = items.length > 0 && items.every((item) => selected.has(item.suggestion_id));
+      const removingLastPage = statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && allCurrentSelected && data.failed === 0;
+      setBatchResult(data);
+      setSelected(new Set());
+      if (removingLastPage) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const batchReject = useMutation({
     mutationFn: (ids: string[]) => api<BatchResult>("/api/admin/automation/suggestions/batch-reject", { method: "POST", body: JSON.stringify({ suggestion_ids: ids }) }),
-    onSuccess: (data) => { setBatchResult(data); setSelected(new Set()); client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }); },
+    onSuccess: (data) => {
+      const allCurrentSelected = items.length > 0 && items.every((item) => selected.has(item.suggestion_id));
+      const removingLastPage = statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && allCurrentSelected && data.failed === 0;
+      setBatchResult(data);
+      setSelected(new Set());
+      if (removingLastPage) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const applyOne = useMutation({
     mutationFn: (id: string) => api<{ suggestion_id: string; success: boolean }>(`/api/admin/automation/suggestions/${id}/apply`, { method: "POST" }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }),
+    onSuccess: () => {
+      if (statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && items.length === 1) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const rejectOne = useMutation({
     mutationFn: (id: string) => api<Suggestion>(`/api/admin/automation/suggestions/${id}/reject`, { method: "POST", body: JSON.stringify({ reason: "" }) }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }),
+    onSuccess: () => {
+      if (statusFilter === "pending" && page > 1 && page === (query.data?.total_pages ?? 1) && items.length === 1) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
 
   const revertOne = useMutation({
     mutationFn: (id: string) => api<Suggestion>(`/api/admin/automation/suggestions/${id}/revert`, { method: "POST" }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] }),
+    onSuccess: () => {
+      if (statusFilter === "applied" && page > 1 && page === (query.data?.total_pages ?? 1) && items.length === 1) setPage(page - 1);
+      client.invalidateQueries({ queryKey: ["admin-automation-suggestions"] });
+    },
   });
-
-  const items = query.data?.items ?? [];
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -167,11 +189,11 @@ export default function AdminAutomationPage() {
 
           <div className="automation-tabs">
             {kindTabs.map((tab) => (
-              <button key={tab.kind} className={kindFilter === tab.kind ? "active" : ""} onClick={() => { setKindFilter(tab.kind); setPage(1); }}>
+              <button key={tab.kind} className={kindFilter === tab.kind ? "active" : ""} onClick={() => { setKindFilter(tab.kind); setPage(1); setSelected(new Set()); }}>
                 {tab.label}
               </button>
             ))}
-            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as SuggestionStatus | "all"); setPage(1); }} style={{ marginLeft: "auto" }}>
+            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as SuggestionStatus | "all"); setPage(1); setSelected(new Set()); }} style={{ marginLeft: "auto" }}>
               <option value="all">全部状态</option>
               <option value="pending">待审核</option>
               <option value="reviewed">已审核</option>
@@ -238,9 +260,9 @@ export default function AdminAutomationPage() {
 
           {query.data && query.data.total_pages > 1 && (
             <div className="pagination">
-              <button disabled={page <= 1 || query.isFetching} onClick={() => setPage(page - 1)}>上一页</button>
+              <button disabled={page <= 1 || query.isFetching} onClick={() => { setSelected(new Set()); setPage(page - 1); }}>上一页</button>
               <span>第 {page} / {query.data.total_pages} 页</span>
-              <button disabled={page >= query.data.total_pages || query.isFetching} onClick={() => setPage(page + 1)}>下一页</button>
+              <button disabled={page >= query.data.total_pages || query.isFetching} onClick={() => { setSelected(new Set()); setPage(page + 1); }}>下一页</button>
             </div>
           )}
         </section>
