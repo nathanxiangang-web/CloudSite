@@ -23,14 +23,31 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
         category_id: str,
         provider_id: str,
     ) -> list[ResourceInventoryRecord]:
+        root_mapping_id: int | None = None
+        if category_id.startswith("root:"):
+            try:
+                root_mapping_id = int(category_id.removeprefix("root:"))
+            except ValueError:
+                root_mapping_id = None
+
+        folder_filter = (
+            Folder.root_mapping_id == root_mapping_id
+            if root_mapping_id is not None
+            else Folder.content_type == category_id
+        )
+        resource_filter = (
+            Resource.root_mapping_id == root_mapping_id
+            if root_mapping_id is not None
+            else Resource.content_type == category_id
+        )
         folders = (
             await self._session.scalars(
-                select(Folder).where(Folder.content_type == category_id)
+                select(Folder).where(folder_filter)
             )
         ).all()
         resources = (
             await self._session.scalars(
-                select(Resource).where(Resource.content_type == category_id)
+                select(Resource).where(resource_filter)
             )
         ).all()
 
