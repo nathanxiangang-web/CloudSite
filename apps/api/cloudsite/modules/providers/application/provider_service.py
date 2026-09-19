@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import AListConnection
+from ..infrastructure.models import AListConnection
 from ..domain.delta import resolve_sync_strategy
 from ..infrastructure.registry import registry
 

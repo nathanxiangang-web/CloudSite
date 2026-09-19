@@ -86,7 +86,13 @@ that other modules consume.
 
 ## Current Migration Status
 
-Code lives in the top-level `providers/` subpackage and `alist.py`. This is
-already one of the better-structured legacy areas. Migration to
-`modules/providers/` is scheduled for Phase 3, early in the order because
-indexing, resources, and delivery all depend on it.
+Migration status: partial. `AListConnection`, `ContentRootMapping`, and
+`ProviderSyncState` ORM declarations are now owned by
+`modules/providers/infrastructure/models.py`; `cloudsite.models` remains an
+exact compatibility re-export. The module's provider-info service now uses the
+module-owned connection ORM and no longer imports `cloudsite.models`.
+
+Low-level AList transport still lives in the legacy `cloudsite.alist` surface,
+and admin connection CRUD / runtime provider resolution remain transitional.
+The next slice should expose a Providers-owned runtime gateway for resolving an
+enabled content root to provider operations without exporting credentials.
