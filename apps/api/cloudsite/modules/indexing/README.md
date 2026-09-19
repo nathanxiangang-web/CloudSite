@@ -111,3 +111,14 @@ Indexing remains **active**, not yet **isolated**: the compatibility production
 bridge still calls legacy `cloudsite.indexer.load_all_connections_and_roots`
 and `log_operation`. Those orchestration helpers should move behind Providers
 and observability contracts before the legacy bridge can be deleted.
+
+## I2 Frozen Legacy Sync Ownership
+
+The frozen 1.x sync tables (`sync_runs`, `sync_root_results`, `sync_changes`,
+`sync_cycles`, `sync_cycle_items`, and `folder_scan_state`) are now declared
+under `modules/indexing/infrastructure/legacy_models.py`. This is ownership of
+compatibility state, not permission to add new rolling-sync behavior.
+
+`cloudsite.models` keeps exact compatibility re-exports. Consumers that need
+read-only legacy sync information use the Indexing public contract and receive
+persistence-neutral run/change views instead of ORM rows.
