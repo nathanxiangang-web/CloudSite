@@ -15,6 +15,9 @@ export default function AdminOverview() {
   const client = useQueryClient();
   const overview = useQuery({ queryKey: ["overview"], queryFn: () => api<Overview>("/api/admin/overview"), refetchInterval: 3000 });
   const sync = useMutation<SyncResult, Error, boolean>({ mutationFn: (force) => api<SyncResult>("/api/admin/sync", { method: "POST", body: JSON.stringify({ full: false, force }) }), onSuccess: () => client.invalidateQueries({ queryKey: ["overview"] }) });
+  if (overview.isLoading) return <AdminShell title="概览"><div className="panel loading">正在加载后台概览…</div></AdminShell>;
+  if (overview.error) return <AdminShell title="概览"><div className="panel empty error-state">后台概览加载失败：{overview.error.message}<button type="button" onClick={() => overview.refetch()}>重试</button></div></AdminShell>;
+  if (!overview.data) return null;
   const data = overview.data;
   const running = data?.latest_sync?.status === "running";
   const syncMessage = sync.data?.status === "accepted" ? "同步任务已启动，页面会自动更新扫描进度。" : sync.data?.status === "already_running" ? "已有同步任务运行中，正在显示同一任务进度。" : "";

@@ -85,6 +85,10 @@ export default function SitePage() {
     save.mutate();
   }
 
+  if (site.isLoading) return <AdminShell title="网站设置"><div className="panel loading">正在加载网站设置…</div></AdminShell>;
+  if (site.error) return <AdminShell title="网站设置"><div className="panel empty error-state">网站设置加载失败：{site.error.message}<button type="button" onClick={() => site.refetch()}>重试</button></div></AdminShell>;
+  if (!site.data) return null;
+
   return <AdminShell title="网站设置"><div className="admin-page site-settings-grid">
     <section className="panel">
       <h2>基本信息</h2>
