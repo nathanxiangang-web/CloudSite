@@ -10,7 +10,7 @@ from ..domain.errors import (
     ResourceNotAvailableError,
     ResourceNotFoundError,
 )
-from ..domain.views import CatalogResourceView, ParserResourceView
+from ..domain.views import CatalogResourceView, ParserResourceView, ResourceReferenceView
 from ..infrastructure.rate_limit import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
     DOWNLOAD_RATE_CLEANUP_SECONDS,
@@ -91,4 +91,5 @@ __all__ = [
     "ResourceInactiveError",
     "ResourceNotAvailableError",
     "ResourceNotFoundError",
+    "ResourceReferenceView",
 ]

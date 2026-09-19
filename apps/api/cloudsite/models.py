@@ -31,6 +31,7 @@ from .modules.indexing.infrastructure.legacy_models import (
     SyncRun,
 )
 from .modules.automation.infrastructure.models import CatalogSuggestion, ParserCandidateTask
+from .modules.collections.infrastructure.models import Collection, CollectionItem
 from .modules.catalog.infrastructure.models import (
     CatalogAsset,
     CatalogEntry,
@@ -89,40 +90,6 @@ class OperationLog(StateBase):
     principal: Mapped[str] = mapped_column(String(200), default="")
     actor_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class Collection(StateBase):
-    __tablename__ = "collections"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(160), index=True)
-    description: Mapped[str] = mapped_column(Text, default="")
-    cover: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
-    visible_on_home: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    goal: Mapped[str] = mapped_column(Text, default="", server_default="")
-    audience: Mapped[str] = mapped_column(Text, default="", server_default="")
-    prerequisites: Mapped[str] = mapped_column(Text, default="", server_default="")
-    item_intro: Mapped[str] = mapped_column(Text, default="", server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-
-class CollectionItem(StateBase):
-    __tablename__ = "collection_items"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    collection_id: Mapped[int] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), index=True)
-    resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    item_type: Mapped[str] = mapped_column(String(20), default="resource", server_default="resource", index=True)
-    catalog_entry_id: Mapped[str | None] = mapped_column(String(35), nullable=True, index=True)
-    note: Mapped[str] = mapped_column(Text, default="", server_default="")
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    __table_args__ = (
-        UniqueConstraint("collection_id", "resource_id"),
-        UniqueConstraint("collection_id", "catalog_entry_id"),
-        CheckConstraint("item_type IN ('resource', 'catalog_entry')"),
-    )
 
 
 class Share(StateBase):

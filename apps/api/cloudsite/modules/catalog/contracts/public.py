@@ -15,6 +15,10 @@ from ..application.automation_facade import (
     list_automation_revisions,
     revert_automation_target,
 )
+from ..application.collection_facade import (
+    CatalogCollectionEntryView,
+    collection_entry_references,
+)
 from ..application.catalog_entry import (
     count_catalog_entries,
     CatalogAssetNotDownloadable,
@@ -87,5 +91,7 @@ __all__ = [
     "public_catalog_entry_view",
     "public_catalog_release_view",
     "public_catalog_asset_view",
+    "CatalogCollectionEntryView",
+    "collection_entry_references",
 ]
 
