@@ -9,6 +9,7 @@
 - 预设保存与发布启用语义
 """
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import auth, config, main
@@ -29,25 +30,49 @@ class _FakeAListClient:
         self.base_url = base_url
 
     async def test(self):
-        return {"base_path": "/", "ok": True}
+        return {
+            "base_path": "/",
+            "ok": True,
+            "message": "AList 连接及根目录访问成功",
+            "item_count": 2,
+        }
+
+    async def list_directories(self, path):
+        assert path == "/"
+        return [
+            {"name": "software", "modified": None},
+            {"name": "photos", "modified": None},
+        ]
+
+    async def get_path(self, path):
+        return {
+            "name": path.rsplit("/", 1)[-1],
+            "is_dir": True,
+        }
 
 
-async def _wizard_setup(monkeypatch):
+async def _wizard_setup(monkeypatch, *, seed_mappings=True):
     state_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with state_engine.begin() as conn:
         await conn.run_sync(StateBase.metadata.create_all)
     state_factory = async_sessionmaker(state_engine, expire_on_commit=False)
     async with state_factory() as state:
         state.add(SiteSettings(id=1))
-        state.add(ContentRootMapping(id=1, content_type="software", display_name="软件", alist_path="/software", enabled=True))
-        state.add(ContentRootMapping(id=2, content_type="tutorial", display_name="教程", alist_path="/tutorial", enabled=False))
+        if seed_mappings:
+            state.add(ContentRootMapping(id=1, content_type="software", display_name="软件", alist_path="/software", enabled=True))
+            state.add(ContentRootMapping(id=2, content_type="tutorial", display_name="教程", alist_path="/tutorial", enabled=False))
         await state.commit()
     monkeypatch.setattr(main, "StateSession", state_factory)
     monkeypatch.setattr(auth, "StateSession", state_factory)
     monkeypatch.setattr(config.settings, "setup_token", "test-setup-token")
-    from cloudsite.modules.providers.application import connection_admin
+    from cloudsite.modules.providers.application import connection_admin, root_mappings
     monkeypatch.setattr(
         connection_admin,
+        "AListClient",
+        _FakeAListClient,
+    )
+    monkeypatch.setattr(
+        root_mappings,
         "AListClient",
         _FakeAListClient,
     )
@@ -112,6 +137,85 @@ async def test_wizard_legacy_progress_is_normalized(monkeypatch):
             assert preview.json()["current_step"] == "publish"
             assert preview.json()["preview_done"] is True
             assert preview.json()["completed_steps"] == ["connect", "scope", "preset", "samples", "brand", "preview"]
+    finally:
+        await state_engine.dispose()
+
+
+async def test_wizard_fresh_scope_creates_real_root_mappings(monkeypatch):
+    state_engine = await _wizard_setup(monkeypatch, seed_mappings=False)
+    transport = httpx.ASGITransport(app=main.app)
+    try:
+        async with _wizard_client(transport) as client:
+            connect = await client.post(
+                "/api/admin/setup/wizard/step",
+                json={
+                    "step": "connect",
+                    "data": {
+                        "base_url": "https://alist.example.com",
+                        "username": "admin",
+                        "password": "pass",
+                        "remember_credentials": False,
+                    },
+                },
+                headers={"X-CloudSite-Setup-Token": "test-setup-token"},
+            )
+            assert connect.status_code == 200, connect.text
+            assert connect.json()["state"]["current_step"] == "scope"
+
+            scope_state = await client.get("/api/admin/setup/wizard")
+            assert scope_state.status_code == 200, scope_state.text
+            body = scope_state.json()
+            assert body["root_mappings"] == []
+            assert [item["path"] for item in body["root_directories"]] == [
+                "/software",
+                "/photos",
+            ]
+            assert body["scope_error"] == ""
+
+            scope = await client.post(
+                "/api/admin/setup/wizard/step",
+                json={
+                    "step": "scope",
+                    "data": {
+                        "root_mappings": [
+                            {
+                                "alist_path": "/software",
+                                "display_name": "software",
+                                "content_type": "software",
+                                "enabled": True,
+                                "sort_order": 0,
+                            },
+                            {
+                                "alist_path": "/photos",
+                                "display_name": "photos",
+                                "content_type": "image",
+                                "enabled": True,
+                                "sort_order": 1,
+                            },
+                        ]
+                    },
+                },
+            )
+            assert scope.status_code == 200, scope.text
+            assert scope.json()["result"]["created"] == 2
+            assert scope.json()["state"]["current_step"] == "preset"
+
+            async with main.StateSession() as state:
+                rows = list(
+                    (
+                        await state.scalars(
+                            select(ContentRootMapping).order_by(ContentRootMapping.id)
+                        )
+                    ).all()
+                )
+                assert [(row.alist_path, row.content_type) for row in rows] == [
+                    ("/software", "software"),
+                    ("/photos", "image"),
+                ]
+                connection = await state.get(AListConnection, 1)
+                assert connection is not None
+                assert connection.password_ciphertext
+                assert connection.remember_credentials is True
     finally:
         await state_engine.dispose()
 
