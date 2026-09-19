@@ -14,6 +14,7 @@ from ...modules.setup.contracts.public import (
     complete_initial_alist_setup,
     get_setup_status,
     get_wizard_state,
+    go_back_wizard,
     process_wizard_step,
     skip_wizard,
 )
@@ -158,6 +159,15 @@ async def admin_setup_wizard_step(
     return result
 
 
+@router.post("/api/admin/setup/wizard/back")
+async def admin_setup_wizard_back(request: Request):
+    from ...main import StateSession
+
+    _origin_or_403(request)
+    async with StateSession() as session:
+        return await go_back_wizard(session)
+
+
 @router.post("/api/admin/setup/wizard/skip")
 async def admin_setup_wizard_skip(request: Request):
     from ...main import StateSession
@@ -165,6 +175,13 @@ async def admin_setup_wizard_skip(request: Request):
     _origin_or_403(request)
     async with StateSession() as session:
         try:
-            return await skip_wizard(session)
+            return await skip_wizard(
+                session,
+                provided_setup_token=request.headers.get(
+                    "X-CloudSite-Setup-Token",
+                    "",
+                ),
+                expected_setup_token=settings.setup_token,
+            )
         except SetupWorkflowError as exc:
             raise _translate_setup_error(exc) from exc
