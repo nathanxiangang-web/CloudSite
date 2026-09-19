@@ -38,4 +38,15 @@ async def write_operation_log(
     )
 
 
-__all__ = ["write_operation_log"]
+async def count_operation_logs(
+    session: AsyncSession,
+) -> int:
+    row = (
+        await session.execute(
+            text("SELECT COUNT(*) FROM operation_logs")
+        )
+    ).first()
+    return int(row[0] or 0) if row is not None else 0
+
+
+__all__ = ["write_operation_log", "count_operation_logs"]
