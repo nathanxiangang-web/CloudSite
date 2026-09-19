@@ -162,7 +162,7 @@ async def save_admin_presentation(
         module="presentation",
         action="presentation_saved",
         message=(
-            "发布站点呈现配置 revision "
+            "保存站点呈现配置 revision "
             f"{row.config_revision}"
         ),
     )
