@@ -98,8 +98,12 @@ Users is now **partial** rather than a skeleton.
 - Public registration/login/logout/password-change persistence and audit
   now live in `application/authentication.py`; root `cloudsite.auth` is
   the HTTP/origin/cookie compatibility edge.
-- Admin sessions, favorites, history, playback progress, and the legacy
-  admin user routes remain follow-up work.
+- Username/password input rules now live in `domain/credentials.py`.
+- Administrator user list/create/rename/status/password-reset/soft-delete
+  workflows now live in `application/admin_management.py`; root
+  `cloudsite.users` is an HTTP/query edge with no ORM access.
+- Admin sessions, favorites, history, and playback progress remain
+  follow-up work.
 
 ## Role Policy Ownership
 
