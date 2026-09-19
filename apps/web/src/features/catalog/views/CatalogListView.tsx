@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Boxes, Filter, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent } from "react";
 
 import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -31,11 +31,6 @@ export function CatalogListView() {
   const submittedQuery = (searchParams.get("q") || "").trim();
   const requestedPage = Number.parseInt(searchParams.get("page") || "1", 10);
   const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-  const [query, setQuery] = useState(submittedQuery);
-
-  useEffect(() => {
-    setQuery(submittedQuery);
-  }, [submittedQuery]);
 
   const navigate = (next: { q?: string; contentType?: string; tag?: string; page?: number }) => {
     const values = new URLSearchParams();
@@ -85,9 +80,10 @@ export function CatalogListView() {
   const isLoading = searching ? searchResults.isLoading : entries.isLoading;
   const isFetching = searching ? searchResults.isFetching : entries.isFetching;
 
-  const submitSearch = (event: FormEvent) => {
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    navigate({ q: query, page: 1 });
+    const form = new FormData(event.currentTarget);
+    navigate({ q: String(form.get("q") || ""), page: 1 });
   };
 
   return <PublicShell><div className={`page ${styles.page}`}>
@@ -102,10 +98,10 @@ export function CatalogListView() {
 
     <form className="catalog-search-form" onSubmit={submitSearch}>
       <Search />
-      <input value={query} onChange={(event) => setQuery(event.target.value)}
+      <input key={submittedQuery} name="q" defaultValue={submittedQuery}
         placeholder="搜索资源条目（标题、别名、标签、平台）" aria-label="搜索资源条目" />
       <button type="submit">搜索</button>
-      {submittedQuery && <button type="button" onClick={() => { setQuery(""); navigate({ q: "", page: 1 }); }}>清除</button>}
+      {submittedQuery && <button type="button" onClick={() => navigate({ q: "", page: 1 })}>清除</button>}
     </form>
 
     <div className={styles.toolbar}>
