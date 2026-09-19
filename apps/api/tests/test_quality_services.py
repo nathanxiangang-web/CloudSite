@@ -246,6 +246,31 @@ async def test_run_quality_detection(sessions):
         assert "missing_description" in result.breakdown
 
 
+async def test_list_detection_runs_returns_persistence_neutral_records(
+    sessions,
+):
+    StateSession, IndexSession = sessions
+    async with StateSession() as state, IndexSession() as index:
+        result = await quality.run_quality_detection(
+            state,
+            index,
+            budget_ms=10000,
+        )
+        await state.commit()
+
+    async with StateSession() as state:
+        rows, total = await quality.list_detection_runs(
+            state,
+            page=1,
+            page_size=20,
+        )
+        assert total == 1
+        assert len(rows) == 1
+        assert rows[0].run_id == result.run_id
+        assert rows[0].status == "completed"
+        assert isinstance(rows[0].breakdown, dict)
+
+
 async def test_run_quality_detection_budget_timeout(sessions):
     StateSession, IndexSession = sessions
     async with StateSession() as state, IndexSession() as index:
