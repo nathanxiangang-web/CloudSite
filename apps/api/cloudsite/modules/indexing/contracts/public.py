@@ -2,18 +2,20 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from ..api.legacy_sync import legacy_sync_queries
 from ..application.reconcile import ReconcileResult
 from ..domain.inspection import InspectionRequest, InspectionResult
+from ..domain.legacy_sync import (
+    LegacySyncChangePage,
+    LegacySyncChangeView,
+    LegacySyncRunView,
+)
 from ..domain.snapshot import CategorySnapshot
 
 
 @runtime_checkable
 class IndexingServicePort(Protocol):
-    """Public port for the indexing module.
-
-    Consumers depend on this protocol rather than concrete services, so the
-    indexing module can evolve its internals without breaking callers.
-    """
+    """Public port for the indexing module."""
 
     async def scan_category(self, category_id: str) -> CategorySnapshot:
         """Inventory scan for a category, returns a point-in-time snapshot."""
