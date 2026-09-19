@@ -50,7 +50,8 @@ semantically belongs to automation; it will be reassigned during migration.
 - platform/db
 - platform/tasks (for batch processing and AI generation jobs)
 - modules/catalog (via contracts) - to read entries and apply approved changes.
-- modules/resources (via contracts) - persistence-neutral parser input lookup.
+- modules/resources (via contracts) - persistence-neutral parser/suggestion input lookup.
+- modules/indexing (via contracts) - frozen legacy sync read compatibility.
 - plugins/ai (optional, env-gated) - for AI-powered suggestion generation.
 
 ## Events/Tasks
@@ -102,7 +103,11 @@ resource metadata only through the Resources public contract. Historical
 Parser-candidate seeding now reads frozen sync runs/changes through the Indexing
 public contract; it no longer imports shared Resource/Sync ORM.
 
-The remaining shared-core debt is intentionally limited to suggestion
-generation/review. Those three debt IDs are the next Automation migration
-slice; suggestion apply must move through Catalog contracts rather than
-importing Catalog ORM or legacy services directly.
+Suggestion state is now module-owned and both suggestion generation/review use
+only public module contracts. Resource enumeration comes through Resources,
+classification/apply/revert/revision access comes through Catalog, and legacy
+sync seeding comes through Indexing.
+
+Automation now has zero tracked `module_legacy_import` debt. Legacy
+`cloudsite.services.suggestion_*` and `cloudsite.models.CatalogSuggestion`
+surfaces remain compatibility facades/re-exports while routers are migrated.
