@@ -15,6 +15,7 @@ from ..domain.views import (
     AdminIndexFolderView,
     CatalogResourceView,
     DiagnosticResourceView,
+    HomeInventoryView,
     ParserResourceView,
     ResourceReferenceView,
     SearchDocumentView,
