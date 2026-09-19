@@ -57,8 +57,8 @@ async def build_share_target_payload(state, index, row: Share) -> dict:
         target = await index.get(Folder, row.object_id)
         if not target or not await target_valid_for_share(state, index, row):
             raise HTTPException(404, {"code": "SHARE_TARGET_INVALID", "message": "分享的文件夹不存在或不可用"})
-        child_folders = list((await index.scalars(select(Folder).where(Folder.parent_id == target.id, Folder.status == "active").order_by(Folder.name))).all())
-        child_resources = list((await index.scalars(select(Resource).where(Resource.parent_id == target.id, Resource.status == "active").order_by(Resource.name))).all())
+        child_folders = list((await index.scalars(select(Folder).where(Folder.parent_id == target.id, Folder.status == "active", Folder.root_mapping_id == target.root_mapping_id).order_by(Folder.name))).all())
+        child_resources = list((await index.scalars(select(Resource).where(Resource.parent_id == target.id, Resource.status == "active", Resource.root_mapping_id == target.root_mapping_id).order_by(Resource.name))).all())
         return {"folder": folder_dict(target), "folders": [folder_dict(item) for item in child_folders], "resources": [resource_dict(item) for item in child_resources]}
     target = await state.get(Collection, int(row.object_id)) if row.object_id.isdigit() else None
     if not target or not await target_valid_for_share(state, index, row):
