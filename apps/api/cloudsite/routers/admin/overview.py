@@ -1,12 +1,9 @@
-"""admin/overview 路由：后台概览面板。"""
+"""admin/overview routes: operational dashboard."""
 
 from fastapi import APIRouter
 
 from ...modules.delivery.contracts.public import count_failed_downloads
-from ...modules.indexing.contracts.public import (
-    legacy_sync_queries,
-    read_sync_circuit_status,
-)
+from ...modules.indexing.contracts.public import read_v2_sync_progress
 from ...modules.providers.contracts.public import provider_connected
 from ...modules.resources.contracts.public import resource_queries
 from ...platform.observability import recent_operation_logs
@@ -28,40 +25,46 @@ async def admin_overview():
         )
         failures = await count_failed_downloads(state)
         alist_connected = await provider_connected(state)
-        sync_runs = await legacy_sync_queries(index).list_runs(limit=1)
-        latest = sync_runs[0] if sync_runs else None
-        circuit = await read_sync_circuit_status(state)
+        progress = await read_v2_sync_progress(state)
         logs = await recent_operation_logs(state, limit=6)
+
+        latest_sync = None
+        if progress:
+            latest_sync = {
+                "id": 0,
+                "status": str(progress.get("status", "idle")),
+                "finished_at": None,
+                "added": 0,
+                "updated": 0,
+                "removed": 0,
+                "folders_scanned": int(
+                    progress.get("categories_done", 0) or 0
+                ),
+                "resources_scanned": int(
+                    progress.get("entries_scanned", 0) or 0
+                ),
+                "current_path": str(
+                    progress.get("current_path", "") or ""
+                ),
+                "roots_total": int(
+                    progress.get("categories_total", 0) or 0
+                ),
+                "roots_completed": int(
+                    progress.get("categories_done", 0) or 0
+                ),
+                "roots_failed": 0,
+                "duration_ms": int(
+                    progress.get("elapsed_seconds", 0) or 0
+                )
+                * 1000,
+            }
 
         return {
             "resources": counts.resources,
             "folders": counts.folders,
             "download_failures": failures,
             "alist_connected": alist_connected,
-            "latest_sync": (
-                None
-                if latest is None
-                else {
-                    "id": latest.id,
-                    "status": latest.status,
-                    "finished_at": latest.finished_at,
-                    "added": latest.added_count,
-                    "updated": latest.updated_count,
-                    "removed": latest.removed_count,
-                    "folders_scanned": latest.folders_scanned,
-                    "resources_scanned": latest.resources_scanned,
-                    "current_path": latest.current_path,
-                    "roots_total": latest.roots_total,
-                    "roots_completed": latest.roots_completed,
-                    "roots_failed": latest.roots_failed,
-                    "duration_ms": latest.duration_ms,
-                }
-            ),
-            "sync_circuit": {
-                "open": circuit["open"],
-                "until": circuit["until"],
-                "reason": circuit["reason"],
-            },
+            "latest_sync": latest_sync,
             "type_counts": type_counts,
             "logs": logs,
         }
