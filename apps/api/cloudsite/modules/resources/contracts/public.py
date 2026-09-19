@@ -10,7 +10,13 @@ from ..domain.errors import (
     ResourceNotAvailableError,
     ResourceNotFoundError,
 )
-from ..domain.views import CatalogResourceView, ParserResourceView, ResourceReferenceView
+from ..domain.views import (
+    AdminIndexCountsView,
+    AdminIndexFolderView,
+    CatalogResourceView,
+    ParserResourceView,
+    ResourceReferenceView,
+)
 from ..infrastructure.rate_limit import (
     DOWNLOAD_RATE_BLOCK_SECONDS,
     DOWNLOAD_RATE_CLEANUP_SECONDS,
@@ -73,6 +79,8 @@ class ResourceInventoryPort(Protocol):
 
 
 __all__ = [
+    "AdminIndexFolderView",
+    "AdminIndexCountsView",
     "CatalogResourceView",
     "ParserResourceView",
     "resource_queries",

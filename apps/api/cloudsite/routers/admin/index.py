@@ -1,14 +1,19 @@
-"""admin/index 路由：索引摘要、目录列表、同步记录。"""
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import desc, func, select
+"""admin/index routes: index summary, folders and sync history."""
 
-from ...models import Folder, Resource, SyncChange, SyncRun
-from ...services.resources import folder_dict
+from fastapi import APIRouter, HTTPException, Query
+
+from ...modules.indexing.contracts.public import (
+    indexing_v2_enabled,
+    legacy_sync_queries,
+    read_v2_sync_progress,
+)
+from ...modules.resources.contracts.public import resource_queries
 
 router = APIRouter()
 
+def sync_run_dict(row) -> dict:
+    """Compatibility serializer for legacy callers and tests."""
 
-def sync_run_dict(row: SyncRun) -> dict:
     return {
         "id": row.id,
         "sync_type": row.sync_type,
@@ -29,60 +34,72 @@ def sync_run_dict(row: SyncRun) -> dict:
     }
 
 
+
 @router.get("/api/admin/index/summary")
 async def admin_index_summary():
-    import json
-
+    from ... import main as _main
     from ...main import IndexSession, StateSession
-    from ...modules.indexing.infrastructure.indexing_engine import use_indexing_v2
-    from ...models import SystemSetting
 
-    async with IndexSession() as session:
-        latest = await session.scalar(select(SyncRun).order_by(desc(SyncRun.id)).limit(1))
-        folders = int(await session.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0)
-        resources = int(await session.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0)
+    async with IndexSession() as index:
+        resources = resource_queries(index)
+        counts = await resources.admin_index_counts()
+        runs = await legacy_sync_queries(index).list_runs(limit=1)
+        latest = runs[0] if runs else None
 
-    if use_indexing_v2():
-        from ... import main as _main
-
-        v2_running = bool(_main.manual_sync_task and not _main.manual_sync_task.done())
-        v2_progress: dict = {}
+    if indexing_v2_enabled():
+        v2_running = bool(
+            _main.manual_sync_task
+            and not _main.manual_sync_task.done()
+        )
         async with StateSession() as state:
-            row = await state.get(SystemSetting, "v2_sync_progress")
-            if row and row.value:
-                try:
-                    v2_progress = json.loads(row.value)
-                except (ValueError, TypeError):
-                    v2_progress = {}
-        v2_status = v2_progress.get("status", "idle")
-        return {
-            "folders": folders,
-            "resources": resources,
-            "syncing": v2_running,
-            "latest_sync": {
+            v2_progress = await read_v2_sync_progress(state)
+        v2_status = str(v2_progress.get("status", "idle"))
+        latest_sync = None
+        if v2_progress or v2_running:
+            latest_sync = {
                 "id": 0,
                 "sync_type": "windowed",
                 "status": v2_status if not v2_running else "running",
-                "folders_scanned": v2_progress.get("categories_done", 0),
-                "resources_scanned": v2_progress.get("entries_scanned", 0),
+                "folders_scanned": int(
+                    v2_progress.get("categories_done", 0) or 0
+                ),
+                "resources_scanned": int(
+                    v2_progress.get("entries_scanned", 0) or 0
+                ),
                 "added_count": 0,
                 "updated_count": 0,
                 "removed_count": 0,
                 "started_at": None,
                 "finished_at": None,
-                "duration_ms": v2_progress.get("elapsed_seconds", 0) * 1000,
+                "duration_ms": int(
+                    v2_progress.get("elapsed_seconds", 0) or 0
+                )
+                * 1000,
                 "error_message": "",
-                "current_path": v2_progress.get("current_path", ""),
-                "roots_total": v2_progress.get("categories_total", 0),
-                "roots_completed": v2_progress.get("categories_done", 0),
+                "current_path": str(
+                    v2_progress.get("current_path", "") or ""
+                ),
+                "roots_total": int(
+                    v2_progress.get("categories_total", 0) or 0
+                ),
+                "roots_completed": int(
+                    v2_progress.get("categories_done", 0) or 0
+                ),
                 "roots_failed": 0,
-            } if v2_progress or v2_running else (sync_run_dict(latest) if latest else None),
+            }
+        elif latest is not None:
+            latest_sync = latest.to_dict()
+        return {
+            "folders": counts.folders,
+            "resources": counts.resources,
+            "syncing": v2_running,
+            "latest_sync": latest_sync,
         }
 
     return {
-        "folders": folders,
-        "resources": resources,
-        "latest_sync": sync_run_dict(latest) if latest else None,
+        "folders": counts.folders,
+        "resources": counts.resources,
+        "latest_sync": latest.to_dict() if latest else None,
         "syncing": bool(latest and latest.status == "running"),
     }
 
@@ -91,38 +108,49 @@ async def admin_index_summary():
 async def admin_index_folders():
     from ...main import IndexSession
 
-    async with IndexSession() as session:
-        rows = list((await session.scalars(select(Folder).where(Folder.status == "active").order_by(Folder.depth, Folder.path))).all())
-        return {"items": [folder_dict(row, include_path=True) for row in rows]}
+    async with IndexSession() as index:
+        rows = await resource_queries(index).admin_index_folders()
+    return {"items": [row.to_dict() for row in rows]}
 
 
 @router.get("/api/admin/index/folders/{folder_id}")
 async def admin_index_folder_detail(folder_id: str):
     from ...main import IndexSession
 
-    async with IndexSession() as session:
-        row = await session.get(Folder, folder_id)
-        if not row or row.status != "active":
-            raise HTTPException(404, "索引目录不存在")
-        resources_count = int(await session.scalar(select(func.count()).select_from(Resource).where(Resource.parent_id == row.id, Resource.status == "active")) or 0)
-        return {**folder_dict(row, include_path=True), "direct_resource_count": resources_count}
+    async with IndexSession() as index:
+        row = await resource_queries(index).admin_index_folder(
+            folder_id=folder_id,
+        )
+    if row is None:
+        raise HTTPException(404, "索引目录不存在")
+    return row.to_dict()
 
 
 @router.get("/api/admin/sync-runs")
-async def admin_sync_runs(limit: int = Query(10, ge=1, le=100)):
+async def admin_sync_runs(
+    limit: int = Query(10, ge=1, le=100),
+):
     from ...main import IndexSession
 
-    async with IndexSession() as session:
-        rows = list((await session.scalars(select(SyncRun).order_by(desc(SyncRun.id)).limit(limit))).all())
-        return {"items": [sync_run_dict(row) for row in rows]}
+    async with IndexSession() as index:
+        rows = await legacy_sync_queries(index).list_runs(limit=limit)
+    return {"items": [row.to_dict() for row in rows]}
 
 
 @router.get("/api/admin/sync-runs/{run_id}/changes")
-async def admin_sync_changes(run_id: int, limit: int = Query(100, ge=1, le=500)):
+async def admin_sync_changes(
+    run_id: int,
+    limit: int = Query(100, ge=1, le=500),
+):
     from ...main import IndexSession
 
-    async with IndexSession() as session:
-        if not await session.get(SyncRun, run_id):
+    async with IndexSession() as index:
+        queries = legacy_sync_queries(index)
+        run = await queries.get_run(run_id)
+        if run is None:
             raise HTTPException(404, "同步记录不存在")
-        rows = list((await session.scalars(select(SyncChange).where(SyncChange.sync_run_id == run_id).order_by(desc(SyncChange.id)).limit(limit))).all())
-        return {"items": [{"id": row.id, "object_type": row.object_type, "object_id": row.object_id, "change_type": row.change_type, "old_path": row.old_path, "new_path": row.new_path, "created_at": row.created_at} for row in rows]}
+        rows = await queries.list_recent_changes(
+            sync_run_id=run_id,
+            limit=limit,
+        )
+    return {"items": [row.to_dict() for row in rows]}

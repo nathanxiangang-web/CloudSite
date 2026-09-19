@@ -13,6 +13,8 @@ from ..domain.errors import (
     ResourceNotFoundError,
 )
 from ..domain.views import (
+    AdminIndexCountsView,
+    AdminIndexFolderView,
     CatalogResourceView,
     FolderDetailView,
     FolderSummaryView,
@@ -59,6 +61,28 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
         )
 
     @staticmethod
+    def _admin_index_folder_view(
+        row: Folder,
+        *,
+        direct_resource_count: int | None = None,
+    ) -> AdminIndexFolderView:
+        return AdminIndexFolderView(
+            id=row.id,
+            name=row.name,
+            parent_id=row.parent_id,
+            content_type=row.content_type,
+            depth=row.depth,
+            child_folder_count=row.child_folder_count,
+            resource_count=row.resource_count,
+            modified_at=row.modified_at,
+            path=row.path,
+            root_mapping_id=row.root_mapping_id,
+            status=row.status,
+            indexed_at=row.indexed_at,
+            direct_resource_count=direct_resource_count,
+        )
+
+    @staticmethod
     def _folder_view(row: Folder) -> FolderSummaryView:
         return FolderSummaryView(
             id=row.id,
@@ -85,6 +109,67 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
                 break
             current = await self._session.get(Folder, current.parent_id)
         return tuple(reversed(items))
+
+    async def admin_index_counts(self) -> AdminIndexCountsView:
+        folders = int(
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Folder)
+                .where(Folder.status == "active")
+            )
+            or 0
+        )
+        resources = int(
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Resource)
+                .where(Resource.status == "active")
+            )
+            or 0
+        )
+        return AdminIndexCountsView(
+            folders=folders,
+            resources=resources,
+        )
+
+    async def admin_index_folders(self) -> list[AdminIndexFolderView]:
+        rows = list(
+            (
+                await self._session.scalars(
+                    select(Folder)
+                    .where(Folder.status == "active")
+                    .order_by(Folder.depth, Folder.path)
+                )
+            ).all()
+        )
+        return [
+            self._admin_index_folder_view(row)
+            for row in rows
+        ]
+
+    async def admin_index_folder(
+        self,
+        *,
+        folder_id: str,
+    ) -> AdminIndexFolderView | None:
+        row = await self._session.get(Folder, folder_id)
+        if row is None or row.status != "active":
+            return None
+        direct_resource_count = int(
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Resource)
+                .where(
+                    Resource.parent_id == row.id,
+                    Resource.status == "active",
+                )
+            )
+            or 0
+        )
+        return self._admin_index_folder_view(
+            row,
+            direct_resource_count=direct_resource_count,
+        )
 
     async def catalog_resource(
         self,
