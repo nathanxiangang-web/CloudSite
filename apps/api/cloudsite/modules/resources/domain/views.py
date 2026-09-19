@@ -26,6 +26,7 @@ class ResourceSummaryView:
     mime_type: str
     size: int
     modified_at: datetime | None
+    status: str = "active"
     thumbnail: str = ""
     parent: ParentSummaryView | None = None
 
@@ -93,9 +94,48 @@ class ResourcePageView:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceDetailView:
+    resource: ResourceSummaryView
+    breadcrumbs: tuple[ParentSummaryView, ...]
+    related: tuple[ResourceSummaryView, ...]
+    previous: ResourceSummaryView | None
+    next: ResourceSummaryView | None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self.resource.to_dict()
+        payload.update(
+            {
+                "breadcrumbs": [item.to_dict() for item in self.breadcrumbs],
+                "related": [item.to_dict() for item in self.related],
+                "previous": self.previous.to_dict() if self.previous else None,
+                "next": self.next.to_dict() if self.next else None,
+            }
+        )
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class FolderDetailView:
+    folder: FolderSummaryView
+    breadcrumbs: tuple[ParentSummaryView, ...]
+    child_folders: tuple[FolderSummaryView, ...]
+    resources: ResourcePageView
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "folder": self.folder.to_dict(),
+            "breadcrumbs": [item.to_dict() for item in self.breadcrumbs],
+            "child_folders": [item.to_dict() for item in self.child_folders],
+            "resources": self.resources.to_dict(),
+        }
+
+
 __all__ = [
+    "FolderDetailView",
     "FolderSummaryView",
     "ParentSummaryView",
+    "ResourceDetailView",
     "ResourcePageView",
     "ResourceSummaryView",
 ]

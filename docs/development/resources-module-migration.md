@@ -67,11 +67,31 @@ Preserved behavior:
 - root-vs-child folder filtering semantics;
 - public DTOs do not expose storage paths.
 
-### R3b — detail/publication-scope boundary
+### R3b — detail query boundary
 
-Next, move resource detail and folder detail SQL queries behind Resources while
-introducing an explicit publication-scope contract instead of importing
-`shares.service` inside Resources.
+Status: implemented in this change.
+
+`GET /api/resources/{resource_id}` and `GET /api/folders/{folder_id}` now
+delegate all SQLAlchemy query construction to the Resources query repository.
+
+The router still resolves enabled publication root IDs and injects them into the
+query service. Resources therefore does not import `shares.service`. This keeps
+publication scope composition at the HTTP boundary until Providers exposes an
+explicit enabled-root contract.
+
+Preserved behavior includes:
+
+- resource not-found vs publication-scope error mapping;
+- parent breadcrumbs;
+- related resource limit and modified-time ordering;
+- previous/next sibling ordering within the same content root;
+- folder breadcrumbs including the current folder;
+- active-only child resources;
+- folder child ordering;
+- folder resource sort/pagination behavior.
+
+This slice removes the `routers/resources.py -> sqlalchemy` debt ID and
+ratchets the architecture baseline from 87 to 86.
 
 ### R3c — browse aggregation and legacy serializer cleanup
 

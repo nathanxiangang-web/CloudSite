@@ -84,6 +84,6 @@ Exports live in `contracts/public.py`.
 
 ## Current Migration Status
 
-Migration status: partial. `Folder`, `Resource`, and `DownloadRateLimit` ORM declarations are owned by `modules/resources/infrastructure/models.py`; `cloudsite.models` remains a compatibility re-export. Indexing reconciliation persists through `ResourceInventoryPort` and the Resources-owned `SqlAlchemyResourceInventoryRepository`. Resource and folder list queries now run through Resources-owned query services/repositories; detail, publication-scope, preview, and download paths remain transitional.
+Migration status: partial. `Folder`, `Resource`, and `DownloadRateLimit` ORM declarations are owned by `modules/resources/infrastructure/models.py`; `cloudsite.models` remains a compatibility re-export. Indexing reconciliation persists through `ResourceInventoryPort` and the Resources-owned `SqlAlchemyResourceInventoryRepository`. Resource/folder list and detail queries now run through Resources-owned query services/repositories. The legacy router no longer constructs SQLAlchemy queries; publication-scope composition, preview, and download paths remain transitional.
 
 `indexer.py` remains a legacy mixed-responsibility surface: scan orchestration belongs to Indexing, while authoritative Folder/Resource persistence belongs to Resources.
