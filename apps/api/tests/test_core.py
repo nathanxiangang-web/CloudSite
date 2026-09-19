@@ -9,6 +9,10 @@ async def _true_coro():
 
 from cloudsite import download, main, preview
 from cloudsite.modules.delivery.domain import download as delivery_download_mod
+from cloudsite.modules.providers.contracts.public import (
+    ProviderAccessError,
+    ProviderEntry,
+)
 from cloudsite.alist import AListClient, AListError, AListUrlBuilder
 from cloudsite.crypto import decrypt_secret, encrypt_secret
 from cloudsite.download import DownloadError, DownloadUrlCache, map_alist_error, resolve_download_entry, validate_download_url, validate_resource_id
@@ -557,49 +561,43 @@ def test_preview_uses_same_safe_http_url_policy_as_download():
         validate_download_url("data:text/html,unsafe")
 
 
-async def test_preview_recovers_after_alist_returns_without_process_restart(monkeypatch):
+async def test_preview_recovers_after_provider_returns_without_process_restart():
     resource = SimpleNamespace(
         id="r-recover-preview",
         name="photo.jpg",
         path="/图片/photo.jpg",
+        root_mapping_id=1,
         extension="jpg",
         mime_type="image/jpeg",
         status="active",
     )
-    connection = SimpleNamespace(
-        enabled=True,
-        base_url="https://alist.example",
-        username="user",
-        password_ciphertext="ciphertext",
-    )
     attempts = 0
 
-    class FakeClient:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get_preview_entry(self, _path):
+    class FakeRuntime:
+        async def preview_entry(self, *, root_mapping_id, path):
             nonlocal attempts
+            assert root_mapping_id == 1
+            assert path == "/图片/photo.jpg"
             attempts += 1
             if attempts == 1:
-                raise AListError("offline detail must not leak", "AL-002")
-            return SimpleNamespace(url="https://alist.example/d/photo.jpg", host="alist.example")
+                raise ProviderAccessError(
+                    "unreachable",
+                    "private upstream detail must not leak",
+                    status_code=503,
+                )
+            return ProviderEntry(
+                url="https://alist.example/d/photo.jpg",
+                host="alist.example",
+            )
 
+    runtime = FakeRuntime()
     preview.preview_url_cache.clear()
-    monkeypatch.setattr(preview, "decrypt_secret", lambda _value: "password")
-    monkeypatch.setattr(preview, "AListClient", FakeClient)
     with pytest.raises(PreviewError) as raised:
-        await resolve_preview_url(resource, connection)
+        await resolve_preview_url(resource, runtime)
     assert raised.value.code == "PV-005"
     assert raised.value.status_code == 503
-    assert "offline detail" not in raised.value.message
-    recovered = await resolve_preview_url(resource, connection)
+    assert "private upstream detail" not in raised.value.message
+    recovered = await resolve_preview_url(resource, runtime)
     assert recovered.url == "https://alist.example/d/photo.jpg"
     assert recovered.cache_hit is False
 
@@ -650,36 +648,37 @@ async def test_download_recovers_after_alist_returns_without_process_restart(mon
 
 async def test_image_and_video_preview_gateway_remain_302_redirects(monkeypatch):
     class FakeSession:
-        def __init__(self, resource=None):
-            self.resource = resource
-
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *_args):
             return None
 
-        async def get(self, model, _key):
-            return self.resource if model.__name__ == "Resource" else SimpleNamespace(enabled=True)
+    current = {"resource": None}
 
-    async def resolved(resource, _connection, force_refresh=False):
+    async def fake_preview_resource(_index, _state, _resource_id):
+        return current["resource"]
+
+    async def resolved(resource, _runtime, force_refresh=False):
         assert resource.extension in {"jpg", "mp4"}
         assert force_refresh is False
         return SimpleNamespace(url=f"https://alist.example/d/{resource.name}")
 
-    monkeypatch.setattr(main, "IndexSession", lambda: FakeSession())
-    monkeypatch.setattr(main, "StateSession", lambda: FakeSession())
+    monkeypatch.setattr(main, "IndexSession", FakeSession)
+    monkeypatch.setattr(main, "StateSession", FakeSession)
     from cloudsite.routers import previews as previews_router_mod
+
+    monkeypatch.setattr(previews_router_mod, "_preview_resource", fake_preview_resource)
+    monkeypatch.setattr(previews_router_mod, "provider_runtime", lambda _state: object())
     monkeypatch.setattr(previews_router_mod, "resolve_preview_url", resolved)
-    monkeypatch.setattr(previews_router_mod, "resource_in_publication_scope", lambda *_a: _true_coro())
+
     for extension in ("jpg", "mp4"):
-        resource = SimpleNamespace(
+        current["resource"] = SimpleNamespace(
             id=f"r-{extension}",
             name=f"preview.{extension}",
             extension=extension,
             status="active",
         )
-        monkeypatch.setattr(main, "IndexSession", lambda resource=resource: FakeSession(resource))
-        response = await previews_router_mod.preview(resource.id)
+        response = await previews_router_mod.preview(current["resource"].id)
         assert response.status_code == 302
-        assert response.headers["location"] == f"https://alist.example/d/{resource.name}"
+        assert response.headers["location"] == f"https://alist.example/d/{current['resource'].name}"

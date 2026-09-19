@@ -166,6 +166,19 @@ async def _seed(tmp_path, monkeypatch):
 
 
 def _install_resolvers(monkeypatch, captured):
+    class FakeRuntime:
+        connection_ids = {1: 1, 2: 2, 4: 5, 6: None}
+        enabled_roots = {1, 2}
+
+        def connection_id_for(self, root_mapping_id):
+            return self.connection_ids.get(root_mapping_id)
+
+        def require_enabled(self, root_mapping_id):
+            if root_mapping_id not in self.enabled_roots:
+                raise PreviewError("PV-005", "upstream unavailable", 503)
+
+    runtime = FakeRuntime()
+
     async def _fake_download(resource, connection):
         captured["download_connection_id"] = getattr(connection, "id", None)
         if not connection or not connection.enabled:
@@ -175,27 +188,27 @@ def _install_resolvers(monkeypatch, captured):
             target_host="download.example", base_path="/", has_sign=True, steps=[],
         )
 
-    async def _fake_preview(resource, connection, force_refresh=False):
-        captured["preview_connection_id"] = getattr(connection, "id", None)
-        if not connection or not connection.enabled:
-            raise PreviewError("PV-005", "upstream unavailable", 503)
+    async def _fake_preview(resource, provider_runtime, force_refresh=False):
+        connection_id = provider_runtime.connection_id_for(resource.root_mapping_id)
+        captured["preview_connection_id"] = connection_id
+        provider_runtime.require_enabled(resource.root_mapping_id)
         return PreviewResolution(
-            url=f"https://preview.example/conn{connection.id}/{resource.id}",
+            url=f"https://preview.example/conn{connection_id}/{resource.id}",
             target_host="preview.example", cache_hit=False,
         )
 
-    async def _fake_ensure_cached(resource, connection):
-        captured["office_connection_id"] = getattr(connection, "id", None)
-        if not connection or not connection.enabled:
-            raise OfficePreviewError("PV-005", "upstream unavailable", 503)
+    async def _fake_ensure_cached(resource, provider_runtime):
+        connection_id = provider_runtime.connection_id_for(resource.root_mapping_id)
+        captured["office_connection_id"] = connection_id
+        provider_runtime.require_enabled(resource.root_mapping_id)
         return Path(f"/tmp/fake-office-{resource.id}")
 
-    async def _fake_text_preview(resource, connection):
-        captured["text_connection_id"] = getattr(connection, "id", None)
-        if not connection or not connection.enabled:
-            raise PreviewError("PV-005", "upstream unavailable", 503)
+    async def _fake_text_preview(resource, provider_runtime):
+        connection_id = provider_runtime.connection_id_for(resource.root_mapping_id)
+        captured["text_connection_id"] = connection_id
+        provider_runtime.require_enabled(resource.root_mapping_id)
         return {
-            "content": f"conn{getattr(connection, 'id', None)}:{resource.id}",
+            "content": f"conn{connection_id}:{resource.id}",
             "truncated": False,
             "size": resource.size,
             "encoding": "utf-8",
@@ -207,6 +220,8 @@ def _install_resolvers(monkeypatch, captured):
 
     monkeypatch.setattr("cloudsite.routers.downloads.resolve_download_entry", _fake_download)
     monkeypatch.setattr("cloudsite.routers.downloads.check_download_rate", _fake_rate)
+    monkeypatch.setattr("cloudsite.routers.previews.provider_runtime", lambda _state: runtime)
+    monkeypatch.setattr("cloudsite.routers.resources.provider_runtime", lambda _state: runtime)
     monkeypatch.setattr("cloudsite.routers.previews.resolve_preview_url", _fake_preview)
     monkeypatch.setattr("cloudsite.routers.resources.ensure_preview_cached", _fake_ensure_cached)
     monkeypatch.setattr("cloudsite.routers.resources.load_text_preview", _fake_text_preview)
