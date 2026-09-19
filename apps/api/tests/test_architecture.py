@@ -241,6 +241,31 @@ class TestIndexingResourcePersistenceBoundary:
 
 
 
+class TestResourcesListRouterBoundary:
+    """Migrated list routes delegate SQL ownership to Resources."""
+
+    def test_resource_and_folder_list_handlers_delegate_to_resources_queries(self):
+        router_file = CLOUDSITE / "routers" / "resources.py"
+        tree = ast.parse(router_file.read_text(encoding="utf-8"))
+
+        functions = {
+            node.name: ast.get_source_segment(
+                router_file.read_text(encoding="utf-8"),
+                node,
+            )
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+
+        for name in ("resources", "folders"):
+            source = functions[name] or ""
+            assert "resource_queries(session)" in source
+            assert "select(" not in source
+            assert "session.scalars(" not in source
+            assert "session.scalar(" not in source
+
+
+
 class TestModuleStructure:
     """Validate that each module has the required minimum structure."""
 

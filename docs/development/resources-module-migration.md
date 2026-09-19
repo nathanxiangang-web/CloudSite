@@ -43,9 +43,40 @@ architecture baseline from 88 to 87.
 
 ## R3 — Read/query boundary
 
-Move browse/detail/folder queries behind Resources application services.
-Legacy targets include `routers/resources.py`, resource-facing parts of
-`routers/browse.py`, and `services/resources.py`.
+R3 is split to avoid importing legacy Shares publication-scope logic into
+Resources.
+
+### R3a — list queries
+
+Status: implemented in this change.
+
+The `GET /api/resources` and `GET /api/folders` SQLAlchemy queries now live
+behind Resources-owned domain views, application query ports, and a SQLAlchemy
+query repository. The legacy router still resolves the enabled publication root
+IDs and injects that scope into Resources, so Resources does not depend on
+Shares internals.
+
+Preserved behavior:
+
+- resource type/content-type aliases;
+- folder/parent aliases;
+- sort keys and order validation;
+- pagination and total pages;
+- active-only filtering;
+- enabled-root publication scope;
+- root-vs-child folder filtering semantics;
+- public DTOs do not expose storage paths.
+
+### R3b — detail/publication-scope boundary
+
+Next, move resource detail and folder detail SQL queries behind Resources while
+introducing an explicit publication-scope contract instead of importing
+`shares.service` inside Resources.
+
+### R3c — browse aggregation and legacy serializer cleanup
+
+Move resource-facing parts of `routers/browse.py` and retire
+`services/resources.py` once all callers use module-owned views.
 
 ## R4 — Preview and delivery separation
 

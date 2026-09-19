@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, desc, func, or_, select
 
 from ..models import Folder, Resource
+from ..modules.resources.api.queries import resource_queries
 from ..office import OfficePreviewError, ensure_preview_cached, office_cache_filename, render_pdf_pages
 from ..preview import PreviewError, create_preview_ticket, load_text_preview, preview_capability
 from ..schemas import (
@@ -41,26 +42,21 @@ async def resources(
 
     selected_type = resource_type or content_type
     selected_folder = folder_id or parent_id
-    sort_columns = {"name": Resource.name, "modified_at": Resource.modified_at, "modified": Resource.modified_at, "size": Resource.size}
-    if sort not in sort_columns or order not in {"asc", "desc"}:
+    if sort not in {"name", "modified_at", "modified", "size"} or order not in {"asc", "desc"}:
         raise HTTPException(400, {"code": "API-001", "message": "排序参数无效"})
+
     async with IndexSession() as session, StateSession() as state:
         enabled_ids = await enabled_root_ids(state)
-        scope_filter = Resource.root_mapping_id.in_(enabled_ids) if enabled_ids else False
-        query = select(Resource).where(Resource.status == "active", scope_filter)
-        count_query = select(func.count()).select_from(Resource).where(Resource.status == "active", scope_filter)
-        if selected_type:
-            query = query.where(Resource.content_type == selected_type)
-            count_query = count_query.where(Resource.content_type == selected_type)
-        if selected_folder:
-            query = query.where(Resource.parent_id == selected_folder)
-            count_query = count_query.where(Resource.parent_id == selected_folder)
-        order_by = sort_columns[sort].asc() if order == "asc" else sort_columns[sort].desc()
-        total = int(await session.scalar(count_query) or 0)
-        rows = list((await session.scalars(query.order_by(order_by, Resource.id).offset((page - 1) * page_size).limit(page_size))).all())
-        parent_ids = {row.parent_id for row in rows if row.parent_id}
-        parents = {row.id: row for row in (await session.scalars(select(Folder).where(Folder.id.in_(parent_ids), Folder.status == "active"))).all()} if parent_ids else {}
-        return {"items": [resource_dict(row, parents.get(row.parent_id or "")) for row in rows], "total": total, "page": page, "page_size": page_size, "total_pages": math.ceil(total / page_size) if total else 0}
+        page_view = await resource_queries(session).list_resources(
+            enabled_root_ids=enabled_ids,
+            content_type=selected_type,
+            parent_id=selected_folder,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            order=order,
+        )
+        return page_view.to_dict()
 
 
 @router.get("/api/resources/{resource_id}", response_model=ResourceDetailOutput)
@@ -170,15 +166,13 @@ async def folders(content_type: str | None = None, parent_id: str | None = None)
 
     async with IndexSession() as session, StateSession() as state:
         enabled_ids = await enabled_root_ids(state)
-        if not enabled_ids:
-            return {"items": []}
-        query = select(Folder).where(Folder.status == "active", Folder.root_mapping_id.in_(enabled_ids))
-        if content_type:
-            query = query.where(Folder.content_type == content_type)
-        if parent_id is not None:
-            query = query.where(Folder.parent_id == (parent_id or None))
-        rows = list((await session.scalars(query.order_by(Folder.depth, Folder.name))).all())
-        return {"items": [folder_dict(row) for row in rows]}
+        items = await resource_queries(session).list_folders(
+            enabled_root_ids=enabled_ids,
+            content_type=content_type,
+            parent_id=parent_id,
+            parent_filter_supplied=parent_id is not None,
+        )
+        return {"items": [item.to_dict() for item in items]}
 
 
 @router.get("/api/folders/{folder_id}", response_model=FolderDetailOutput)
