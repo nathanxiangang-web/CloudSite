@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Database, Folder, RefreshCw, Search, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { api, Folder as FolderType } from "@/lib/api";
@@ -83,25 +84,35 @@ export default function IndexPage() {
   const filtered = (folders.data?.items ?? []).filter((item) => `${item.name} ${item.path}`.toLowerCase().includes(filter.toLowerCase()));
   const latest = summary.data?.latest_sync;
   const syncing = summary.data?.syncing ?? false;
+  const summaryLoading = summary.isLoading && !summary.data;
+  const summaryUnavailable = Boolean(summary.error) && !summary.data;
+  const resourceCountText = summary.data ? String(summary.data.resources) : summaryLoading ? "…" : "不可用";
+  const folderCountText = summary.data ? String(summary.data.folders) : summaryLoading ? "…" : "不可用";
+  const enabledMappings = mappings.data?.items.filter((item) => item.enabled) ?? [];
+  const noEnabledMappings = Boolean(mappings.data) && enabledMappings.length === 0;
   const toggle = (id: string) => setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
-  const syncStatusIcon = syncing ? <Loader2 className="spin" /> : latest?.status === "success" ? <CheckCircle2 className="ok" /> : latest?.status === "failed" ? <AlertTriangle className="warn" /> : <Database />;
-  const syncStatusText = syncing ? "进行中" : latest ? labelOf(runStatusLabel, latest.status) : "未运行";
-  const syncDetail = latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing && latest ? `${latest.roots_completed} / ${latest.roots_total} 根目录 · ${latest.resources_scanned} 资源 · ${(latest.duration_ms / 1000).toFixed(0)}s` : "";
+  const syncStatusIcon = summaryLoading ? <Loader2 className="spin" /> : summaryUnavailable ? <AlertTriangle className="warn" /> : syncing ? <Loader2 className="spin" /> : latest?.status === "success" ? <CheckCircle2 className="ok" /> : latest?.status === "failed" ? <AlertTriangle className="warn" /> : <Database />;
+  const syncStatusText = summaryLoading ? "读取中" : summaryUnavailable ? "不可用" : syncing ? "进行中" : latest ? labelOf(runStatusLabel, latest.status) : "未运行";
+  const syncDetail = summaryUnavailable ? "索引摘要请求失败" : latest?.status === "failed" && latest.error_message ? latest.error_message : latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing && latest ? `${latest.roots_completed} / ${latest.roots_total} 根目录 · ${latest.resources_scanned} 资源 · ${(latest.duration_ms / 1000).toFixed(0)}s` : "";
 
   return <AdminShell title="内容索引"><div className="admin-page index-admin-page">
     {summary.error && <p className="form-error">索引摘要加载失败：{summary.error.message} <button type="button" onClick={() => summary.refetch()}>重试</button></p>}
     <section className="index-summary-grid">
-      <article><Database /><span><small>索引资源</small><strong>{summary.data?.resources ?? 0}</strong></span></article>
-      <article><Folder /><span><small>目录数量</small><strong>{summary.data?.folders ?? 0}</strong></span></article>
+      <article><Database /><span><small>索引资源</small><strong>{resourceCountText}</strong></span></article>
+      <article><Folder /><span><small>目录数量</small><strong>{folderCountText}</strong></span></article>
       <article>{syncStatusIcon}<span><small>最近同步</small><strong>{syncStatusText}</strong><small>{syncDetail}</small></span></article>
     </section>
     <section className="panel index-control-panel">
       <div className="index-control-info"><h2>Indexing v2</h2><p>扫描 AList 目录并同步到索引数据库</p></div>
       <div className="index-actions">
-        {syncing ? <button type="button" className="danger" disabled={cancelSync.isPending} onClick={() => cancelSync.mutate()}><AlertTriangle />取消同步</button> : <button type="button" className="primary" disabled={sync.isPending} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>}
+        {noEnabledMappings
+          ? <Link className="button primary" href="/admin/system">先配置内容根目录</Link>
+          : syncing
+            ? <button type="button" className="danger" disabled={cancelSync.isPending} onClick={() => cancelSync.mutate()}><AlertTriangle />取消同步</button>
+            : <button type="button" className="primary" disabled={sync.isPending || mappings.isLoading || Boolean(mappings.error)} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>}
       </div>
-      {sync.error && <p className="form-error">{sync.error.message}</p>}
+      {(sync.error || cancelSync.error) && <p className="form-error">{(sync.error || cancelSync.error)?.message}</p>}
       {syncing && latest && <div className="sync-progress-bar"><div className="sync-progress-info"><span>{latest.current_path ? `扫描中：${latest.current_path}` : "处理中…"}</span><span>{latest.roots_completed} / {latest.roots_total} 根目录 · {latest.resources_scanned} 资源</span></div></div>}
     </section>
     <section className="index-workspace">
@@ -109,7 +120,7 @@ export default function IndexPage() {
         <div className="panel-toolbar"><div><h2>目录树</h2><p>{mappings.isLoading ? "正在读取内容根目录…" : mappings.error ? `根目录配置读取失败：${mappings.error.message}` : mappings.data?.items.filter((item) => item.enabled).map((item) => `${item.display_name} ${item.alist_path}`).join(" · ") || "尚未配置内容根目录"}</p></div><label className="small-search"><Search /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="筛选已索引目录" /></label></div>
         <div className="folder-tree">{folders.isLoading ? <div className="loading">正在读取目录树…</div> : folders.error ? <div className="empty error-state">目录树加载失败：{folders.error.message}<button type="button" onClick={() => folders.refetch()}>重试</button></div> : filter ? filtered.map((item) => <button type="button" className={selectedId === item.id ? "filter-result selected" : "filter-result"} key={item.id} onClick={() => setSelectedId(item.id)}><Folder /><span><strong>{item.name}</strong><small>{item.path}</small></span></button>) : roots.length ? <ul>{roots.map((root) => <TreeNode key={root.id} node={root} childrenByParent={childrenByParent} expanded={expanded} selectedId={selectedId} toggle={toggle} select={setSelectedId} />)}</ul> : <div className="empty">暂无索引目录，请先配置映射并执行同步。</div>}</div>
       </article>
-      <aside className="panel folder-detail-panel"><h2>目录详情</h2>{!selectedId ? <div className="empty compact">从左侧选择目录查看详情</div> : detail.isLoading ? <div className="loading">正在读取目录详情…</div> : detail.error ? <div className="empty error-state">目录详情加载失败：{detail.error.message}<button type="button" onClick={() => detail.refetch()}>重试</button></div> : detail.data ? <dl><div><dt>名称</dt><dd>{detail.data.name}</dd></div><div><dt>真实路径</dt><dd>{detail.data.path}</dd></div><div><dt>内容类型</dt><dd>{typeNames[detail.data.content_type] ?? detail.data.content_type}</dd></div><div><dt>目录深度</dt><dd>{detail.data.depth}</dd></div><div><dt>子目录</dt><dd>{detail.data.child_folder_count}</dd></div><div><dt>直接资源</dt><dd>{detail.data.direct_resource_count}</dd></div><div><dt>最近修改</dt><dd>{detail.data.modified_at ? new Date(detail.data.modified_at).toLocaleString("zh-CN") : "上游未提供"}</dd></div><div><dt>索引状态</dt><dd className="ok-text">已激活</dd></div></dl> : null}</aside>
+      <aside className="panel folder-detail-panel"><h2>目录详情</h2>{!selectedId ? <div className="empty compact">从左侧选择目录查看详情</div> : detail.isLoading ? <div className="loading">正在读取目录详情…</div> : detail.error ? <div className="empty error-state">目录详情加载失败：{detail.error.message}<button type="button" onClick={() => detail.refetch()}>重试</button></div> : detail.data ? <dl><div><dt>名称</dt><dd>{detail.data.name}</dd></div><div><dt>真实路径</dt><dd>{detail.data.path}</dd></div><div><dt>内容类型</dt><dd>{typeNames[detail.data.content_type] ?? detail.data.content_type}</dd></div><div><dt>目录深度</dt><dd>{detail.data.depth}</dd></div><div><dt>子目录</dt><dd>{detail.data.child_folder_count}</dd></div><div><dt>直接资源</dt><dd>{detail.data.direct_resource_count}</dd></div><div><dt>最近修改</dt><dd>{detail.data.modified_at ? new Date(detail.data.modified_at).toLocaleString("zh-CN") : "上游未提供"}</dd></div><div><dt>索引状态</dt><dd>已索引</dd></div></dl> : null}</aside>
     </section>
 
   </div></AdminShell>;
