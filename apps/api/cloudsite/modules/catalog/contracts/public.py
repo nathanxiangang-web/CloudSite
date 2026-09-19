@@ -15,6 +15,10 @@ from ..application.automation_facade import (
     list_automation_revisions,
     revert_automation_target,
 )
+from ..application.browse_facade import (
+    BrowseCatalogEntryView,
+    published_browse_entries,
+)
 from ..application.collection_facade import (
     CatalogCollectionEntryView,
     collection_entry_references,
@@ -93,5 +97,7 @@ __all__ = [
     "public_catalog_asset_view",
     "CatalogCollectionEntryView",
     "collection_entry_references",
+    "BrowseCatalogEntryView",
+    "published_browse_entries",
 ]
 

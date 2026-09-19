@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from ..application.provider_service import (
+    ContentRootView,
     ProviderLoginTarget,
     connection_admin_username,
     connection_login_target,
+    enabled_content_roots,
     enabled_root_ids,
 )
 from ..domain.capabilities import (
@@ -35,12 +37,14 @@ from ..infrastructure.registry import (
 )
 
 __all__ = [
+    "ContentRootView",
     "StorageProvider",
     "ProviderRuntimePort",
     "ProviderEntry",
     "ProviderUnavailableError",
     "ProviderAccessError",
     "provider_runtime",
+    "enabled_content_roots",
     "enabled_root_ids",
     "ProviderLoginTarget",
     "connection_admin_username",

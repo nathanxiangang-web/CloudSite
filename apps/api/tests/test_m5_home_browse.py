@@ -118,6 +118,7 @@ async def _setup_home_store(monkeypatch, *, popular_strategy: str = "recent"):
     async with index_factory() as index:
         index.add(Resource(id="r_small_new", name="small-new.zip", path="/software/small-new.zip", parent_id=None, content_type="software", root_mapping_id=1, extension="zip", mime_type="application/zip", size=100, status="active"))
         index.add(Resource(id="r_big_old", name="big-old.iso", path="/software/big-old.iso", parent_id=None, content_type="software", root_mapping_id=1, extension="iso", mime_type="application/x-iso", size=999999, status="active"))
+        index.add(Resource(id="r_missing", name="missing.zip", path="/software/missing.zip", parent_id=None, content_type="software", root_mapping_id=1, extension="zip", mime_type="application/zip", size=5, status="missing"))
         await index.commit()
     return state_engine, index_engine, user_token
 
@@ -219,6 +220,23 @@ async def test_browse_empty_type_returns_zero(monkeypatch):
             body = resp.json()
             assert body["total"] == 0
             assert body["items"] == []
+    finally:
+        await state_engine.dispose()
+        await index_engine.dispose()
+
+
+async def test_browse_preserves_status_filter(monkeypatch):
+    """/api/browse keeps the legacy arbitrary status filter semantics."""
+    state_engine, index_engine, user_token = await _setup_home_store(monkeypatch)
+    try:
+        async with _client(user_token) as client:
+            resp = await client.get("/api/browse?status=missing")
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            assert body["status"] == "missing"
+            assert body["total"] == 1
+            assert [item["id"] for item in body["items"]] == ["r_missing"]
+            assert body["counts"]["software"] == 1
     finally:
         await state_engine.dispose()
         await index_engine.dispose()
