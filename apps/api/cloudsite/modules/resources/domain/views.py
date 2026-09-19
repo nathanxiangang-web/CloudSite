@@ -80,6 +80,17 @@ class CatalogResourceView:
     root_mapping_id: int | None
     content_type: str
 
+@dataclass(frozen=True, slots=True)
+class ParserResourceView:
+    """Persistence-neutral resource input exposed to Automation parsers."""
+
+    id: str
+    name: str
+    path: str
+    extension: str
+    mime_type: str
+    status: str
+
 
 @dataclass(frozen=True, slots=True)
 class ResourcePreviewView:
@@ -170,6 +181,7 @@ __all__ = [
     "FolderDetailView",
     "FolderSummaryView",
     "ParentSummaryView",
+    "ParserResourceView",
     "ResourceDetailView",
     "ResourceDownloadView",
     "ResourcePageView",
