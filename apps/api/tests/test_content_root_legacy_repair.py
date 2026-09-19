@@ -124,7 +124,7 @@ async def test_legacy_v24_column_unique_repaired(tmp_path, monkeypatch):
     state_engine, index_engine = await _init_with_engines(tmp_path, monkeypatch)
 
     async with state_engine.connect() as conn:
-        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION == 29
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
         legacy = await detect_legacy_alist_path_auto_index(conn)
         assert legacy is None, "legacy auto-index survived v24->v25 upgrade"
 
