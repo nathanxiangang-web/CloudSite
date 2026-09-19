@@ -27,6 +27,7 @@ from cloudsite.services.catalog import (
     CatalogSlugConflict,
     DEFAULT_RELEASE_SLUG,
     attach_catalog_location,
+    count_catalog_entries,
     create_catalog_asset,
     create_catalog_entry,
     get_catalog_entry,
@@ -107,6 +108,9 @@ async def test_create_retry_is_idempotent_and_slug_conflict(tmp_path, monkeypatc
 
         entries = await list_catalog_entries(state, content_type="software")
         assert len(entries) == 1
+        assert await count_catalog_entries(state, content_type="software") == 1
+        assert await count_catalog_entries(state, status="draft") == 1
+        assert await count_catalog_entries(state, status="published") == 0
 
         with pytest.raises(CatalogSlugConflict):
             await create_catalog_entry(
