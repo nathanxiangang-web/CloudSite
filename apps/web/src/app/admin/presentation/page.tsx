@@ -129,7 +129,11 @@ export default function PresentationPage() {
     save.mutate();
   }
 
-  const enabled = presentation.data?.enabled ?? false;
+  if (presentation.isLoading) return <AdminShell title="站点呈现"><div className="panel loading">正在加载站点呈现配置…</div></AdminShell>;
+  if (presentation.error) return <AdminShell title="站点呈现"><div className="panel empty error-state">站点呈现配置加载失败：{presentation.error.message}<button type="button" onClick={() => presentation.refetch()}>重试</button></div></AdminShell>;
+  if (!presentation.data) return null;
+
+  const enabled = presentation.data.enabled;
   const orderedPreview = [...blocks].filter((b) => b.enabled).sort((a, b) => a.sort_order - b.sort_order);
 
   return <AdminShell title="站点呈现"><div className="admin-page">
