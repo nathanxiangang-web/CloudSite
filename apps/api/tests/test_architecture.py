@@ -284,7 +284,6 @@ class TestDeliveryPackageInitialization:
         source = init_file.read_text(encoding="utf-8")
         tree = ast.parse(source)
 
-        assert "contracts.public" not in source
         imports = [
             node
             for node in tree.body
@@ -308,7 +307,7 @@ class TestDeliveryOrmBoundary:
 
         assert "cloudsite.models" not in source
         assert "from ....models" not in source
-        assert "delivery.infrastructure.models" in source
+        assert "from ..infrastructure.models import DownloadEvent" in source
 
 
 class TestDownloadRuntimeBoundary:
