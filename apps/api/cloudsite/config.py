@@ -30,11 +30,6 @@ class Settings(BaseSettings):
     sync_mass_change_ratio: float = 0.10
     sync_max_item_attempts: int = 6
 
-    # C7/C11: 索引引擎。"v2" 使用 modules/indexing 的
-    # ScanCategoryService + ReconcileService 写入 folders/resources 表。
-    # 环境变量 CLOUDSITE_INDEXING_ENGINE 控制。默认 v2。
-    indexing_engine: str = "v2"
-
     # C9: 独立 Worker 进程配置。Worker 从 DB 队列租约并执行任务，
     # 与 API 进程解耦。环境变量 CLOUDSITE_WORKER_* 控制。
     worker_queue: str = "default"
@@ -45,12 +40,6 @@ class Settings(BaseSettings):
     # organization. Zero disables user-controlled organization actions.
     organizer_user_id: int = 0
     organizer_move_enabled: bool = False
-
-    # Non-secret administrator session epoch. Later login/middleware code compares
-    # AdminSession.epoch against this value and rejects sessions with an older epoch.
-    # Increment during security upgrades or administrator rebind to invalidate all
-    # existing administrator sessions without rotating secrets. Default 1.
-    admin_session_epoch: int = 1
 
     # D2: 启动时幂等注入默认任务型专题种子（生产默认开启，测试在 conftest 关闭）。
     seed_default_collections: bool = True
