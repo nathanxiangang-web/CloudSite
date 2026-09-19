@@ -102,12 +102,24 @@ async def test_storage_info_fails_gracefully_when_alist_offline(monkeypatch):
     """AList 不可用时，storage info 优雅降级。"""
     state_engine, index_engine, token = await _alist_offline_store(monkeypatch)
 
-    # Mock AList 连接失败
-    async def failing_client(*_args, **_kwargs):
-        raise Exception("connection refused")
+    # Mock AList 连接失败 at the Providers owner boundary.
+    from cloudsite.modules.providers.application import provider_service
+    from cloudsite.routers import home as home_router
 
-    monkeypatch.setattr(main, "AListClient", failing_client)
-    monkeypatch.setattr(main, "_storage_info_cache", {"data": None, "fetched_at": 0.0})
+    class FailingClient:
+        def __init__(self, *_args, **_kwargs):
+            raise Exception("connection refused")
+
+    monkeypatch.setattr(
+        provider_service,
+        "AListClient",
+        FailingClient,
+    )
+    monkeypatch.setattr(
+        home_router,
+        "_storage_info_cache",
+        {"data": None, "fetched_at": 0.0},
+    )
 
     transport = httpx.ASGITransport(app=main.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
