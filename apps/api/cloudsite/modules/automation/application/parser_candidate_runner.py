@@ -24,7 +24,7 @@ class ParserCandidateRunResult:
     error: str | None
 
 
-def parser_input_fingerprint(resource: Resource) -> str:
+def parser_input_fingerprint(resource: ParserResourceView) -> str:
     """Fingerprint only the indexed fields consumed by the deterministic parser."""
 
     value = json.dumps(
