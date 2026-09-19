@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..infrastructure.models import AListConnection, ContentRootMapping
 from ..domain.delta import resolve_sync_strategy
 from ..infrastructure.registry import registry
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderLoginTarget:
+    """Minimal provider state needed by the admin credential check."""
+
+    base_url: str
+
+
+async def connection_login_target(
+    session: AsyncSession,
+) -> ProviderLoginTarget | None:
+    connection = await session.get(AListConnection, 1)
+    if connection is None:
+        return None
+    return ProviderLoginTarget(base_url=connection.base_url)
 
 
 async def provider_info(session: AsyncSession) -> dict:
@@ -48,4 +66,4 @@ async def enabled_root_ids(session: AsyncSession) -> set[int]:
     )
 
 
-__all__ = ["provider_info", "enabled_root_ids"]
+__all__ = ["ProviderLoginTarget", "connection_login_target", "provider_info", "enabled_root_ids"]
