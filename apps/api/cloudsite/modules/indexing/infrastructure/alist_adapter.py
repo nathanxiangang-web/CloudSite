@@ -7,17 +7,56 @@ inside Indexing before crossing the Resources contract boundary.
 """
 from __future__ import annotations
 
+import hashlib
 import mimetypes
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any, Protocol
 
 from cloudsite.alist import AListClient
-from cloudsite.indexer import normalize_path, join_path, should_ignore, stable_id, parse_time
 
 from ..domain.inspection import InspectionRequest, InspectionResult
 from ..domain.snapshot import SnapshotEntry
 from .provider_adapter import ProviderCapabilities
+
+
+def _normalize_path(value: str) -> str:
+    path = str(value or "").strip().replace("\\", "/")
+    path = re.sub(r"/+", "/", f"/{path.lstrip('/')}")
+    return path.rstrip("/") or "/"
+
+
+def _stable_id(kind: str, path: str) -> str:
+    normalized = _normalize_path(path)
+    prefix = "f_" if kind == "folder" else "r_"
+    digest = hashlib.sha256(
+        f"{kind}:{normalized}".encode("utf-8")
+    ).hexdigest()[:32]
+    return prefix + digest
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _join_path(parent: str, name: str) -> str:
+    return _normalize_path(
+        f"{_normalize_path(parent)}/{str(name).strip('/')}"
+    )
+
+
+def _should_ignore(path: str) -> bool:
+    return any(
+        part == ".cloudsite"
+        for part in PurePosixPath(_normalize_path(path)).parts
+    )
 
 
 class ContentRootView(Protocol):
@@ -32,7 +71,7 @@ class AListProviderAdapter:
 
     def __init__(self, client: AListClient, roots: list[ContentRootView]) -> None:
         self._client = client
-        self._roots = {root.content_type: root for root in roots}
+        self._roots = {f"root:{root.id}": root for root in roots}
 
     @property
     def provider_id(self) -> str:
@@ -60,8 +99,8 @@ class AListProviderAdapter:
             return [], None, True
 
         entries: list[SnapshotEntry] = []
-        root_path = normalize_path(root.alist_path)
-        root_id = stable_id("folder", root_path)
+        root_path = _normalize_path(root.alist_path)
+        root_id = _stable_id("folder", root_path)
         entries.append(self._make_entry(
             resource_id=root_id,
             path=root_path,
@@ -82,14 +121,14 @@ class AListProviderAdapter:
                 name = str(item.get("name") or "").strip()
                 if not name:
                     continue
-                item_path = join_path(current_path, name)
-                if should_ignore(item_path):
+                item_path = _join_path(current_path, name)
+                if _should_ignore(item_path):
                     continue
                 is_dir = bool(item.get("is_dir"))
-                modified = parse_time(item.get("modified") or item.get("updated_at"))
+                modified = _parse_time(item.get("modified") or item.get("updated_at"))
                 kind = "folder" if is_dir else "resource"
                 entry = self._make_entry(
-                    resource_id=stable_id(kind, item_path),
+                    resource_id=_stable_id(kind, item_path),
                     path=item_path,
                     name=name,
                     is_dir=is_dir,
@@ -111,7 +150,7 @@ class AListProviderAdapter:
             path=request.path,
             name=info.get("name", ""),
             size=info.get("size"),
-            modified_at=parse_time(info.get("modified")),
+            modified_at=_parse_time(info.get("modified")),
             metadata=info,
         )
 
@@ -144,7 +183,7 @@ class AListProviderAdapter:
                 "content_type": root.content_type,
                 "root_mapping_id": root.id,
                 "parent_path": parent_path,
-                "parent_id": stable_id("folder", parent_path) if parent_path else None,
+                "parent_id": _stable_id("folder", parent_path) if parent_path else None,
                 "extension": ext,
                 "mime_type": mime,
                 "thumbnail": str(item.get("thumb") or item.get("thumbnail") or ""),

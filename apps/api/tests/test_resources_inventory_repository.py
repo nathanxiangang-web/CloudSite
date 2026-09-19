@@ -103,3 +103,50 @@ async def test_resource_inventory_repository_does_not_commit_caller_transaction(
         assert await session.get(Resource, "r_pending") is None
 
     await engine.dispose()
+
+
+async def test_resource_inventory_repository_root_scope_isolates_same_content_type():
+    engine, factory = await _factory()
+
+    async with factory() as session:
+        repository = SqlAlchemyResourceInventoryRepository(session)
+        await repository.upsert(
+            [
+                ResourceInventoryRecord(
+                    resource_id="r_root_1",
+                    category_id="root:1",
+                    provider_id="generic_alist",
+                    path="/apps-a/package.zip",
+                    name="package.zip",
+                    size=1,
+                    content_type="software",
+                    root_mapping_id=1,
+                ),
+                ResourceInventoryRecord(
+                    resource_id="r_root_2",
+                    category_id="root:2",
+                    provider_id="generic_alist",
+                    path="/apps-b/package.zip",
+                    name="package.zip",
+                    size=2,
+                    content_type="software",
+                    root_mapping_id=2,
+                ),
+            ]
+        )
+
+        first = await repository.list_indexed(
+            category_id="root:1",
+            provider_id="generic_alist",
+        )
+        second = await repository.list_indexed(
+            category_id="root:2",
+            provider_id="generic_alist",
+        )
+
+        assert [record.resource_id for record in first] == ["r_root_1"]
+        assert [record.resource_id for record in second] == ["r_root_2"]
+        assert first[0].content_type == "software"
+        assert second[0].content_type == "software"
+
+    await engine.dispose()
