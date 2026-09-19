@@ -22,6 +22,7 @@ from ..domain.views import (
     ResourceDownloadView,
     ResourcePageView,
     ResourcePreviewView,
+    ResourceReferenceView,
     ResourceSummaryView,
 )
 from .models import Folder, Resource
@@ -153,6 +154,36 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             )
             for row in rows
         ]
+
+    async def resource_references(
+        self,
+        *,
+        resource_ids: list[str],
+    ) -> dict[str, ResourceReferenceView]:
+        if not resource_ids:
+            return {}
+        rows = list(
+            (
+                await self._session.scalars(
+                    select(Resource).where(Resource.id.in_(resource_ids))
+                )
+            ).all()
+        )
+        return {
+            row.id: ResourceReferenceView(
+                id=row.id,
+                name=row.name,
+                parent_id=row.parent_id,
+                content_type=row.content_type,
+                extension=row.extension,
+                mime_type=row.mime_type,
+                size=row.size,
+                modified_at=row.modified_at,
+                status=row.status,
+                root_mapping_id=row.root_mapping_id,
+            )
+            for row in rows
+        }
 
     async def list_resources(
         self,

@@ -13,6 +13,7 @@ from ..domain.views import (
     ResourceDownloadView,
     ResourcePageView,
     ResourcePreviewView,
+    ResourceReferenceView,
 )
 
 
@@ -36,6 +37,12 @@ class ResourceQueryRepository(Protocol):
         content_type: str | None,
         limit: int,
     ) -> list[ParserResourceView]: ...
+
+    async def resource_references(
+        self,
+        *,
+        resource_ids: list[str],
+    ) -> dict[str, ResourceReferenceView]: ...
 
     async def list_resources(
         self,
@@ -122,6 +129,15 @@ class ResourceQueries:
         return await self._repository.list_parser_resources(
             content_type=content_type,
             limit=max(int(limit), 0),
+        )
+
+    async def resource_references(
+        self,
+        *,
+        resource_ids: list[str],
+    ) -> dict[str, ResourceReferenceView]:
+        return await self._repository.resource_references(
+            resource_ids=list(dict.fromkeys(resource_ids)),
         )
 
     async def list_resources(

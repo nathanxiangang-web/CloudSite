@@ -80,7 +80,19 @@ collections when a collection is shared.
 
 ## Current Migration Status
 
-Code is currently in `services/collections.py` and
-`services/collection_seeds.py`. These move to `modules/collections/` in Phase
-3. The module skeleton exists with empty layers. Topic and seed tables will be
-defined in the module's own migrations during the move.
+Collections is now **partial** rather than a skeleton.
+
+- `Collection` and `CollectionItem` ORM declarations are module-owned in
+  `infrastructure/models.py`; `cloudsite.models` keeps exact compatibility
+  re-exports.
+- Public/admin list, detail, CRUD, and replace-items workflows live in
+  `application/service.py` and are exported through `contracts/public.py`.
+- Resource references are resolved through the Resources contract.
+- Catalog entry references are resolved through the Catalog contract.
+- Enabled publication roots are resolved through the Providers contract.
+- `services/collections.py` is a compatibility shim only.
+- Both public and admin Collections routers contain no direct ORM/SQLAlchemy
+  access.
+
+Collection topic/seed helpers remain legacy follow-up work and are not part of
+this slice.

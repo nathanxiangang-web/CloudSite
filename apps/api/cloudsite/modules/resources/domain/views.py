@@ -99,6 +99,22 @@ class ParserResourceView:
 
 
 @dataclass(frozen=True, slots=True)
+class ResourceReferenceView:
+    """Batch-safe resource metadata for cross-module references."""
+
+    id: str
+    name: str
+    parent_id: str | None
+    content_type: str
+    extension: str
+    mime_type: str
+    size: int
+    modified_at: datetime | None
+    status: str
+    root_mapping_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class ResourcePreviewView:
     """Internal preview input. Storage path is never serialized to API output."""
 
@@ -192,5 +208,6 @@ __all__ = [
     "ResourceDownloadView",
     "ResourcePageView",
     "ResourcePreviewView",
+    "ResourceReferenceView",
     "ResourceSummaryView",
 ]
