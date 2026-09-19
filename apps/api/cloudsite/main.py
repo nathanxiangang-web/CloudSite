@@ -1,3 +1,4 @@
+from .site import admin_site_settings_payload as site_settings_dict
 """CloudSite API 应用入口。
 
 本模块仅负责组装 FastAPI 应用：注册生命周期、中间件、异常处理器与路由。
