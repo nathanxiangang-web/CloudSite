@@ -10,7 +10,7 @@ from cloudsite.models import SystemSetting
 from cloudsite.modules.indexing.infrastructure.legacy_bridge import (
     _update_v2_sync_status,
 )
-from cloudsite.modules.indexing.contracts.public import v2_sync_due
+from cloudsite.modules.indexing.infrastructure.status_store import v2_sync_due
 from cloudsite.platform.db import StateBase
 
 
