@@ -15,7 +15,7 @@ import { PublicShell } from "@/components/PublicShell";
 import { ResourceCard } from "@/components/ResourceCard";
 import { ShareDialog } from "@/components/ShareDialog";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
-import { api, formatBytes, PreviewCapability, Resource } from "@/lib/api";
+import { api, ApiError, formatBytes, PreviewCapability, Resource } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 type ResourceDetail = Resource & { breadcrumbs: Array<{ id: string; name: string }>; related: Resource[]; capabilities: PreviewCapability; previous: Resource | null; next: Resource | null };
@@ -49,7 +49,10 @@ export default function ResourceDetailPage() {
   }, [item, auth.data?.authenticated]);
 
   if (query.isLoading) return <PublicShell><div className="page loading">正在加载资源…</div></PublicShell>;
-  if (query.error) return <PublicShell><div className="page state-page"><strong>404</strong><h1>资源不可用</h1><p>{query.error.message}</p><Link href="/">返回首页</Link></div></PublicShell>;
+  if (query.error) {
+    const notFound = query.error instanceof ApiError && query.error.status === 404;
+    return <PublicShell><div className={`page state-page${notFound ? "" : " error-state"}`}><strong>{notFound ? "404" : "加载失败"}</strong><h1>{notFound ? "资源不可用" : "资源暂时无法加载"}</h1><p>{notFound ? query.error.message : `详情请求失败：${query.error.message}`}</p>{notFound ? <Link href="/">返回首页</Link> : <button type="button" onClick={() => query.refetch()}>重试</button>}</div></PublicShell>;
+  }
   if (!item) return null;
   const Icon = detailIcons[item.content_type as keyof typeof detailIcons] || File;
   const isSoftware = item.content_type === "software";

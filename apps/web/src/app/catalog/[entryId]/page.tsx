@@ -21,14 +21,17 @@ import {
   type CatalogAssetSummary,
 } from "@/lib/catalog";
 import { catalogAssetDownloadPath, fetchCatalogEntry, fetchCatalogRelease } from "@/lib/catalog-client";
-import { formatBytes } from "@/lib/api";
+import { ApiError, formatBytes } from "@/lib/api";
 
 export default function CatalogEntryPage() {
   const { entryId } = useParams<{ entryId: string }>();
   const entry = useQuery({ queryKey: ["catalog-entry", entryId], queryFn: () => fetchCatalogEntry(entryId) });
 
   if (entry.isLoading) return <PublicShell><div className="page loading">正在加载目录条目…</div></PublicShell>;
-  if (entry.error) return <PublicShell><div className="page state-page"><strong>404</strong><h1>条目不可见</h1><p>{entry.error.message}</p><Link href="/catalog">返回目录</Link></div></PublicShell>;
+  if (entry.error) {
+    const notFound = entry.error instanceof ApiError && entry.error.status === 404;
+    return <PublicShell><div className={`page state-page${notFound ? "" : " error-state"}`}><strong>{notFound ? "404" : "加载失败"}</strong><h1>{notFound ? "条目不可见" : "目录条目暂时不可用"}</h1><p>{entry.error.message}</p>{notFound ? <Link href="/catalog">返回目录</Link> : <button type="button" onClick={() => entry.refetch()}>重试</button>}</div></PublicShell>;
+  }
   if (!entry.data) return null;
 
   const data = entry.data;
