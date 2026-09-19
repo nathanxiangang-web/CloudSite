@@ -66,4 +66,35 @@ async def published_browse_entries(
     ]
 
 
-__all__ = ["BrowseCatalogEntryView", "published_browse_entries"]
+async def featured_cover_resource_ids(
+    state: AsyncSession,
+    *,
+    limit: int,
+) -> list[str]:
+    """Published featured cover ids for Home popular-resource composition."""
+
+    rows = list(
+        (
+            await state.scalars(
+                select(CatalogEntry)
+                .where(
+                    CatalogEntry.featured.is_(True),
+                    CatalogEntry.status == "published",
+                )
+                .order_by(desc(CatalogEntry.published_at))
+                .limit(max(int(limit), 0))
+            )
+        ).all()
+    )
+    return [
+        row.cover_resource_id
+        for row in rows
+        if row.cover_resource_id
+    ]
+
+
+__all__ = [
+    "BrowseCatalogEntryView",
+    "published_browse_entries",
+    "featured_cover_resource_ids",
+]

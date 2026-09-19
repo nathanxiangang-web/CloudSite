@@ -30,6 +30,7 @@ from ..application.admin_facade import (
 )
 from ..application.browse_facade import (
     BrowseCatalogEntryView,
+    featured_cover_resource_ids,
     published_browse_entries,
 )
 from ..application.collection_facade import (
@@ -173,6 +174,7 @@ __all__ = [
     "CatalogCollectionEntryView",
     "collection_entry_references",
     "BrowseCatalogEntryView",
+    "featured_cover_resource_ids",
     "published_browse_entries",
     "CatalogPublicationNotFound",
     "CatalogPublicationNotPublic",

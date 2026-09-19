@@ -27,6 +27,7 @@ from ..application.provider_service import (
     enabled_root_ids,
     provider_info,
     provider_connected,
+    public_storage_info,
 )
 from ..domain.capabilities import (
     CAPABILITY_SCHEMA_VERSION,
@@ -68,6 +69,7 @@ __all__ = [
     "enabled_root_ids",
     "provider_info",
     "provider_connected",
+    "public_storage_info",
     "ProviderLoginTarget",
     "connection_admin_username",
     "connection_login_target",

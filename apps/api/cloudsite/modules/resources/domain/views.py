@@ -240,6 +240,20 @@ class ResourceDownloadView:
 
 
 @dataclass(frozen=True, slots=True)
+class HomeInventoryView:
+    """Persistence-neutral resource inventory projected for Home."""
+
+    recent: tuple[ResourceSummaryView, ...]
+    popular: tuple[ResourceSummaryView, ...]
+    counts: dict[str, int]
+    root_resource_counts: dict[int, int]
+    root_folder_counts: dict[int, int]
+    resource_count: int
+    folder_count: int
+    total_size: int
+
+
+@dataclass(frozen=True, slots=True)
 class ResourcePageView:
     items: tuple[ResourceSummaryView, ...]
     total: int
@@ -310,6 +324,7 @@ __all__ = [
     "CatalogResourceView",
     "FolderDetailView",
     "FolderSummaryView",
+    "HomeInventoryView",
     "ParentSummaryView",
     "ParserResourceView",
     "ResourceDetailView",

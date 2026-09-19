@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....alist import AListClient
+from ....crypto import decrypt_secret
+
 from ..infrastructure.models import AListConnection, ContentRootMapping
 from ..domain.delta import resolve_sync_strategy
 from ..infrastructure.registry import registry
@@ -86,6 +89,29 @@ async def provider_info(session: AsyncSession) -> dict:
     }
 
 
+async def public_storage_info(
+    session: AsyncSession,
+) -> dict:
+    """Graceful public storage summary without exposing connection ORM."""
+
+    connection = await session.get(AListConnection, 1)
+    if connection is None or not connection.enabled:
+        return {"primary": "网盘", "drives": []}
+
+    try:
+        password = decrypt_secret(connection.password_ciphertext)
+        async with AListClient(
+            connection.base_url,
+            connection.username,
+            password,
+        ) as client:
+            return await client.get_storage_info(
+                connection.base_path or ""
+            )
+    except Exception:
+        return {"primary": "网盘", "drives": []}
+
+
 async def enabled_content_roots(
     session: AsyncSession,
 ) -> list[ContentRootView]:
@@ -127,4 +153,4 @@ async def enabled_root_ids(session: AsyncSession) -> set[int]:
     )
 
 
-__all__ = ["ContentRootView", "ProviderLoginTarget", "connection_login_target", "connection_admin_username", "provider_info", "provider_connected", "enabled_content_roots", "enabled_root_ids"]
+__all__ = ["ContentRootView", "ProviderLoginTarget", "connection_login_target", "connection_admin_username", "provider_info", "provider_connected", "public_storage_info", "enabled_content_roots", "enabled_root_ids"]
