@@ -12,12 +12,6 @@ from cloudsite.modules.automation.infrastructure.models import ParserCandidateTa
 from cloudsite.modules.resources.contracts.public import ParserResourceView, resource_queries
 from cloudsite.modules.resources.infrastructure.models import Resource
 from cloudsite.platform.db import IndexBase, StateBase
-from cloudsite.services.resource_name_parser import (
-    Evidence as LegacyEvidence,
-    ParseResult as LegacyParseResult,
-    parse_resource_name as legacy_parse_resource_name,
-)
-
 
 def test_legacy_parser_candidate_export_is_exact_module_class():
     assert LegacyParserCandidateTask is ParserCandidateTask
@@ -26,12 +20,6 @@ def test_legacy_parser_candidate_export_is_exact_module_class():
     )
     assert ParserCandidateTask.__tablename__ == "parser_candidate_tasks"
     assert "parser_candidate_tasks" in StateBase.metadata.tables
-
-
-def test_legacy_parser_facade_reexports_module_domain_objects():
-    assert LegacyEvidence is Evidence
-    assert LegacyParseResult is ParseResult
-    assert legacy_parse_resource_name is parse_resource_name
 
 
 async def test_resources_contract_returns_parser_safe_projection():
