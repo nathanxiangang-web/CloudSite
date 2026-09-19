@@ -231,8 +231,8 @@ async def test_alist_adapter_keeps_same_type_roots_distinct() -> None:
     ]
     adapter = AListProviderAdapter(client, roots)
 
-    first, _, _ = await adapter.scan_category("11")
-    second, _, _ = await adapter.scan_category("12")
+    first, _, _ = await adapter.scan_category("root:11")
+    second, _, _ = await adapter.scan_category("root:12")
 
     assert client.paths == ["/apps-a", "/apps-b"]
     assert first[0].path == "/apps-a"
