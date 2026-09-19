@@ -13,7 +13,7 @@ from cloudsite.modules.providers.contracts.public import (
     admin_connection_settings,
     browse_admin_directories,
     save_admin_connection,
-    test_admin_connection as test_connection,
+    test_admin_connection as run_connection_test,
 )
 from cloudsite.modules.providers.infrastructure.models import AListConnection
 from cloudsite.platform.db import StateBase
@@ -71,7 +71,7 @@ async def test_admin_connection_lifecycle(monkeypatch):
         assert initial["connection_status"] == "unconfigured"
         assert initial["has_password"] is False
 
-        tested = await test_connection(
+        tested = await run_connection_test(
             state,
             base_url="https://alist.example.com",
             username="admin",
@@ -134,7 +134,7 @@ async def test_admin_connection_failure_persists_status_and_code(monkeypatch):
 
     async with factory() as state:
         with pytest.raises(ProviderAdminError) as exc_info:
-            await test_connection(
+            await run_connection_test(
                 state,
                 base_url="https://alist.example.com",
                 username="admin",
