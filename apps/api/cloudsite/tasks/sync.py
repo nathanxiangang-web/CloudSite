@@ -9,13 +9,22 @@ from contextlib import suppress
 
 from ..config import settings
 from ..modules.indexing.infrastructure.legacy_bridge import run_indexing_v2_production
+from ..modules.indexing.infrastructure.production_store import ProductionIndexingStore
+from ..modules.resources.infrastructure.inventory_repository import (
+    SqlAlchemyResourceInventoryRepository,
+)
+
+
+def _production_indexing_store(session):
+    resources = SqlAlchemyResourceInventoryRepository(session)
+    return ProductionIndexingStore(resources)
 
 
 async def _run_manual_sync_in_background(full: bool, force: bool) -> None:
     from cloudsite import main
 
     try:
-        await run_indexing_v2_production()
+        await run_indexing_v2_production(store_factory=_production_indexing_store)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -37,4 +46,4 @@ async def _safe_startup_sync():
     if not values["sync_on_startup"]:
         return
     with suppress(Exception):
-        await run_indexing_v2_production()
+        await run_indexing_v2_production(store_factory=_production_indexing_store)
