@@ -10,21 +10,27 @@ from __future__ import annotations
 import mimetypes
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Protocol
 
 from cloudsite.alist import AListClient
 from cloudsite.indexer import normalize_path, join_path, should_ignore, stable_id, parse_time
-from cloudsite.models import ContentRootMapping
 
 from ..domain.inspection import InspectionRequest, InspectionResult
 from ..domain.snapshot import SnapshotEntry
 from .provider_adapter import ProviderCapabilities
 
 
+class ContentRootView(Protocol):
+    id: int
+    content_type: str
+    alist_path: str
+    display_name: str
+
+
 class AListProviderAdapter:
     """Production ProviderAdapter backed by AListClient."""
 
-    def __init__(self, client: AListClient, roots: list[ContentRootMapping]) -> None:
+    def __init__(self, client: AListClient, roots: list[ContentRootView]) -> None:
         self._client = client
         self._roots = {root.content_type: root for root in roots}
 
@@ -117,7 +123,7 @@ class AListProviderAdapter:
         name: str,
         is_dir: bool,
         modified: datetime | None,
-        root: ContentRootMapping,
+        root: ContentRootView,
         parent_path: str | None,
         item: dict[str, Any] | None = None,
     ) -> SnapshotEntry:
