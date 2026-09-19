@@ -256,35 +256,28 @@ async def admin_catalog_update(entry_id: str, payload: CatalogEntryUpdateInput):
     response_model=CatalogLocationSummary,
     status_code=201,
 )
-async def admin_catalog_bind_location(entry_id: str, payload: CatalogLocationBindInput):
+async def admin_catalog_bind_location(
+    entry_id: str,
+    payload: CatalogLocationBindInput,
+):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            entry = await service.get_catalog_entry(state, entry_id)
-            asset = await state.get(CatalogAsset, payload.asset_id)
-            if asset is None:
-                raise service.CatalogAssetNotFound(payload.asset_id)
-            release = await state.get(CatalogRelease, asset.release_id)
-            if release is None or release.entry_id != entry.entry_id:
-                raise service.CatalogAssetNotFound(payload.asset_id)
-            result = await service.attach_catalog_location(
+            result = await catalog_api.admin_attach_entry_location(
                 state,
                 index,
+                entry_id=entry_id,
                 asset_id=payload.asset_id,
                 resource_id=payload.resource_id,
                 label=payload.label,
                 is_primary=payload.is_primary,
                 actor="admin",
             )
-        except service.CatalogError as exc:
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        resource = await index.get(Resource, result.location.resource_id)
-        return _location_to_summary(
-            result.location, asset, resource, result.resolution.available
-        )
+        return CatalogLocationSummary(**result)
 
 
 @router.post("/api/admin/catalog/{entry_id}/preview", response_model=CatalogPreviewOutput)
@@ -302,7 +295,12 @@ async def admin_catalog_preview(entry_id: str):
             f"{row['location_id']}: {row['reason']}" for row in preview.unavailable_locations
         )
         return CatalogPreviewOutput(
-            entry=await _build_entry_detail(state, index, entry, published_only=False),
+            entry=await catalog_api.admin_legacy_entry_detail(
+                state,
+                index,
+                entry.entry_id,
+                published_only=False,
+            ),
             previewable=not preview.unavailable_locations and bool(preview.releases),
             reason=reason,
         )
@@ -325,7 +323,12 @@ async def admin_catalog_publish(entry_id: str, payload: CatalogEntryPublishInput
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await _build_entry_detail(state, index, result.entry, published_only=False)
+        return await catalog_api.admin_legacy_entry_detail(
+            state,
+            index,
+            result.entry.entry_id,
+            published_only=False,
+        )
 
 
 # ---- C2 Release CRUD ----
@@ -334,19 +337,16 @@ async def admin_catalog_publish(entry_id: str, payload: CatalogEntryPublishInput
 async def admin_catalog_releases_list(entry_id: str):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            await service.get_catalog_entry(state, entry_id)
-            releases = await service.list_catalog_releases(state, entry_id)
-        except service.CatalogError as exc:
+            items = await catalog_api.admin_release_views(
+                state,
+                index,
+                entry_id,
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        return {
-            "items": [
-                await catalog_release_view(state, index, release, public=False)
-                for release in releases
-            ]
-        }
+        return {"items": items}
 
 
 @router.post("/api/admin/catalog/entries/{entry_id}/releases", status_code=201)
@@ -371,20 +371,26 @@ async def admin_catalog_release_create(entry_id: str, payload: CatalogReleaseCre
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await catalog_release_view(state, index, result.release, public=False)
+        return await catalog_api.admin_release_view(
+            state,
+            index,
+            result.release.release_id,
+        )
 
 
 @router.get("/api/admin/catalog/releases/{release_id}")
 async def admin_catalog_release_detail(release_id: str):
     from ...main import IndexSession, StateSession
 
-    service = _catalog_service()
     async with StateSession() as state, IndexSession() as index:
         try:
-            release = await service.get_catalog_release(state, release_id)
-        except service.CatalogError as exc:
+            return await catalog_api.admin_release_view(
+                state,
+                index,
+                release_id,
+            )
+        except catalog_api.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
-        return await catalog_release_view(state, index, release, public=False)
 
 
 @router.patch("/api/admin/catalog/releases/{release_id}")
@@ -401,32 +407,30 @@ async def admin_catalog_release_update(release_id: str, payload: CatalogReleaseU
         except service.CatalogError as exc:
             raise _translate_catalog_error(exc) from exc
         await state.commit()
-        return await catalog_release_view(state, index, release, public=False)
+        return await catalog_api.admin_release_view(
+            state,
+            index,
+            release.release_id,
+        )
 
 
 @router.delete("/api/admin/catalog/releases/{release_id}", status_code=204)
 async def admin_catalog_release_delete(release_id: str):
     from ...main import StateSession
-    from ...services.catalog_metadata import append_catalog_revision
 
-    service = _catalog_service()
     async with StateSession() as state:
         try:
-            release = await service.get_catalog_release(state, release_id)
-            assets = await service.list_catalog_assets(state, release_id)
-        except service.CatalogError as exc:
-            raise _translate_catalog_error(exc) from exc
-        if assets:
-            raise HTTPException(
-                409,
-                {"code": "CATALOG_DELETE_CONFLICT", "message": "release still has assets; remove them first"},
+            await catalog_api.delete_catalog_release(
+                state,
+                release_id,
+                actor="admin",
             )
-        before = {"entry_id": release.entry_id, "slug": release.slug, "title": release.title, "status": release.status}
-        await state.delete(release)
-        await append_catalog_revision(
-            state, target_type="release", target_id=release_id, action="delete", actor="admin", before=before
-        )
+        except catalog_api.CatalogError as exc:
+            raise _translate_catalog_error(exc) from exc
         await state.commit()
+
+
+# ---- C2 Asset CRUD ----
 
 
 # ---- C2 Asset CRUD ----
