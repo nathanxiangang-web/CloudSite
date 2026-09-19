@@ -17,6 +17,10 @@ def test_public_endpoints_are_precise():
     assert is_public_admin_endpoint("POST", "/api/admin/auth/logout")
     assert is_public_admin_endpoint("GET", "/api/admin/setup/status")
     assert is_public_admin_endpoint("POST", "/api/admin/setup/alist")
+    assert is_public_admin_endpoint("GET", "/api/admin/setup/wizard")
+    assert is_public_admin_endpoint("POST", "/api/admin/setup/wizard/step")
+    assert is_public_admin_endpoint("POST", "/api/admin/setup/wizard/back")
+    assert is_public_admin_endpoint("POST", "/api/admin/setup/wizard/skip")
 
 
 def test_unknown_auth_path_not_public():
