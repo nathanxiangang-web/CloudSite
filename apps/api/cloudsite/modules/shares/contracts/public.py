@@ -1,0 +1,46 @@
+"""Stable public contract for the Shares module."""
+
+from ..application.service import (
+    MAX_SHARE_DOWNLOADS,
+    ShareError,
+    ShareNotFound,
+    ShareValidationError,
+    cancel_share,
+    delete_share,
+    get_owned_share,
+    get_share,
+    list_all_shares,
+    list_owned_shares,
+    record_share_access,
+    reserve_share_download,
+    reset_share_code,
+    restore_share,
+    share_expires_at,
+    share_payload,
+    share_status,
+    update_share_duration,
+)
+from ..domain.views import ShareStatus, ShareView
+
+__all__ = [
+    "MAX_SHARE_DOWNLOADS",
+    "ShareError",
+    "ShareNotFound",
+    "ShareStatus",
+    "ShareValidationError",
+    "ShareView",
+    "cancel_share",
+    "delete_share",
+    "get_owned_share",
+    "get_share",
+    "list_all_shares",
+    "list_owned_shares",
+    "record_share_access",
+    "reserve_share_download",
+    "reset_share_code",
+    "restore_share",
+    "share_expires_at",
+    "share_payload",
+    "share_status",
+    "update_share_duration",
+]
