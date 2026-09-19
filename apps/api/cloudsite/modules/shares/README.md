@@ -86,7 +86,15 @@ scope is stored as part of the share row or in a scope table for large scopes.
 
 ## Current Migration Status
 
-Code is currently in the top-level `shares/` subpackage, which is already
-well-structured. Migration to `modules/shares/` is scheduled for Phase 3. The
-module skeleton exists with empty layers. The existing shares code is a good
-candidate for early migration due to its clean structure.
+**Partial.** Shares now owns the `shares` and `share_verify_attempts` ORM
+models under `infrastructure/models.py`, exposes persistence-neutral
+`ShareView` lifecycle operations through `contracts/public.py`, and the
+public/user/admin share routers no longer import SQLAlchemy or shared ORM
+models directly.
+
+The legacy `cloudsite/shares/` package remains as a compatibility edge for
+ticket validation, brute-force challenge handling, target-scope validation,
+and a few existing tests. New Share persistence/lifecycle work must go through
+this module. The next migration step is to move target/scope resolution and
+verification-attempt persistence behind this contract, then replace the legacy
+compatibility package.
