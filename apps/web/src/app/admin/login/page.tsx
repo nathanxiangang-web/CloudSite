@@ -14,7 +14,10 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     fetch("/api/admin/auth/status")
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) throw new Error("auth status unavailable");
+        return response.json();
+      })
       .then((status) => {
         const mode = status.mode as string | undefined;
         if (mode === "setup_required") {
@@ -27,7 +30,6 @@ export default function AdminLoginPage() {
       })
       .catch(() => {
         setError("暂时无法连接后台服务，请检查网络后刷新重试");
-        setReady(true);
       });
   }, []);
 
@@ -60,6 +62,7 @@ export default function AdminLoginPage() {
         <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
         <label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>
         {error && <p className="form-error">{error}</p>}
+        {!ready && error && <button type="button" onClick={() => window.location.reload()}>重新检查后台状态</button>}
         <button className="primary login-submit" disabled={loading || !ready}><LogIn />{loading ? "正在验证…" : "登录"}</button>
       </form>
       <Link href="/">返回 CloudSite 前台</Link>
