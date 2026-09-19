@@ -5,6 +5,8 @@ from typing import Protocol, runtime_checkable
 from ..api.admin_status import (
     indexing_v2_enabled,
     read_v2_sync_progress,
+    toggle_automatic_sync,
+    validate_manual_sync_paths,
 )
 from ..api.legacy_sync import legacy_sync_queries
 from ..application.reconcile import ReconcileResult
@@ -44,4 +46,6 @@ __all__ = [
     "legacy_sync_queries",
     "indexing_v2_enabled",
     "read_v2_sync_progress",
+    "toggle_automatic_sync",
+    "validate_manual_sync_paths",
 ]
