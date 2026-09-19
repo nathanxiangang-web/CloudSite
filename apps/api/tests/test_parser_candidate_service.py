@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import StateBase
-from cloudsite.services.parser_candidates import (
+from cloudsite.modules.automation.contracts.public import (
     ParserCandidateError,
     ParserCandidateTransitionInvalid,
     cancel_parser_candidate,
