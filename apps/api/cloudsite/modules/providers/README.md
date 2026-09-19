@@ -101,6 +101,9 @@ stays inside Providers:
 - test/save operations own status persistence and audit logging;
 - directory browsing consumes stored credentials without exposing ciphertext;
 - `routers/admin/alist.py` is ORM/SQLAlchemy/crypto/AListClient-free.
+- root-mapping CRUD and AList path validation live in
+  `application/root_mappings.py`; the admin root router is ORM/SQLAlchemy/
+  crypto/AListClient-free.
 
 Providers also exposes a runtime gateway through its public contract for resolving an
 enabled content root to download/preview operations without exporting credentials.
