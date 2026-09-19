@@ -36,6 +36,12 @@ class ResourceQueryRepository(Protocol):
 
     async def admin_index_counts(self) -> AdminIndexCountsView: ...
 
+    async def admin_content_type_counts(
+        self,
+        *,
+        content_types: tuple[str, ...],
+    ) -> dict[str, int]: ...
+
     async def admin_index_folders(self) -> list[AdminIndexFolderView]: ...
 
     async def admin_index_folder(
@@ -169,6 +175,15 @@ class ResourceQueries:
 
     async def admin_index_counts(self) -> AdminIndexCountsView:
         return await self._repository.admin_index_counts()
+
+    async def admin_content_type_counts(
+        self,
+        *,
+        content_types: tuple[str, ...],
+    ) -> dict[str, int]:
+        return await self._repository.admin_content_type_counts(
+            content_types=content_types,
+        )
 
     async def admin_index_folders(self) -> list[AdminIndexFolderView]:
         return await self._repository.admin_index_folders()
