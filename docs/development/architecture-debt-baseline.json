@@ -2,34 +2,9 @@
   "schema_version": 1,
   "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
   "counts": {
-    "module_legacy_import": 4,
     "router_orm_import": 55
   },
   "violations": [
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/suggestion_generator.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_generator.py::cloudsite.services"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/suggestion_review.py",
-      "target": "cloudsite.models",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_review.py::cloudsite.models"
-    },
-    {
-      "rule": "module_legacy_import",
-      "file": "apps/api/cloudsite/modules/automation/application/suggestion_review.py",
-      "target": "cloudsite.services",
-      "id": "module_legacy_import::apps/api/cloudsite/modules/automation/application/suggestion_review.py::cloudsite.services"
-    },
     {
       "rule": "router_orm_import",
       "file": "apps/api/cloudsite/routers/admin/alist.py",

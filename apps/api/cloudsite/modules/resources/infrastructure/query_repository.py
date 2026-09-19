@@ -23,6 +23,7 @@ from ..domain.views import (
     ResourcePageView,
     ResourcePreviewView,
     ResourceSummaryView,
+    SuggestionResourceView,
 )
 from .models import Folder, Resource
 
@@ -116,6 +117,47 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             mime_type=row.mime_type,
             status=row.status,
         )
+
+    @staticmethod
+    def _suggestion_resource_view(row: Resource) -> SuggestionResourceView:
+        return SuggestionResourceView(
+            id=row.id,
+            name=row.name,
+            path=row.path,
+            content_type=row.content_type,
+            extension=row.extension,
+            mime_type=row.mime_type,
+            size=row.size,
+            status=row.status,
+            indexed_at=row.indexed_at,
+        )
+
+    async def suggestion_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> SuggestionResourceView | None:
+        row = await self._session.get(Resource, resource_id)
+        if row is None:
+            return None
+        return self._suggestion_resource_view(row)
+
+    async def list_suggestion_resources(
+        self,
+        *,
+        content_type: str | None,
+        limit: int,
+    ) -> tuple[SuggestionResourceView, ...]:
+        stmt = (
+            select(Resource)
+            .where(Resource.status == "active")
+            .order_by(Resource.indexed_at)
+            .limit(max(int(limit), 0))
+        )
+        if content_type is not None:
+            stmt = stmt.where(Resource.content_type == content_type)
+        rows = list((await self._session.scalars(stmt)).all())
+        return tuple(self._suggestion_resource_view(row) for row in rows)
 
     async def list_resources(
         self,

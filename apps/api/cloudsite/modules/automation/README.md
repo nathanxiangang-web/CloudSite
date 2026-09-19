@@ -91,22 +91,24 @@ semantically belongs to automation; it will be reassigned during migration.
 
 ## Current Migration Status
 
-Migration status: partial.
+Migration status: partial, with module shared-core debt eliminated.
 
-A5a moves the deterministic resource-name parser and durable
-`ParserCandidateTask` ORM ownership into Automation. The legacy
-`cloudsite.services.resource_name_parser` and `cloudsite.models.ParserCandidateTask`
-surfaces remain exact compatibility facades/re-exports.
+A5a moved the deterministic parser, parser-candidate ORM, resource input, and
+sync-change seeding behind Automation/Resources/Indexing ownership.
 
-Parser resource reads now use the Resources public contract through a narrow
-`ParserResourceView`. Sync-run/change seeding reads use the Indexing public
-contract and no longer import legacy `SyncRun`, `SyncChange`, or `Resource` ORM.
+A5b moves `CatalogSuggestion` ORM ownership into Automation. Suggestion
+generation reads indexed files through the Resources public contract and reads
+Catalog binding/duplicate context through the Catalog public contract.
+Suggestion review keeps advisory-state transitions in Automation while all
+approved Catalog create/update/revert/revision operations execute through a
+persistence-neutral Catalog bridge.
 
-The parser candidate state machine, retry behavior, input fingerprint, batch
-limits, restart recovery, deterministic parser version, and caller-owned
-transaction semantics are unchanged.
+`cloudsite.models.ParserCandidateTask`, `cloudsite.models.CatalogSuggestion`,
+and the legacy parser/suggestion service import paths remain compatibility
+surfaces for existing callers.
 
-The remaining tracked Automation shared-core debt is isolated to suggestion
-generation/review. A5b will migrate `CatalogSuggestion` ownership and route
-Catalog/resource interactions through public contracts before Automation is
-described as isolated.
+The architecture debt scanner now reports zero `module_legacy_import` IDs.
+Automation remains marked partial because legacy HTTP routers still call shim
+services and broader operational/AI tables are not yet fully module-owned.
+The next migration phase is router thinning rather than more shared-core
+imports inside business modules.

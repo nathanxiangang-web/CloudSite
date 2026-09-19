@@ -49,4 +49,13 @@ __all__ = [
     "PreviewValidationResult",
     "PublishCatalogEntryResult",
     "AssetDownloadTarget",
+    "CatalogSuggestionContext",
+    "CatalogSuggestionMutation",
+    "CatalogSuggestionRevisionView",
+    "apply_suggestion_asset",
+    "apply_suggestion_new_entry",
+    "apply_suggestion_new_release",
+    "catalog_suggestion_context",
+    "list_suggestion_catalog_revisions",
+    "revert_suggestion_catalog_target",
 ]

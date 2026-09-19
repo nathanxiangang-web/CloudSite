@@ -96,15 +96,76 @@ The remaining four module debt IDs are all in:
 
 ## A5b — suggestion core ownership
 
-Next:
+Status: implemented.
 
-- move `CatalogSuggestion` ORM ownership into Automation;
-- use Resources contracts for suggestion source-file input;
-- use Catalog contracts for entry/release/asset lookup and approved mutations;
-- move suggestion revision/application helpers out of legacy services;
-- preserve the hard rule that suggestions are never auto-applied.
+### Suggestion persistence
 
-Completing A5b should reduce `module_legacy_import` to zero.
+`CatalogSuggestion` now lives in:
+
+```text
+modules/automation/infrastructure/models.py
+```
+
+`cloudsite.models.CatalogSuggestion` remains an exact compatibility re-export.
+No schema migration is intended.
+
+### Generation boundary
+
+Suggestion generation no longer imports Resource or Catalog ORM.
+
+Resources exposes `SuggestionResourceView` and bounded active-resource queries
+through `modules/resources/contracts/public.py`.
+
+Catalog exposes a persistence-neutral suggestion context containing only the
+binding and duplicate-candidate fields required for classification.
+
+The deterministic parser is reused directly from Automation domain code.
+
+### Review/apply boundary
+
+Automation continues to own suggestion lifecycle state:
+
+```text
+pending -> reviewed/applied/rejected
+```
+
+Approved Catalog mutations execute through
+`modules/catalog/contracts/public.py`. The Catalog bridge owns:
+
+- create entry/release/asset operations;
+- location attachment;
+- archive/disable revert operations;
+- latest revision lookup;
+- revision list projection into persistence-neutral DTOs.
+
+Automation never imports Catalog ORM or Catalog legacy services.
+
+### Architecture debt
+
+A5b removes the final four tracked module legacy-import IDs.
+
+```text
+59 -> 55
+module_legacy_import: 4 -> 0
+router_orm_import: 55
+```
+
+At this point all remaining tracked architecture debt is legacy router-level
+ORM/database ownership.
+
+## Next — router boundary migration
+
+The next phase should thin routers by domain cluster rather than reopen module
+internals. Priority clusters:
+
+1. Catalog/public Catalog routes, including asset download composition;
+2. Automation/quality admin routes;
+3. Providers/content-root administration;
+4. Shares/collections/submissions;
+5. site/system/health/diagnostics surfaces.
+
+Each router slice should move SQL/query construction into the owning module,
+preserve response/error contracts, and ratchet `router_orm_import` downward.
 
 ## Invariants
 

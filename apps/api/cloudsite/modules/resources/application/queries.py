@@ -30,6 +30,19 @@ class ResourceQueryRepository(Protocol):
         resource_id: str,
     ) -> ParserResourceView | None: ...
 
+    async def suggestion_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> SuggestionResourceView | None: ...
+
+    async def list_suggestion_resources(
+        self,
+        *,
+        content_type: str | None,
+        limit: int,
+    ) -> tuple[SuggestionResourceView, ...]: ...
+
     async def list_resources(
         self,
         *,
@@ -104,6 +117,26 @@ class ResourceQueries:
     ) -> ParserResourceView | None:
         return await self._repository.parser_resource(
             resource_id=resource_id,
+        )
+
+    async def suggestion_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> SuggestionResourceView | None:
+        return await self._repository.suggestion_resource(
+            resource_id=resource_id,
+        )
+
+    async def list_suggestion_resources(
+        self,
+        *,
+        content_type: str | None,
+        limit: int,
+    ) -> tuple[SuggestionResourceView, ...]:
+        return await self._repository.list_suggestion_resources(
+            content_type=content_type,
+            limit=limit,
         )
 
     async def list_resources(

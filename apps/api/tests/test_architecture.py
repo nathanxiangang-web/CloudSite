@@ -292,6 +292,78 @@ class TestDeliveryPackageInitialization:
         assert imports == []
 
 
+class TestAutomationSuggestionCoreBoundary:
+    """Automation suggestions use owned persistence and public contracts."""
+
+    def test_suggestion_application_has_no_shared_core_imports(self):
+        paths = [
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "suggestion_generator.py",
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "suggestion_review.py",
+        ]
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            assert "cloudsite.models" not in source
+            assert "from ....models" not in source
+            assert "cloudsite.services" not in source
+            assert "from ....services" not in source
+            assert "from ..infrastructure.models import CatalogSuggestion" in source
+
+    def test_suggestion_generator_uses_resources_and_catalog_contracts(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "suggestion_generator.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "resources.contracts.public" in source
+        assert "catalog.contracts.public" in source
+        assert "resource_queries(index).list_suggestion_resources" in source
+        assert "catalog_suggestion_context(" in source
+        assert "select(Resource)" not in source
+
+    def test_suggestion_review_delegates_catalog_mutations_to_contract(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "automation"
+            / "application"
+            / "suggestion_review.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "catalog.contracts.public" in source
+        assert "apply_catalog_suggestion_new_entry(" in source
+        assert "revert_suggestion_catalog_target(" in source
+        assert "list_suggestion_catalog_revisions(" in source
+        assert "CatalogRevision" not in source
+        assert "catalog_service" not in source
+
+    def test_catalog_automation_bridge_does_not_depend_on_automation(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "catalog"
+            / "application"
+            / "automation_bridge.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "modules.automation" not in source
+        assert "from ...automation" not in source
+        assert "from ..infrastructure.models import" in source
+
+
 class TestAutomationParserCoreBoundary:
     """Automation parser core uses owned code and public module contracts."""
 
