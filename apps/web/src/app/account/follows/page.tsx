@@ -43,8 +43,8 @@ export default function AccountFollowsPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!auth.isLoading && !auth.data?.authenticated) router.replace("/login");
-  }, [auth.isLoading, auth.data?.authenticated, router]);
+    if (!auth.isLoading && !auth.error && !auth.data?.authenticated) router.replace("/login");
+  }, [auth.isLoading, auth.error, auth.data?.authenticated, router]);
 
   useEffect(() => {
     if (!query.data) return;
@@ -84,10 +84,16 @@ export default function AccountFollowsPage() {
             文件收藏
           </Link>
         </header>
-        {query.isLoading ? (
+        {auth.isLoading ? (
+          <div className="loading">正在读取账号…</div>
+        ) : auth.error ? (
+          <div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div>
+        ) : !auth.data?.authenticated ? (
+          <div className="loading">正在跳转登录…</div>
+        ) : query.isLoading ? (
           <div className="loading">正在读取…</div>
         ) : query.error ? (
-          <div className="empty error-state">{query.error.message}</div>
+          <div className="empty error-state">{query.error.message}<button type="button" onClick={() => query.refetch()}>重试</button></div>
         ) : query.data?.items.length ? (
           <section className="account-resource-list">
             {query.data.items.map((item) => (
@@ -129,6 +135,7 @@ export default function AccountFollowsPage() {
           <div className="empty">还没有关注任何资源条目。去 <Link href="/catalog">资源目录</Link> 关注感兴趣的软件吧。</div>
         )}
         {totalPages > 1 && <nav className="pagination" aria-label="我的关注分页"><button type="button" disabled={page <= 1 || query.isFetching} onClick={() => navigatePage(page - 1)}>上一页</button><span>第 {page} / {totalPages} 页 · 共 {query.data?.total ?? 0} 条</span><button type="button" disabled={page >= totalPages || query.isFetching} onClick={() => navigatePage(page + 1)}>下一页</button></nav>}
+        {(unfollow.error || toggleNotify.error) && <p className="form-error">{(unfollow.error || toggleNotify.error)?.message}</p>}
       </div>
     </PublicShell>
   );

@@ -17,12 +17,15 @@ export default function AccountSecurityPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  useEffect(() => { if (!auth.isLoading && !auth.data?.authenticated) router.replace("/login"); }, [auth.isLoading, auth.data?.authenticated, router]);
+  useEffect(() => { if (!auth.isLoading && !auth.error && !auth.data?.authenticated) router.replace("/login"); }, [auth.isLoading, auth.error, auth.data?.authenticated, router]);
   const change = useMutation({
     mutationFn: () => api<{ ok: boolean }>("/api/auth/change-password", { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword, new_password_confirm: confirmPassword }) }),
     onSuccess: async () => { setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); clearUserScopedQueries(queryClient); await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY }); },
   });
   const submit = (event: FormEvent) => { event.preventDefault(); change.mutate(); };
+  if (auth.isLoading) return <PublicShell><div className="page security-page"><div className="loading">正在读取账号…</div></div></PublicShell>;
+  if (auth.error) return <PublicShell><div className="page security-page"><div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div></div></PublicShell>;
+  if (!auth.data?.authenticated) return <PublicShell><div className="page security-page"><div className="loading">正在跳转登录…</div></div></PublicShell>;
   return <PublicShell><div className="page security-page">
     <Link className="account-back" href="/account"><ArrowLeft />返回我的账号</Link>
     <section className="panel security-card"><div className="security-heading"><span><KeyRound /></span><div><h1>修改密码</h1><p>更新后所有旧登录会话都会失效，本设备会自动创建新会话。</p></div></div>

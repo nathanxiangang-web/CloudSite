@@ -50,8 +50,8 @@ export function UserLibraryPage({ kind }: { kind: Kind }) {
   }, [kind, router]);
 
   useEffect(() => {
-    if (!auth.isLoading && !auth.data?.authenticated) router.replace("/login");
-  }, [auth.isLoading, auth.data?.authenticated, router]);
+    if (!auth.isLoading && !auth.error && !auth.data?.authenticated) router.replace("/login");
+  }, [auth.isLoading, auth.error, auth.data?.authenticated, router]);
 
   useEffect(() => {
     if (!query.data) return;
@@ -77,12 +77,18 @@ export function UserLibraryPage({ kind }: { kind: Kind }) {
   return <PublicShell><div className="page account-library-page">
     <Link href="/account" className="account-back"><ChevronLeft />返回我的账号</Link>
     <header className="account-library-heading"><div><Icon /><span><p>CloudSite 账号</p><h1>{current.title}</h1></span></div>{kind === "history" && Boolean(query.data?.items.length) && <button type="button" className="danger" disabled={clear.isPending} onClick={() => clear.mutate()}><Trash2 />清空历史</button>}</header>
-    {query.isLoading ? <div className="loading">正在读取…</div> : query.error ? <div className="empty error-state">{query.error.message}</div> : query.data?.items.length ? <section className="account-resource-list">{query.data.items.map((item) => <article key={item.id}>
+    {auth.isLoading ? <div className="loading">正在读取账号…</div>
+      : auth.error ? <div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div>
+      : !auth.data?.authenticated ? <div className="loading">正在跳转登录…</div>
+      : query.isLoading ? <div className="loading">正在读取…</div>
+      : query.error ? <div className="empty error-state">{query.error.message}<button type="button" onClick={() => query.refetch()}>重试</button></div>
+      : query.data?.items.length ? <section className="account-resource-list">{query.data.items.map((item) => <article key={item.id}>
       <Link href={`/resource/${item.id}`}><strong>{item.name}</strong><span>{formatBytes(item.size)} · {item.extension?.toUpperCase() || item.content_type}</span><small>{itemMeta(kind, item)}</small></Link>
       <button type="button" aria-label={`移除 ${item.name}`} disabled={remove.isPending} onClick={() => remove.mutate(item.id)}><Trash2 />移除</button>
     </article>)}</section> : <div className="empty">{current.empty}</div>}
     {totalPages > 1 && <nav className="pagination" aria-label={`${current.title}分页`}><button type="button" disabled={page <= 1 || query.isFetching} onClick={() => navigatePage(page - 1)}>上一页</button><span>第 {page} / {totalPages} 页 · 共 {query.data?.total ?? 0} 条</span><button type="button" disabled={page >= totalPages || query.isFetching} onClick={() => navigatePage(page + 1)}>下一页</button></nav>}
     {Boolean(query.data?.unavailable_count) && <p className="account-library-note">另有 {query.data?.unavailable_count} 条记录因资源已下架或目录未发布而隐藏。</p>}
+    {(remove.error || clear.error) && <p className="form-error">{(remove.error || clear.error)?.message}</p>}
   </div></PublicShell>;
 }
 

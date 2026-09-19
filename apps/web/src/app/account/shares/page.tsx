@@ -3,7 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, ExternalLink, KeyRound, RefreshCw, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { api, Share } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { PublicShell } from "@/components/PublicShell";
@@ -19,10 +20,15 @@ const statusLabel: Record<string, string> = {
 export default function MySharesPage() {
   const client = useQueryClient();
   const auth = useAuth();
+  const router = useRouter();
   const userId = auth.data?.user?.id ?? null;
   const [copied, setCopied] = useState<{ token: string; source: "link" | "reset" } | null>(null);
   const [copyError, setCopyError] = useState("");
-  const shares = useQuery({ queryKey: ["my-shares", userId], queryFn: () => api<{ items: Share[] }>("/api/my/shares"), enabled: userId !== null });
+  const shares = useQuery({ queryKey: ["my-shares", userId], queryFn: () => api<{ items: Share[] }>("/api/my/shares"), enabled: Boolean(auth.data?.authenticated) });
+
+  useEffect(() => {
+    if (!auth.isLoading && !auth.error && !auth.data?.authenticated) router.replace("/login");
+  }, [auth.isLoading, auth.error, auth.data?.authenticated, router]);
   const action = useMutation({
     mutationFn: ({ token, body }: { token: string; body: object }) => api<Share>(`/api/my/shares/${token}`, { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: async (share) => {
@@ -56,7 +62,12 @@ export default function MySharesPage() {
     <Link className="account-back" href="/account"><ArrowLeft />返回账号</Link>
     <header className="my-shares-heading"><div><p>账号资源</p><h1>我的分享</h1><span>只显示由当前账号创建的文件分享。</span></div><Share2 /></header>
     <section className="panel my-shares-panel">
-      {shares.isLoading ? <div className="loading">正在读取分享...</div> : shares.error ? <p className="form-error">{shares.error.message}</p> : shares.data?.items.length ? <div className="my-share-list">{shares.data.items.map((share) => {
+      {auth.isLoading ? <div className="loading">正在读取账号…</div>
+        : auth.error ? <div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div>
+        : !auth.data?.authenticated ? <div className="loading">正在跳转登录…</div>
+        : shares.isLoading ? <div className="loading">正在读取分享...</div>
+        : shares.error ? <div className="empty error-state">{shares.error.message}<button type="button" onClick={() => shares.refetch()}>重试</button></div>
+        : shares.data?.items.length ? <div className="my-share-list">{shares.data.items.map((share) => {
         const status = share.status ?? (share.enabled ? "active" : "cancelled");
         const isActive = status === "active";
         return <article className="my-share-item" key={share.token}>
