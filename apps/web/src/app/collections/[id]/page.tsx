@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { PublicShell } from "@/components/PublicShell";
 import { ResourceCard } from "@/components/ResourceCard";
-import { api, Collection } from "@/lib/api";
+import { api, ApiError, Collection } from "@/lib/api";
 import { catalogEntryHref, contentTypeLabel } from "@/lib/catalog";
 
 function InfoBlock({ icon: Icon, label, text }: { icon: typeof Target; label: string; text: string }) {
@@ -19,7 +19,11 @@ export default function CollectionDetailPage() {
   const query = useQuery({ queryKey: ["collection", id], queryFn: () => api<Collection>(`/api/collections/${id}`) });
   const data = query.data;
   if (query.isLoading) return <PublicShell><div className="page loading">正在加载合集…</div></PublicShell>;
-  if (!data) return <PublicShell><div className="page empty">合集不存在。</div></PublicShell>;
+  if (query.error) {
+    const notFound = query.error instanceof ApiError && query.error.status === 404;
+    return <PublicShell><div className={`page state-page${notFound ? "" : " error-state"}`}><strong>{notFound ? "404" : "加载失败"}</strong><h1>{notFound ? "合集不存在" : "合集暂时不可用"}</h1><p>{notFound ? "这个合集不存在、已隐藏或不再公开。" : query.error.message}</p>{notFound ? <Link href="/collections">返回合集</Link> : <button type="button" onClick={() => query.refetch()}>重试</button>}</div></PublicShell>;
+  }
+  if (!data) return null;
   const hasInfo = Boolean(data.goal || data.audience || data.prerequisites || data.item_intro);
   return (
     <PublicShell>
