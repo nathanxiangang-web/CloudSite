@@ -16,6 +16,12 @@ owned_tables:
   - "indexing_tasks"
   - "inventory_snapshots"
   - "resource_skeletons"
+  - "sync_runs"
+  - "sync_root_results"
+  - "sync_changes"
+  - "sync_cycles"
+  - "sync_cycle_items"
+  - "folder_scan_state"
 
 forbidden_dependencies:
   - "cloudsite.main"
