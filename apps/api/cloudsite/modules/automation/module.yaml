@@ -15,7 +15,7 @@ allowed_dependencies:
 
 owned_tables:
   - "catalog_suggestions"
-  - "parser_candidates"
+  - "parser_candidate_tasks"
   - "parser_candidate_batches"
   - "review_suggestions"
   - "automation rule tables"
