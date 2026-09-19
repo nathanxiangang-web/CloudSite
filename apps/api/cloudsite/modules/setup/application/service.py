@@ -19,7 +19,7 @@ from ....platform.settings import (
     read_setup_completed,
     save_admin_system_settings,
 )
-from ....site import (
+from ...site.contracts.public import (
     get_admin_site_settings,
     update_admin_site_settings,
 )
