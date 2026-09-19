@@ -127,7 +127,7 @@ export default function SetupWizardPage() {
 
   function handleConnectSubmit(event: FormEvent) {
     event.preventDefault();
-    submitStep("connect", { base_url: connectForm.base_url, username: connectForm.username, password: connectForm.password, remember_credentials: true }, connectForm.token);
+    submitStep("connect", { base_url: connectForm.base_url, username: connectForm.username, password: connectForm.password }, connectForm.token);
     setConnectForm((f) => ({ ...f, token: "", password: "" }));
   }
 
