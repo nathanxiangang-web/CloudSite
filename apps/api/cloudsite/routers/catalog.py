@@ -169,20 +169,14 @@ async def public_catalog_detail(entry_id: str):
 
     async with StateSession() as state, IndexSession() as index:
         try:
-            entry = await catalog_api.get_catalog_entry(
+            return await catalog_api.admin_legacy_entry_detail(
                 state,
+                index,
                 entry_id,
+                published_only=True,
             )
         except catalog_api.CatalogEntryNotFound as exc:
             raise _not_found() from exc
-        if entry.status != "published":
-            raise _not_found()
-        return await catalog_api.admin_legacy_entry_detail(
-            state,
-            index,
-            entry_id,
-            published_only=True,
-        )
 
 
 # ---- C2 Asset download signing ----
