@@ -74,6 +74,13 @@ class FolderSummaryView:
 
 
 @dataclass(frozen=True, slots=True)
+class AdminOverviewInventoryView:
+    resources: int
+    folders: int
+    type_counts: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
 class AdminIndexCountsView:
     folders: int
     resources: int
@@ -300,6 +307,7 @@ class FolderDetailView:
 
 
 __all__ = [
+    "AdminOverviewInventoryView",
     "SearchObjectBatchView",
     "SearchFolderView",
     "SearchResourceView",

@@ -1,3 +1,11 @@
-from .audit import write_operation_log
+from .audit import (
+    OperationLogView,
+    recent_operation_logs,
+    write_operation_log,
+)
 
-__all__ = ["write_operation_log"]
+__all__ = [
+    "OperationLogView",
+    "recent_operation_logs",
+    "write_operation_log",
+]

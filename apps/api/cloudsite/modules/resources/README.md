@@ -113,3 +113,9 @@ Resources exposes Search-specific persistence-neutral projections:
 
 Search never imports Resources ORM classes and public browsing DTOs are not
 expanded with Search-only storage metadata.
+
+## Admin Overview Inventory
+
+Resources exposes a dedicated admin overview projection containing active
+resource/folder totals and fixed content-type counts. Dashboard routes consume
+this projection instead of querying Folder/Resource ORM directly.

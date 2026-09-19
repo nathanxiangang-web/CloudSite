@@ -1,34 +1,45 @@
-"""admin/overview 路由：后台概览面板。"""
+"""admin/overview route: compose module-owned dashboard reads."""
+
 from fastapi import APIRouter
-from sqlalchemy import desc, func, select
 
 from ...indexer import sync_circuit_status
-from ...models import AListConnection, DownloadEvent, Folder, OperationLog, Resource, SyncRun
+from ...modules.delivery.contracts.public import failed_download_count
+from ...modules.indexing.contracts.public import legacy_sync_queries
+from ...modules.providers.contracts.public import (
+    admin_connection_settings,
+)
+from ...modules.resources.contracts.public import resource_queries
+from ...platform.observability import recent_operation_logs
 
 router = APIRouter()
 
 
 @router.get("/api/admin/overview")
 async def admin_overview():
-    from ...main import StateSession, IndexSession
+    from ...main import IndexSession, StateSession
 
     async with StateSession() as state, IndexSession() as index:
-        resource_total = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0)
-        folder_total = int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0)
-        failures = int(await state.scalar(select(func.count()).select_from(DownloadEvent).where(DownloadEvent.result == "failed")) or 0)
-        connection = await state.get(AListConnection, 1)
-        latest_sync = await index.scalar(select(SyncRun).order_by(desc(SyncRun.id)).limit(1))
-        logs = list((await state.scalars(select(OperationLog).order_by(desc(OperationLog.id)).limit(6))).all())
-        type_counts = {}
-        for kind in ("software", "image", "video", "document", "file"):
-            type_counts[kind] = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.content_type == kind, Resource.status == "active")) or 0)
-        circuit = await sync_circuit_status()
-        return {
-            "resources": resource_total,
-            "folders": folder_total,
-            "download_failures": failures,
-            "alist_connected": bool(connection and connection.enabled and connection.last_test_status == "success"),
-            "latest_sync": None if not latest_sync else {
+        inventory = await resource_queries(
+            index
+        ).admin_overview_inventory()
+        failures = await failed_download_count(state)
+        connection = await admin_connection_settings(state)
+        runs = await legacy_sync_queries(index).list_runs(limit=1)
+        latest_sync = runs[0] if runs else None
+        logs = await recent_operation_logs(state, limit=6)
+
+    circuit = await sync_circuit_status()
+    return {
+        "resources": inventory.resources,
+        "folders": inventory.folders,
+        "download_failures": failures,
+        "alist_connected": (
+            connection.get("connection_status") == "connected"
+        ),
+        "latest_sync": (
+            None
+            if latest_sync is None
+            else {
                 "id": latest_sync.id,
                 "status": latest_sync.status,
                 "finished_at": latest_sync.finished_at,
@@ -42,12 +53,20 @@ async def admin_overview():
                 "roots_completed": latest_sync.roots_completed,
                 "roots_failed": latest_sync.roots_failed,
                 "duration_ms": latest_sync.duration_ms,
-            },
-            "sync_circuit": {
-                "open": circuit["open"],
-                "until": circuit["until"],
-                "reason": circuit["reason"],
-            },
-            "type_counts": type_counts,
-            "logs": [{"level": row.level, "message": row.message, "created_at": row.created_at} for row in logs],
-        }
+            }
+        ),
+        "sync_circuit": {
+            "open": circuit["open"],
+            "until": circuit["until"],
+            "reason": circuit["reason"],
+        },
+        "type_counts": inventory.type_counts,
+        "logs": [
+            {
+                "level": row.level,
+                "message": row.message,
+                "created_at": row.created_at,
+            }
+            for row in logs
+        ],
+    }

@@ -1,3 +1,4 @@
+from ..application.overview_queries import failed_download_count
 from ..application.diagnostics import (
     diagnose_download,
     download_diagnostic_dict,
@@ -50,4 +51,5 @@ __all__ = [
     "diagnose_download",
     "download_diagnostic_dict",
     "list_download_diagnostics",
+    "failed_download_count",
 ]
