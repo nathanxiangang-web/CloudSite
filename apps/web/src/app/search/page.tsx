@@ -62,7 +62,7 @@ function SearchContent() {
   });
 
   // 搜索成功后记录历史
-  const pendingRecord = query && results.data?.items.length ? query : null;
+  const pendingRecord = query && (results.data?.items.length || catalogResults.data?.items.length) ? query : null;
   if (pendingRecord && pendingRecord !== recordedQuery) {
     setRecordedQuery(pendingRecord);
     setHistory([pendingRecord, ...history.filter((h) => h !== pendingRecord)].slice(0, HISTORY_MAX));
@@ -115,19 +115,20 @@ function SearchContent() {
     {query ? <>
       <div className="search-toolbar">
         <div className="search-filters"><button className={!selectedType ? "active" : ""} onClick={() => navigate({ type: "", page: 1, catalogPage: 1 })}>全部</button>{types.map((item) => <button className={selectedType === item.value ? "active" : ""} key={item.value} onClick={() => navigate({ type: item.value, page: 1, catalogPage: 1 })}>{item.label}</button>)}</div>
-        <label>排序<select value={sort} onChange={(event) => navigate({ sort: event.target.value, page: 1 })}><option value="relevance">相关度</option><option value="modified_at">最近更新</option><option value="name">名称</option><option value="size">文件大小</option></select></label>
+        <label>文件结果排序<select value={sort} onChange={(event) => navigate({ sort: event.target.value, page: 1 })}><option value="relevance">相关度</option><option value="modified_at">最近更新</option><option value="name">名称</option><option value="size">文件大小</option></select></label>
       </div>
       <p className="result-summary">找到 {results.data?.total ?? 0} 个文件结果与 {catalogResults.data?.total ?? 0} 个资源条目{results.isFetching || catalogResults.isFetching ? " · 正在更新…" : ""}</p>
+      {catalogResults.error && <div className="empty error-state search-state"><strong>资源条目搜索暂时不可用</strong><span>{catalogResults.error.message}</span><button type="button" onClick={() => catalogResults.refetch()}>重试</button></div>}
       {catalogResults.data && catalogResults.data.total > 0 && <section className="search-results catalog-results-section" aria-label="资源条目结果">
         <h2 className="search-section-title">资源条目</h2>
         {catalogResults.data.items.map((item) => <CatalogSearchCard item={item} query={query} key={`catalog-${item.entry_id}`} />)}
-        {(catalogResults.data.total_pages ?? 0) > 1 && <nav className="pagination" aria-label="资源条目分页"><button disabled={catalogPage <= 1} onClick={() => navigate({ catalogPage: catalogPage - 1 })}>上一页</button><span>第 {catalogResults.data.page} / {catalogResults.data.total_pages} 页 · 共 {catalogResults.data.total} 个条目</span><button disabled={catalogPage >= catalogResults.data.total_pages} onClick={() => navigate({ catalogPage: catalogPage + 1 })}>下一页</button></nav>}
+        {(catalogResults.data.total_pages ?? 0) > 1 && <nav className="pagination" aria-label="资源条目分页"><button disabled={catalogPage <= 1 || catalogResults.isFetching} onClick={() => navigate({ catalogPage: catalogPage - 1 })}>上一页</button><span>第 {catalogResults.data.page} / {catalogResults.data.total_pages} 页 · 共 {catalogResults.data.total} 个条目</span><button disabled={catalogPage >= catalogResults.data.total_pages || catalogResults.isFetching} onClick={() => navigate({ catalogPage: catalogPage + 1 })}>下一页</button></nav>}
       </section>}
       {results.isLoading ? <div className="loading search-state">正在搜索 CloudSite 索引…</div>
         : results.error ? <div className="empty error-state search-state"><strong>搜索暂时不可用</strong><span>{results.error.message}</span><button onClick={() => results.refetch()}>重试</button></div>
         : results.data?.items.length ? <section className="search-results">{results.data.items.map((item) => <SearchResultCard item={item} query={query} key={`${item.object_type}-${item.id}`} />)}</section>
         : (results.data?.total === 0 && catalogResults.data?.total === 0) ? <div className="empty search-state"><strong>没有找到“{query}”</strong><span>{catalogResults.data?.suggestion || "请尝试更换关键词或清除类型筛选。"}</span>{selectedType && <button onClick={() => navigate({ type: "", page: 1, catalogPage: 1 })}>清除筛选</button>}</div> : null}
-      {(results.data?.total_pages ?? 0) > 1 && <nav className="pagination"><button disabled={page <= 1} onClick={() => navigate({ page: page - 1 })}>上一页</button><span>第 {page} / {results.data?.total_pages} 页</span><button disabled={page >= (results.data?.total_pages ?? 0)} onClick={() => navigate({ page: page + 1 })}>下一页</button></nav>}
+      {(results.data?.total_pages ?? 0) > 1 && <nav className="pagination"><button disabled={page <= 1 || results.isFetching} onClick={() => navigate({ page: page - 1 })}>上一页</button><span>第 {page} / {results.data?.total_pages} 页</span><button disabled={page >= (results.data?.total_pages ?? 0) || results.isFetching} onClick={() => navigate({ page: page + 1 })}>下一页</button></nav>}
     </> : <div className="empty search-state"><Search /><strong>开始搜索 CloudSite</strong><span>输入关键词，查找已公开的软件、图库、视频、教程、文件和目录。</span>
       {history.length > 0 && <div className="search-history" style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
         <small style={{ width: "100%", color: "var(--muted)", fontSize: 11 }}>最近搜索</small>
