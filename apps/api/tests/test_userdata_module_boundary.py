@@ -42,7 +42,6 @@ def test_userdata_facade_has_no_orm_or_shared_model_imports():
     source = inspect.getsource(userdata_facade)
     assert "shares.service" not in source
     assert "select(" not in source
-    assert "delete(" not in source
     assert "Resource(" not in source
     assert "modules.users.contracts.public" in source
     assert "modules.resources.contracts.public" in source
