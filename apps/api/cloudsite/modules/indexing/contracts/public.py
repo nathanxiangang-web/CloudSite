@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from ..api.admin_status import (
+    indexing_v2_enabled,
+    read_v2_sync_progress,
+)
 from ..api.legacy_sync import legacy_sync_queries
 from ..application.reconcile import ReconcileResult
 from ..domain.inspection import InspectionRequest, InspectionResult
@@ -38,4 +42,6 @@ __all__ = [
     "LegacySyncChangeView",
     "LegacySyncChangePage",
     "legacy_sync_queries",
+    "indexing_v2_enabled",
+    "read_v2_sync_progress",
 ]

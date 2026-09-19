@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from ..domain.views import (
+    AdminIndexCountsView,
+    AdminIndexFolderView,
     CatalogResourceView,
     FolderDetailView,
     FolderSummaryView,
@@ -19,6 +21,16 @@ from ..domain.views import (
 
 @runtime_checkable
 class ResourceQueryRepository(Protocol):
+    async def admin_index_counts(self) -> AdminIndexCountsView: ...
+
+    async def admin_index_folders(self) -> list[AdminIndexFolderView]: ...
+
+    async def admin_index_folder(
+        self,
+        *,
+        folder_id: str,
+    ) -> AdminIndexFolderView | None: ...
+
     async def catalog_resource(
         self,
         *,
@@ -119,6 +131,21 @@ class ResourceQueryRepository(Protocol):
 class ResourceQueries:
     def __init__(self, repository: ResourceQueryRepository) -> None:
         self._repository = repository
+
+    async def admin_index_counts(self) -> AdminIndexCountsView:
+        return await self._repository.admin_index_counts()
+
+    async def admin_index_folders(self) -> list[AdminIndexFolderView]:
+        return await self._repository.admin_index_folders()
+
+    async def admin_index_folder(
+        self,
+        *,
+        folder_id: str,
+    ) -> AdminIndexFolderView | None:
+        return await self._repository.admin_index_folder(
+            folder_id=folder_id,
+        )
 
     async def catalog_resource(
         self,
