@@ -212,6 +212,29 @@ async def save_admin_connection(
     return {"ok": True, "message": "AList 设置已保存"}
 
 
+async def save_setup_connection(
+    state: AsyncSession,
+    *,
+    base_url: str,
+    username: str,
+    password: str,
+    remember_credentials: bool,
+) -> dict[str, Any]:
+    """Setup-facing connection save without leaking Provider ORM state."""
+
+    await save_admin_connection(
+        state,
+        base_url=base_url,
+        username=username,
+        password=password,
+        remember_credentials=remember_credentials,
+    )
+    row = await state.get(AListConnection, 1)
+    return {
+        "base_path": (row.base_path if row is not None else "") or "/",
+    }
+
+
 async def browse_admin_directories(
     state: AsyncSession,
     *,
@@ -296,6 +319,7 @@ __all__ = [
     "admin_connection_settings",
     "test_admin_connection",
     "save_admin_connection",
+    "save_setup_connection",
     "browse_admin_directories",
     "check_provider_health",
 ]
