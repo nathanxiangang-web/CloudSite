@@ -292,6 +292,41 @@ class TestDeliveryPackageInitialization:
         assert imports == []
 
 
+class TestNotificationsModuleBoundary:
+    """Notifications owns notification persistence and router ORM work."""
+
+    def test_notification_application_has_no_shared_core_imports(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "notifications"
+            / "application"
+            / "notification_service.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "from ....models" not in source
+        assert "cloudsite.services" not in source
+        assert "from ....services" not in source
+        assert "notifications.infrastructure.models" not in source
+        assert "from ..infrastructure.models import Notification" in source
+
+    def test_notification_routers_are_orm_free(self):
+        paths = [
+            CLOUDSITE / "routers" / "notifications.py",
+            CLOUDSITE / "routers" / "admin" / "notifications.py",
+        ]
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            assert "sqlalchemy" not in source
+            assert "cloudsite.models" not in source
+            assert "from ..models" not in source
+            assert "from ...models" not in source
+            assert "services.notifications" not in source
+            assert "modules.notifications.contracts.public" in source
+
+
 class TestIndexingSharedCoreBoundary:
     """Indexing runtime code may not depend on shared ORM/session modules."""
 

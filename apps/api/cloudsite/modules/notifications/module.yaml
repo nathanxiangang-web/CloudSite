@@ -4,6 +4,7 @@ kind: "business"
 migration_status: "partial"
 responsibility: "In-app and webhook notifications, user notification history, read state, channel preferences, and retryable delivery."
 public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
 
 allowed_dependencies:
   - "platform/db"

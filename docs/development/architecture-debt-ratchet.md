@@ -7,12 +7,12 @@ temporarily, but it may only decrease.
 
 ## Current baseline
 
-The current reviewed baseline records **76 exact debt IDs**:
+The current reviewed baseline records **71 exact debt IDs**:
 
 | Rule | Baseline | Meaning |
 | --- | ---: | --- |
-| `module_legacy_import` | 17 | A business module still imports `cloudsite.models`, `cloudsite.database`, `cloudsite.services`, or `cloudsite.main`. |
-| `router_orm_import` | 59 | A legacy router still imports SQLAlchemy, shared ORM models, or the legacy database layer directly. |
+| `module_legacy_import` | 16 | A business module still imports `cloudsite.models`, `cloudsite.database`, `cloudsite.services`, or `cloudsite.main`. |
+| `router_orm_import` | 55 | A legacy router still imports SQLAlchemy, shared ORM models, or the legacy database layer directly. |
 | `cross_module_internal_import` | 0 | A business module bypasses another module's `contracts/*` boundary. This stays locked at zero. |
 
 The baseline tightened from 90 to 88 after the Identity admin diagnostics
@@ -25,7 +25,8 @@ and to 83 when the preview router stopped importing shared Resource ORM,
 and to 82 when the download router stopped importing shared Resource ORM,
 and to 81 when Delivery download-event persistence stopped importing shared ORM,
 and to 79 when rate-limit persistence moved from Delivery legacy imports to Resources,
-and to 76 when Indexing removed its remaining shared ORM/session imports.
+and to 76 when Indexing removed its remaining shared ORM/session imports,
+and to 71 when Notifications took ORM/query ownership and its user/admin routers became ORM-free.
 
 The machine-readable list lives in
 `docs/development/architecture-debt-baseline.json`.
