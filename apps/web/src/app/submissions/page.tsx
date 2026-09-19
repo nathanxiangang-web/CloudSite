@@ -3,6 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
 import { api } from "@/lib/api";
@@ -35,16 +37,24 @@ function formatTime(value: string | null) {
 
 export default function MySubmissionsPage() {
   const auth = useAuth();
+  const router = useRouter();
   const userId = auth.data?.user?.id ?? null;
-  const query = useQuery({ queryKey: ["my-submissions", userId], queryFn: () => api<{ items: Submission[] }>("/api/submissions/mine"), enabled: userId !== null });
+  const query = useQuery({ queryKey: ["my-submissions", userId], queryFn: () => api<{ items: Submission[] }>("/api/submissions/mine"), enabled: Boolean(auth.data?.authenticated) });
   const items = query.data?.items ?? [];
+
+  useEffect(() => {
+    if (!auth.isLoading && !auth.error && !auth.data?.authenticated) router.replace("/login");
+  }, [auth.isLoading, auth.error, auth.data?.authenticated, router]);
 
   return <PublicShell><div className="page account-library-page">
     <section className="account-library-heading">
       <div><ClipboardList size={42} /><div><p>你提交过的资源投稿</p><h1>我的投稿</h1></div></div>
     </section>
-    {query.isLoading ? <div className="loading">正在加载…</div>
-      : query.error ? <div className="empty error-state">加载失败：{query.error.message}</div>
+    {auth.isLoading ? <div className="loading">正在读取账号…</div>
+      : auth.error ? <div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div>
+      : !auth.data?.authenticated ? <div className="loading">正在跳转登录…</div>
+      : query.isLoading ? <div className="loading">正在加载…</div>
+      : query.error ? <div className="empty error-state">加载失败：{query.error.message}<button type="button" onClick={() => query.refetch()}>重试</button></div>
       : items.length === 0 ? <div className="empty">你还没有提交过投稿。前往 <Link href="/submit">资源投稿</Link> 提交第一个资源。</div>
       : <div className="account-resource-list">
         {items.map((item) => { const resultHref = publishedResultHref(item.status, item.published_resource_id); return <article key={item.id}>

@@ -13,14 +13,16 @@ export default function AccountPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const auth = useAuth();
-  useEffect(() => { if (!auth.isLoading && !auth.data?.authenticated) router.replace("/login"); }, [auth.isLoading, auth.data?.authenticated, router]);
+  useEffect(() => { if (!auth.isLoading && !auth.error && !auth.data?.authenticated) router.replace("/login"); }, [auth.isLoading, auth.error, auth.data?.authenticated, router]);
   const logout = useMutation({
     mutationFn: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY }); router.push("/login"); },
   });
   const user = auth.data?.user;
   return <PublicShell><div className="page account-page">
-    {!user ? <div className="loading">正在读取账号…</div> : <>
+    {auth.isLoading ? <div className="loading">正在读取账号…</div>
+      : auth.error ? <div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div>
+      : !user ? <div className="loading">正在跳转登录…</div> : <>
       <section className="account-hero"><span className="account-avatar">{user.username.slice(0, 1).toUpperCase()}</span><div><p>CloudSite 账号</p><h1>{user.username}</h1><span className="status-pill active"><ShieldCheck />账号正常</span></div></section>
       <section className="account-grid">
         <article className="panel account-details"><h2><UserRound />账号信息</h2><dl>
@@ -31,6 +33,7 @@ export default function AccountPage() {
         </dl></article>
         <article className="panel account-actions"><h2><CalendarDays />我的内容</h2><p>查看收藏、浏览历史、播放进度和自己创建的分享。</p><Link className="button primary" href="/account/follows"><Star />我的关注</Link><Link className="button" href="/account/favorites"><Heart />文件收藏</Link><Link className="button" href="/account/history"><Clock3 />浏览历史</Link><Link className="button" href="/account/playback"><PlayCircle />继续播放</Link><Link className="button" href="/account/shares"><Share2 />我的分享</Link><Link className="button" href="/account/security"><KeyRound />修改密码</Link><button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut />{logout.isPending ? "正在退出…" : "退出登录"}</button></article>
       </section>
+      {logout.error && <p className="form-error">{logout.error.message}</p>}
     </>}
   </div></PublicShell>;
 }
