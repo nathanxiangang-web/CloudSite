@@ -10,6 +10,7 @@ from cloudsite.modules.indexing.domain.inspection import (
     InspectionResult,
 )
 from cloudsite.modules.indexing.domain.snapshot import SnapshotEntry
+from cloudsite.modules.indexing.infrastructure.alist_adapter import AListProviderAdapter
 from cloudsite.modules.indexing.infrastructure.legacy_bridge import run_indexing_v2
 from cloudsite.modules.indexing.infrastructure.provider_adapter import (
     ProviderAdapter,
