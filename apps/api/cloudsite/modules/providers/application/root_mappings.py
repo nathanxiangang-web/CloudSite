@@ -86,12 +86,15 @@ async def create_root_mapping(
     state: AsyncSession,
     *,
     values: dict[str, Any],
+    validated_path: str | None = None,
 ) -> int:
-    normalized = await validate_root_mapping_path(
-        state,
-        path=str(values.get("alist_path") or ""),
-        connection_id=int(values.get("connection_id") or 1),
-    )
+    normalized = validated_path
+    if normalized is None:
+        normalized = await validate_root_mapping_path(
+            state,
+            path=str(values.get("alist_path") or ""),
+            connection_id=int(values.get("connection_id") or 1),
+        )
     row = ContentRootMapping(
         **{**values, "alist_path": normalized}
     )
@@ -113,12 +116,15 @@ async def update_root_mapping(
     mapping_id: int,
     *,
     values: dict[str, Any],
+    validated_path: str | None = None,
 ) -> None:
-    normalized = await validate_root_mapping_path(
-        state,
-        path=str(values.get("alist_path") or ""),
-        connection_id=int(values.get("connection_id") or 1),
-    )
+    normalized = validated_path
+    if normalized is None:
+        normalized = await validate_root_mapping_path(
+            state,
+            path=str(values.get("alist_path") or ""),
+            connection_id=int(values.get("connection_id") or 1),
+        )
     row = await state.get(ContentRootMapping, mapping_id)
     if row is None:
         raise ProviderAdminError(
