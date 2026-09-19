@@ -1,12 +1,34 @@
-"""Read-only persistence adapter for Indexing runtime status."""
+"""Persistence adapter for Indexing v2 runtime status."""
 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def _as_utc(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _progress_payload(value: object) -> dict[str, object]:
+    if not value:
+        return {}
+    try:
+        payload = json.loads(str(value))
+    except (TypeError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 async def read_v2_sync_progress(
@@ -21,59 +43,47 @@ async def read_v2_sync_progress(
             {"key": "v2_sync_progress"},
         )
     ).first()
-    if row is None or not row[0]:
-        return {}
-    try:
-        payload = json.loads(str(row[0]))
-    except (TypeError, ValueError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return _progress_payload(row[0]) if row is not None else {}
 
 
-def _parse_time(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(
-            str(value).replace("Z", "+00:00")
-        )
-        return (
-            parsed
-            if parsed.tzinfo
-            else parsed.replace(tzinfo=timezone.utc)
-        )
-    except (TypeError, ValueError):
-        return None
-
-
-async def read_sync_circuit_status(
+async def v2_sync_due(
     state: AsyncSession,
-) -> dict[str, object]:
-    rows = (
+    interval_minutes: int,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Return whether another v2 sync is due.
+
+    The existing v2 progress row is the single scheduling clock. Its
+    updated_at timestamp is refreshed while a run is active and when it
+    reaches a terminal state, so no second scheduling state is required.
+    """
+    row = (
         await state.execute(
             text(
-                "SELECT key, value FROM system_settings "
-                "WHERE key IN ("
-                "'sync_circuit_until', "
-                "'sync_circuit_reason', "
-                "'sync_circuit_failures'"
-                ")"
-            )
+                "SELECT value, updated_at FROM system_settings "
+                "WHERE key = :key LIMIT 1"
+            ),
+            {"key": "v2_sync_progress"},
         )
-    ).all()
-    values = {str(key): str(value or "") for key, value in rows}
-    until = _parse_time(values.get("sync_circuit_until"))
-    now = datetime.now(timezone.utc)
-    try:
-        failures = int(values.get("sync_circuit_failures", "0") or 0)
-    except (TypeError, ValueError):
-        failures = 0
-    return {
-        "open": bool(until and until > now),
-        "until": until,
-        "reason": values.get("sync_circuit_reason", ""),
-        "failures": failures,
-    }
+    ).first()
+    if row is None:
+        return True
+
+    progress = _progress_payload(row[0])
+    if progress.get("status") == "running":
+        return False
+
+    updated_at = _as_utc(row[1])
+    if updated_at is None:
+        return True
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current - updated_at >= timedelta(
+        minutes=max(int(interval_minutes), 1)
+    )
 
 
 async def toggle_automatic_sync(
@@ -127,6 +137,6 @@ async def toggle_automatic_sync(
 
 __all__ = [
     "read_v2_sync_progress",
-    "read_sync_circuit_status",
+    "v2_sync_due",
     "toggle_automatic_sync",
 ]

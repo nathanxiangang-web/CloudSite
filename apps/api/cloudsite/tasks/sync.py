@@ -8,6 +8,7 @@ import random
 from contextlib import suppress
 
 from ..config import settings
+from ..modules.indexing.contracts.public import v2_sync_due
 from ..modules.indexing.infrastructure.legacy_bridge import (
     run_indexing_v2_production as _run_indexing_v2_production,
 )
@@ -52,7 +53,14 @@ async def _safe_startup_sync():
     await asyncio.sleep(delay)
     async with main.StateSession() as session:
         values = await main.get_system_values(session)
-    if not values["sync_on_startup"]:
+        if not values["sync_on_startup"]:
+            return
+        if not await v2_sync_due(
+            session,
+            values["sync_interval_minutes"],
+        ):
+            return
+    if main.manual_sync_task and not main.manual_sync_task.done():
         return
     with suppress(Exception):
         await run_indexing_v2_production()

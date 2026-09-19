@@ -1,7 +1,5 @@
 """Regression coverage for admin Overview read boundaries."""
 
-from datetime import datetime, timedelta, timezone
-
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
@@ -14,7 +12,7 @@ from cloudsite.models import (
     SystemSetting,
 )
 from cloudsite.modules.delivery.contracts.public import count_failed_downloads
-from cloudsite.modules.indexing.contracts.public import read_sync_circuit_status
+from cloudsite.modules.indexing.contracts.public import read_v2_sync_progress
 from cloudsite.modules.providers.contracts.public import provider_connected
 from cloudsite.modules.resources.contracts.public import resource_queries
 from cloudsite.platform.observability import recent_operation_logs
@@ -75,18 +73,12 @@ async def test_overview_metrics_stay_behind_owner_boundaries():
                     message="second",
                 ),
                 SystemSetting(
-                    key="sync_circuit_until",
+                    key="v2_sync_progress",
                     value=(
-                        datetime.now(timezone.utc) + timedelta(minutes=10)
-                    ).isoformat(),
-                ),
-                SystemSetting(
-                    key="sync_circuit_reason",
-                    value="test",
-                ),
-                SystemSetting(
-                    key="sync_circuit_failures",
-                    value="3",
+                        '{"status":"completed","categories_done":2,'
+                        '"categories_total":2,"elapsed_seconds":7,'
+                        '"current_path":"","entries_scanned":42}'
+                    ),
                 ),
             ]
         )
@@ -94,10 +86,10 @@ async def test_overview_metrics_stay_behind_owner_boundaries():
 
         assert await count_failed_downloads(state) == 1
         assert await provider_connected(state) is True
-        circuit = await read_sync_circuit_status(state)
-        assert circuit["open"] is True
-        assert circuit["reason"] == "test"
-        assert circuit["failures"] == 3
+        progress = await read_v2_sync_progress(state)
+        assert progress["status"] == "completed"
+        assert progress["categories_done"] == 2
+        assert progress["entries_scanned"] == 42
         logs = await recent_operation_logs(state, limit=2)
         assert [row["message"] for row in logs] == [
             "second",

@@ -219,7 +219,22 @@ async def test_manual_sync_endpoint_returns_before_background_work_finishes(monk
         await release.wait()
         return {"status": "success", "engine": "v2"}
 
+    class FakeStateSession:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *_):
+            return None
+
+    async def fake_progress(_session):
+        return {}
+
     monkeypatch.setattr(main, "manual_sync_task", None)
+    monkeypatch.setattr(main, "StateSession", FakeStateSession)
+    monkeypatch.setattr(
+        "cloudsite.routers.admin.sync.read_v2_sync_progress",
+        fake_progress,
+    )
     monkeypatch.setattr(
         "cloudsite.tasks.sync.run_indexing_v2_production",
         fake_v2_production,

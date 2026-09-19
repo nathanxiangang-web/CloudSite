@@ -27,7 +27,6 @@ async def test_admin_system_settings_round_trip_without_router_orm():
             "automatic_sync": False,
             "sync_interval_minutes": 360,
             "sync_on_startup": False,
-            "sync_engine_version": "1.0",
             "initial_index_completed_at": None,
         }
 
@@ -38,12 +37,6 @@ async def test_admin_system_settings_round_trip_without_router_orm():
                 "sync_interval_minutes": 720,
                 "sync_on_startup": True,
             },
-        )
-        state.add(
-            SystemSetting(
-                key="sync_engine_version",
-                value="v2",
-            )
         )
         state.add(
             SystemSetting(
@@ -64,7 +57,6 @@ async def test_admin_system_settings_round_trip_without_router_orm():
         assert values["automatic_sync"] is True
         assert values["sync_interval_minutes"] == 720
         assert values["sync_on_startup"] is True
-        assert values["sync_engine_version"] == "v2"
         assert values["initial_index_completed_at"] == (
             "2026-09-19T00:00:00+00:00"
         )

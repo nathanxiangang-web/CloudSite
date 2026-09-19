@@ -22,7 +22,6 @@ async def read_admin_system_settings(
                 "'automatic_sync', "
                 "'sync_interval_minutes', "
                 "'sync_on_startup', "
-                "'sync_engine_version', "
                 "'initial_index_completed_at'"
                 ")"
             )
@@ -39,7 +38,6 @@ async def read_admin_system_settings(
         "automatic_sync": values.get("automatic_sync", "false") == "true",
         "sync_interval_minutes": interval,
         "sync_on_startup": values.get("sync_on_startup", "false") == "true",
-        "sync_engine_version": values.get("sync_engine_version") or "1.0",
         "initial_index_completed_at": (
             values.get("initial_index_completed_at") or None
         ),

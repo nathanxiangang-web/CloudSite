@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isRollingFixedSchedule, normalizeSyncInterval } from "../src/lib/sync-interval.ts";
+import { normalizeSyncInterval } from "../src/lib/sync-interval.ts";
 
 
 test("normalizeSyncInterval preserves 180 from legacy settings", () => {
@@ -18,11 +18,4 @@ test("normalizeSyncInterval falls back to 360 for invalid values", () => {
   assert.equal(normalizeSyncInterval(0), 360);
   assert.equal(normalizeSyncInterval(60), 360);
   assert.equal(normalizeSyncInterval(999), 360);
-});
-
-test("isRollingFixedSchedule stays disabled after the rolling engine was removed", () => {
-  assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.0", initial_index_completed_at: "2026-09-01T00:00:00Z" }), false);
-  assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.1", initial_index_completed_at: "2026-09-01T00:00:00Z" }), false);
-  assert.equal(isRollingFixedSchedule({ sync_engine_version: "1.1", initial_index_completed_at: null }), false);
-  assert.equal(isRollingFixedSchedule({}), false);
 });
