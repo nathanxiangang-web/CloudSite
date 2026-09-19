@@ -7,6 +7,14 @@ from ..application.connection_admin import (
     save_admin_connection,
     test_admin_connection,
 )
+from ..application.root_mappings import (
+    create_root_mapping,
+    delete_root_mapping,
+    list_root_mappings,
+    normalize_provider_path,
+    update_root_mapping,
+    validate_root_mapping_path,
+)
 from ..application.provider_service import (
     ContentRootView,
     ProviderLoginTarget,
@@ -74,4 +82,10 @@ __all__ = [
     "browse_admin_directories",
     "save_admin_connection",
     "test_admin_connection",
+    "create_root_mapping",
+    "delete_root_mapping",
+    "list_root_mappings",
+    "normalize_provider_path",
+    "update_root_mapping",
+    "validate_root_mapping_path",
 ]
