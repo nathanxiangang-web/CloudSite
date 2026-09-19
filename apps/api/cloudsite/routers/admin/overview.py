@@ -1,53 +1,67 @@
 """admin/overview 路由：后台概览面板。"""
-from fastapi import APIRouter
-from sqlalchemy import desc, func, select
 
-from ...indexer import sync_circuit_status
-from ...models import AListConnection, DownloadEvent, Folder, OperationLog, Resource, SyncRun
+from fastapi import APIRouter
+
+from ...modules.delivery.contracts.public import count_failed_downloads
+from ...modules.indexing.contracts.public import (
+    legacy_sync_queries,
+    read_sync_circuit_status,
+)
+from ...modules.providers.contracts.public import provider_connected
+from ...modules.resources.contracts.public import resource_queries
+from ...platform.observability import recent_operation_logs
 
 router = APIRouter()
+
+_CONTENT_TYPES = ("software", "image", "video", "document", "file")
 
 
 @router.get("/api/admin/overview")
 async def admin_overview():
-    from ...main import StateSession, IndexSession
+    from ...main import IndexSession, StateSession
 
     async with StateSession() as state, IndexSession() as index:
-        resource_total = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.status == "active")) or 0)
-        folder_total = int(await index.scalar(select(func.count()).select_from(Folder).where(Folder.status == "active")) or 0)
-        failures = int(await state.scalar(select(func.count()).select_from(DownloadEvent).where(DownloadEvent.result == "failed")) or 0)
-        connection = await state.get(AListConnection, 1)
-        latest_sync = await index.scalar(select(SyncRun).order_by(desc(SyncRun.id)).limit(1))
-        logs = list((await state.scalars(select(OperationLog).order_by(desc(OperationLog.id)).limit(6))).all())
-        type_counts = {}
-        for kind in ("software", "image", "video", "document", "file"):
-            type_counts[kind] = int(await index.scalar(select(func.count()).select_from(Resource).where(Resource.content_type == kind, Resource.status == "active")) or 0)
-        circuit = await sync_circuit_status()
+        queries = resource_queries(index)
+        counts = await queries.admin_index_counts()
+        type_counts = await queries.admin_content_type_counts(
+            content_types=_CONTENT_TYPES,
+        )
+        failures = await count_failed_downloads(state)
+        alist_connected = await provider_connected(state)
+        sync_runs = await legacy_sync_queries(index).list_runs(limit=1)
+        latest = sync_runs[0] if sync_runs else None
+        circuit = await read_sync_circuit_status(state)
+        logs = await recent_operation_logs(state, limit=6)
+
         return {
-            "resources": resource_total,
-            "folders": folder_total,
+            "resources": counts.resources,
+            "folders": counts.folders,
             "download_failures": failures,
-            "alist_connected": bool(connection and connection.enabled and connection.last_test_status == "success"),
-            "latest_sync": None if not latest_sync else {
-                "id": latest_sync.id,
-                "status": latest_sync.status,
-                "finished_at": latest_sync.finished_at,
-                "added": latest_sync.added_count,
-                "updated": latest_sync.updated_count,
-                "removed": latest_sync.removed_count,
-                "folders_scanned": latest_sync.folders_scanned,
-                "resources_scanned": latest_sync.resources_scanned,
-                "current_path": latest_sync.current_path,
-                "roots_total": latest_sync.roots_total,
-                "roots_completed": latest_sync.roots_completed,
-                "roots_failed": latest_sync.roots_failed,
-                "duration_ms": latest_sync.duration_ms,
-            },
+            "alist_connected": alist_connected,
+            "latest_sync": (
+                None
+                if latest is None
+                else {
+                    "id": latest.id,
+                    "status": latest.status,
+                    "finished_at": latest.finished_at,
+                    "added": latest.added_count,
+                    "updated": latest.updated_count,
+                    "removed": latest.removed_count,
+                    "folders_scanned": latest.folders_scanned,
+                    "resources_scanned": latest.resources_scanned,
+                    "current_path": latest.current_path,
+                    "roots_total": latest.roots_total,
+                    "roots_completed": latest.roots_completed,
+                    "roots_failed": latest.roots_failed,
+                    "duration_ms": latest.duration_ms,
+                }
+            ),
             "sync_circuit": {
                 "open": circuit["open"],
                 "until": circuit["until"],
                 "reason": circuit["reason"],
             },
             "type_counts": type_counts,
-            "logs": [{"level": row.level, "message": row.message, "created_at": row.created_at} for row in logs],
+            "logs": logs,
         }
