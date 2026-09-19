@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import CatalogEntry, Resource
-from cloudsite.services import suggestion_generator, suggestion_review
+from cloudsite.modules.automation.contracts import public as automation_api
 
 
 @pytest.fixture
@@ -41,14 +41,14 @@ def _make_resource(**overrides):
 
 
 def test_file_fingerprint_is_deterministic():
-    fp1 = suggestion_generator.compute_file_fingerprint(
+    fp1 = automation_api.compute_file_fingerprint(
         name="app.zip", path="/a", extension="zip", mime_type="application/zip", size=100
     )
-    fp2 = suggestion_generator.compute_file_fingerprint(
+    fp2 = automation_api.compute_file_fingerprint(
         name="app.zip", path="/a", extension="zip", mime_type="application/zip", size=100
     )
     assert fp1 == fp2
-    fp3 = suggestion_generator.compute_file_fingerprint(
+    fp3 = automation_api.compute_file_fingerprint(
         name="app.zip", path="/b", extension="zip", mime_type="application/zip", size=100
     )
     assert fp1 != fp3
@@ -62,13 +62,13 @@ async def test_generate_suggestion_is_idempotent(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        result1 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        result1 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         assert len(result1.created) == 1
         assert result1.skipped == 0
 
     async with StateSession() as state, IndexSession() as index:
-        result2 = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        result2 = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         assert len(result2.created) == 0
         assert result2.skipped == 1
@@ -82,18 +82,18 @@ async def test_apply_new_entry_creates_catalog_content(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         suggestion_id = gen.created[0].suggestion_id
 
     async with StateSession() as state, IndexSession() as index:
-        result = await suggestion_review.apply_suggestion(state, index, suggestion_id, actor="tester")
+        result = await automation_api.apply_suggestion(state, index, suggestion_id, actor="tester")
         await state.commit()
         assert result.success
         assert result.entry_id is not None
 
     async with StateSession() as state:
-        rows, total = await suggestion_review.list_suggestions(state, status="applied")
+        rows, total = await automation_api.list_suggestions(state, status="applied")
         assert total == 1
         assert rows[0].status == "applied"
         assert rows[0].target_entry_id is not None
@@ -107,15 +107,15 @@ async def test_apply_is_idempotent(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         sid = gen.created[0].suggestion_id
 
     async with StateSession() as state, IndexSession() as index:
-        r1 = await suggestion_review.apply_suggestion(state, index, sid, actor="tester")
+        r1 = await automation_api.apply_suggestion(state, index, sid, actor="tester")
         await state.commit()
     async with StateSession() as state, IndexSession() as index:
-        r2 = await suggestion_review.apply_suggestion(state, index, sid, actor="tester")
+        r2 = await automation_api.apply_suggestion(state, index, sid, actor="tester")
         await state.commit()
     assert r1.entry_id == r2.entry_id
 
@@ -128,16 +128,16 @@ async def test_reject_and_idempotent(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         sid = gen.created[0].suggestion_id
 
     async with StateSession() as state:
-        row = await suggestion_review.reject_suggestion(state, sid, actor="tester", reason="不需要")
+        row = await automation_api.reject_suggestion(state, sid, actor="tester", reason="不需要")
         await state.commit()
         assert row.status == "rejected"
     async with StateSession() as state:
-        row2 = await suggestion_review.reject_suggestion(state, sid, actor="tester")
+        row2 = await automation_api.reject_suggestion(state, sid, actor="tester")
         await state.commit()
         assert row2.status == "rejected"
 
@@ -153,12 +153,12 @@ async def test_batch_apply_reports_per_item(sessions):
     ids = []
     async with StateSession() as state, IndexSession() as index:
         for res in [resource_a, resource_b]:
-            g = await suggestion_generator.generate_suggestions_for_resource(state, index, res)
+            g = await automation_api.generate_suggestions_for_resource(state, index, res)
             ids.extend(s.suggestion_id for s in g.created)
         await state.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        batch = await suggestion_review.batch_apply_suggestions(state, index, ids, actor="tester")
+        batch = await automation_api.batch_apply_suggestions(state, index, ids, actor="tester")
         await state.commit()
         assert batch.succeeded == 2
         assert batch.failed == 0
@@ -173,22 +173,22 @@ async def test_revert_produces_new_revision(sessions):
         await index.commit()
 
     async with StateSession() as state, IndexSession() as index:
-        gen = await suggestion_generator.generate_suggestions_for_resource(state, index, resource)
+        gen = await automation_api.generate_suggestions_for_resource(state, index, resource)
         await state.commit()
         sid = gen.created[0].suggestion_id
 
     async with StateSession() as state, IndexSession() as index:
-        await suggestion_review.apply_suggestion(state, index, sid, actor="tester")
+        await automation_api.apply_suggestion(state, index, sid, actor="tester")
         await state.commit()
 
     async with StateSession() as state:
-        row = await suggestion_review.revert_suggestion(state, sid, actor="tester")
+        row = await automation_api.revert_suggestion(state, sid, actor="tester")
         await state.commit()
         assert row.status == "reviewed"
         assert row.applied_at is None
 
     async with StateSession() as state:
         from sqlalchemy import select
-        entry = await state.scalar(select(CatalogEntry).where(CatalogEntry.slug == suggestion_generator._slugify(resource.name)))
+        entry = await state.scalar(select(CatalogEntry).where(CatalogEntry.slug == automation_api._slugify(resource.name)))
         if entry is not None:
             assert entry.status == "archived"
