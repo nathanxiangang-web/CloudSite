@@ -91,6 +91,7 @@ __all__ = [
     "DiagnosticResourceView",
     "AdminIndexFolderView",
     "AdminIndexCountsView",
+    "HomeInventoryView",
     "CatalogResourceView",
     "ParserResourceView",
     "resource_queries",
