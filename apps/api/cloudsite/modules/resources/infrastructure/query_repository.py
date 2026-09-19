@@ -17,6 +17,7 @@ from ..domain.views import (
     FolderDetailView,
     FolderSummaryView,
     ParentSummaryView,
+    ParserResourceView,
     ResourceDetailView,
     ResourceDownloadView,
     ResourcePageView,
@@ -97,6 +98,23 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             status=row.status,
             root_mapping_id=row.root_mapping_id,
             content_type=row.content_type,
+        )
+
+    async def parser_resource(
+        self,
+        *,
+        resource_id: str,
+    ) -> ParserResourceView | None:
+        row = await self._session.get(Resource, resource_id)
+        if row is None:
+            return None
+        return ParserResourceView(
+            id=row.id,
+            name=row.name,
+            path=row.path,
+            extension=row.extension,
+            mime_type=row.mime_type,
+            status=row.status,
         )
 
     async def list_resources(
