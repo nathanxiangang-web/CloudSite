@@ -54,6 +54,22 @@ class CatalogAssetNotFound(CatalogError):
         super().__init__(f"catalog asset not found: {asset_id}")
         self.asset_id = asset_id
 
+class CatalogDeleteConflict(CatalogError):
+    def __init__(
+        self,
+        object_type: str,
+        object_id: str,
+        reason: str,
+    ):
+        super().__init__(
+            f"catalog {object_type} delete conflict: "
+            f"{object_id} ({reason})"
+        )
+        self.object_type = object_type
+        self.object_id = object_id
+        self.reason = reason
+
+
 class CatalogLocationInvalid(CatalogError):
     def __init__(self, resource_id: str, reason: str):
         super().__init__(f"catalog location invalid: {resource_id} ({reason})")
@@ -633,6 +649,63 @@ async def update_catalog_location(
             after=after,
         )
     return location
+async def delete_catalog_release(
+    state: AsyncSession,
+    release_id: str,
+    *,
+    actor: str = "system",
+) -> None:
+    release = await get_catalog_release(state, release_id)
+    assets = await list_catalog_assets(state, release_id)
+    if assets:
+        raise CatalogDeleteConflict(
+            "release",
+            release_id,
+            "release still has assets; remove them first",
+        )
+    before = {
+        "entry_id": release.entry_id,
+        "slug": release.slug,
+        "title": release.title,
+        "status": release.status,
+    }
+    await state.delete(release)
+    await state.flush()
+    await append_catalog_revision(
+        state,
+        target_type="release",
+        target_id=release_id,
+        action="delete",
+        actor=actor,
+        before=before,
+    )
+
+
+async def delete_catalog_asset(
+    state: AsyncSession,
+    asset_id: str,
+    *,
+    actor: str = "system",
+) -> None:
+    asset = await get_catalog_asset(state, asset_id)
+    before = {
+        "release_id": asset.release_id,
+        "slug": asset.slug,
+        "display_name": asset.display_name,
+        "status": asset.status,
+    }
+    await state.delete(asset)
+    await state.flush()
+    await append_catalog_revision(
+        state,
+        target_type="asset",
+        target_id=asset_id,
+        action="delete",
+        actor=actor,
+        before=before,
+    )
+
+
 async def delete_catalog_location(
     state: AsyncSession,
     location_id: str,
