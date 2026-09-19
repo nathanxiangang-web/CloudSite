@@ -20,12 +20,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import CatalogRevision, ContentRootMapping, Resource
-from cloudsite.services.catalog import (
+from cloudsite.modules.catalog.contracts.public import (
     CatalogLocationInvalid,
     CatalogPublishValidationFailed,
     CatalogRevisionConflict,
     CatalogSlugConflict,
-    DEFAULT_RELEASE_SLUG,
     attach_catalog_location,
     count_catalog_entries,
     create_catalog_asset,
@@ -36,6 +35,7 @@ from cloudsite.services.catalog import (
     update_catalog_entry,
     validate_catalog_entry_for_preview,
 )
+from cloudsite.modules.catalog.application.catalog_entry import DEFAULT_RELEASE_SLUG
 
 
 async def _bootstrap(monkeypatch, tmp_path):

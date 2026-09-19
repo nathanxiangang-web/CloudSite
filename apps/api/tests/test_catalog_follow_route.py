@@ -18,7 +18,7 @@ from cloudsite.models import (
     User,
     utcnow,
 )
-from cloudsite.services.catalog import (
+from cloudsite.modules.catalog.contracts.public import (
     attach_catalog_location,
     create_catalog_asset,
     create_catalog_entry,
