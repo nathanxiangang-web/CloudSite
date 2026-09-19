@@ -108,6 +108,8 @@ class ResourceQueryRepository(Protocol):
         content_type: str | None,
         page: int,
         page_size: int,
+        sort: str,
+        order: str,
     ) -> ResourcePageView: ...
 
     async def browse_resource_counts(
@@ -301,6 +303,8 @@ class ResourceQueries:
         content_type: str | None,
         page: int,
         page_size: int,
+        sort: str,
+        order: str,
     ) -> ResourcePageView:
         return await self._repository.browse_resources(
             enabled_root_ids=enabled_root_ids,
@@ -308,6 +312,8 @@ class ResourceQueries:
             content_type=content_type,
             page=page,
             page_size=page_size,
+            sort=sort,
+            order=order,
         )
 
     async def browse_resource_counts(
