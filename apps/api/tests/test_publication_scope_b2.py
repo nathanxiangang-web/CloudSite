@@ -190,7 +190,7 @@ async def test_migration_v15_to_v16_idempotent(tmp_path, monkeypatch):
     from cloudsite import database
     from cloudsite.migrations import CURRENT_SCHEMA_VERSION, get_state_schema_version
 
-        state_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
+    state_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
     index_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'index.db'}")
     monkeypatch.setattr(database, "state_engine", state_engine)
     monkeypatch.setattr(database, "index_engine", index_engine)
