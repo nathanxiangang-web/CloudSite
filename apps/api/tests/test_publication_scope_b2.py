@@ -205,7 +205,7 @@ async def test_migration_v15_to_v16_idempotent(tmp_path, monkeypatch):
 async def test_migration_v15_to_v16_old_db(tmp_path, monkeypatch):
     """已有 v15 数据库升级到 v16，setup_wizard_state 表创建、publicly_visible 列添加。"""
     from cloudsite import database
-    from cloudsite.migrations import STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
+    from cloudsite.migrations import CURRENT_SCHEMA_VERSION, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version
 
     state_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
     index_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'index.db'}")
