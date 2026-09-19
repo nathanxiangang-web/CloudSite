@@ -122,3 +122,15 @@ compatibility state, not permission to add new rolling-sync behavior.
 `cloudsite.models` keeps exact compatibility re-exports. Consumers that need
 read-only legacy sync information use the Indexing public contract and receive
 persistence-neutral run/change views instead of ORM rows.
+
+## I3 Admin Index Read Boundary
+
+The admin index surface now consumes Indexing's public read boundary for
+frozen legacy sync history and v2 runtime progress.
+
+- legacy SyncRun/SyncChange ORM rows are projected to persistence-neutral
+  views;
+- recent run/change queries stay read-only;
+- v2 progress is read through the same SQL-backed Indexing boundary used by
+  the production bridge to persist it;
+- no new behavior is added to frozen rolling-sync tables.

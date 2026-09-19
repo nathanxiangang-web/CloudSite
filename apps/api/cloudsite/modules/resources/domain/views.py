@@ -71,6 +71,50 @@ class FolderSummaryView:
         }
 
 
+
+
+@dataclass(frozen=True, slots=True)
+class AdminIndexCountsView:
+    folders: int
+    resources: int
+
+
+@dataclass(frozen=True, slots=True)
+class AdminIndexFolderView:
+    id: str
+    name: str
+    parent_id: str | None
+    content_type: str
+    depth: int
+    child_folder_count: int
+    resource_count: int
+    modified_at: datetime | None
+    path: str
+    root_mapping_id: int | None
+    status: str
+    indexed_at: datetime | None
+    direct_resource_count: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "parent_id": self.parent_id,
+            "content_type": self.content_type,
+            "depth": self.depth,
+            "child_folder_count": self.child_folder_count,
+            "resource_count": self.resource_count,
+            "modified_at": self.modified_at,
+            "path": self.path,
+            "root_mapping_id": self.root_mapping_id,
+            "status": self.status,
+            "indexed_at": self.indexed_at,
+        }
+        if self.direct_resource_count is not None:
+            payload["direct_resource_count"] = self.direct_resource_count
+        return payload
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogResourceView:
     """Persistence-neutral resource state exposed to Catalog."""
@@ -199,6 +243,8 @@ class FolderDetailView:
 
 
 __all__ = [
+    "AdminIndexFolderView",
+    "AdminIndexCountsView",
     "CatalogResourceView",
     "FolderDetailView",
     "FolderSummaryView",
