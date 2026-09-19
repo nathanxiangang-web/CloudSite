@@ -102,8 +102,11 @@ function FavoriteButton({ resourceId, userId }: { resourceId: string; userId: nu
     onError: (_error, _value, previous) => queryClient.setQueryData(key, previous),
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
-  const favorited = status.data?.favorited || false;
-  return <button type="button" className={`favorite-button${favorited ? " active" : ""}`} disabled={status.isLoading || mutation.isPending} onClick={() => mutation.mutate(favorited)}><Heart fill={favorited ? "currentColor" : "none"} />{favorited ? "已收藏" : "收藏"}</button>;
+  if (status.isLoading) return <button type="button" className="favorite-button" disabled><Heart />正在读取收藏…</button>;
+  if (status.error) return <button type="button" className="favorite-button" title={status.error.message} onClick={() => status.refetch()}><RefreshCw />重试收藏状态</button>;
+  const favorited = Boolean(status.data?.favorited);
+  const label = mutation.error ? "操作失败，重试" : favorited ? "已收藏" : "收藏";
+  return <button type="button" className={`favorite-button${favorited ? " active" : ""}`} title={mutation.error?.message} disabled={mutation.isPending} onClick={() => mutation.mutate(favorited)}><Heart fill={favorited ? "currentColor" : "none"} />{mutation.isPending ? "正在更新…" : label}</button>;
 }
 
 function SoftwareOverview({ item, authenticated, userId, onShare }: { item: ResourceDetail; authenticated: boolean; userId: number | null; onShare: () => void }) {

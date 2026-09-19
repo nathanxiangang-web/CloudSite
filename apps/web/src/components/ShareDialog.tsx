@@ -21,6 +21,7 @@ export function ShareDialog({ resource, onClose }: { resource: Resource; onClose
   const [duration, setDuration] = useState<ShareDuration>(site.default_share_duration);
   const [title, setTitle] = useState(resource.name);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const create = useMutation({
     mutationFn: () => api<Share>("/api/my/shares", {
       method: "POST",
@@ -37,8 +38,14 @@ export function ShareDialog({ resource, onClose }: { resource: Resource; onClose
     if (!create.data) return;
     const url = `${window.location.origin}/s/${create.data.token}`;
     const value = create.data.code ? `${url}\n提取码：${create.data.code}` : url;
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setCopyError("");
+    } catch {
+      setCopied(false);
+      setCopyError("复制失败，请手动复制分享链接和提取码。");
+    }
   }
 
   return <div className="share-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -53,6 +60,7 @@ export function ShareDialog({ resource, onClose }: { resource: Resource; onClose
           {create.data.code && <div><dt>提取码</dt><dd className="share-result-code">{create.data.code}</dd></div>}
         </dl>
         <button type="button" className="primary share-copy-button" onClick={copyShare}>{copied ? <Check /> : <Copy />}{copied ? "已复制" : "复制分享信息"}</button>
+        {copyError && <p className="form-error">{copyError}</p>}
       </div> : <>
         <header className="share-dialog-heading"><span><Share2 /></span><div><h2 id="share-dialog-title">分享文件</h2><p title={resource.name}>{resource.name}</p></div></header>
         <form className="share-dialog-form" onSubmit={submit}>
