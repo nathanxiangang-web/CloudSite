@@ -8,6 +8,7 @@ from ..domain.views import (
     FolderDetailView,
     FolderSummaryView,
     ResourceDetailView,
+    ResourceDownloadView,
     ResourcePageView,
     ResourcePreviewView,
 )
@@ -60,6 +61,13 @@ class ResourceQueryRepository(Protocol):
         resource_id: str,
         enabled_root_ids: set[int],
     ) -> ResourcePreviewView: ...
+
+    async def download_resource(
+        self,
+        *,
+        resource_id: str,
+        enabled_root_ids: set[int],
+    ) -> ResourceDownloadView: ...
 
 
 class ResourceQueries:
@@ -139,6 +147,17 @@ class ResourceQueries:
         enabled_root_ids: set[int],
     ) -> ResourcePreviewView:
         return await self._repository.preview_resource(
+            resource_id=resource_id,
+            enabled_root_ids=enabled_root_ids,
+        )
+
+    async def download_resource(
+        self,
+        *,
+        resource_id: str,
+        enabled_root_ids: set[int],
+    ) -> ResourceDownloadView:
+        return await self._repository.download_resource(
             resource_id=resource_id,
             enabled_root_ids=enabled_root_ids,
         )

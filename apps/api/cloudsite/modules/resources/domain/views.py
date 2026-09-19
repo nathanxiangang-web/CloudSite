@@ -86,6 +86,16 @@ class ResourcePreviewView:
 
 
 @dataclass(frozen=True, slots=True)
+class ResourceDownloadView:
+    """Internal download input. Storage path is never serialized to API output."""
+
+    id: str
+    path: str
+    root_mapping_id: int
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
 class ResourcePageView:
     items: tuple[ResourceSummaryView, ...]
     total: int
@@ -150,6 +160,7 @@ __all__ = [
     "FolderSummaryView",
     "ParentSummaryView",
     "ResourceDetailView",
+    "ResourceDownloadView",
     "ResourcePageView",
     "ResourcePreviewView",
     "ResourceSummaryView",

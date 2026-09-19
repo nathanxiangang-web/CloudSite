@@ -173,10 +173,38 @@ one authoritative implementation path.
 
 ### R4d — download/provider runtime composition
 
-Next, migrate download resource lookup and provider entry resolution onto
-Resources + Providers contracts so `routers/downloads.py` and Delivery no
-longer coordinate shared Resource ORM, legacy connection resolution, credential
-decryption, or direct AList clients.
+Status: implemented in this change.
+
+The public download route now resolves a persistence-neutral
+`ResourceDownloadView` through Resources. Missing, inactive, and
+out-of-publication-scope resources remain distinct so the existing
+`DL-001`, `DL-007`, and `RESOURCE_NOT_AVAILABLE` behavior is preserved.
+
+Provider access now uses `provider_runtime(state)`. Delivery consumes the
+Providers public runtime contract and maps normalized provider failures back to
+the existing download contract:
+
+- unavailable/unreachable -> `DL-002`;
+- authentication/credential failure -> `DL-006`;
+- metadata failure -> `DL-003`;
+- provider 429 -> `DL-003` with status 429;
+- unknown/configuration failure -> `DL-999`.
+
+`routers/downloads.py` no longer imports shared Resource ORM, calls
+`resource_in_publication_scope()`, or resolves connection ORM.
+
+Delivery's download domain no longer imports `AListClient`, `AListError`, or
+`decrypt_secret`; it receives a provider-neutral `ProviderEntry` and owns
+redirect validation/diagnostic steps only.
+
+This removes the `routers/downloads.py -> cloudsite.models` debt ID and
+ratchets architecture debt from 83 to 82.
+
+### R4e — download helper ownership cleanup
+
+Next, make top-level `cloudsite.download` a strict compatibility facade and
+move any remaining AList-specific compatibility mapping out of the runtime
+Delivery path. Then continue into download event/rate-limit legacy debt.
 
 Delivery continues to own redirect preparation plus download event/diagnostic
 tracking. Providers owns storage backend access and credentials.

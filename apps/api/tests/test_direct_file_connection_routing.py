@@ -173,40 +173,61 @@ def _install_resolvers(monkeypatch, captured):
         def connection_id_for(self, root_mapping_id):
             return self.connection_ids.get(root_mapping_id)
 
-        def require_enabled(self, root_mapping_id):
+        def require_preview_enabled(self, root_mapping_id):
             if root_mapping_id not in self.enabled_roots:
                 raise PreviewError("PV-005", "upstream unavailable", 503)
 
     runtime = FakeRuntime()
 
-    async def _fake_download(resource, connection):
-        captured["download_connection_id"] = getattr(connection, "id", None)
-        if not connection or not connection.enabled:
-            raise DownloadError("DL-002", "AList not configured", "alist_connection", 503)
+    async def _fake_download(resource, provider_runtime):
+        connection_id = provider_runtime.connection_id_for(
+            resource.root_mapping_id
+        )
+        captured["download_connection_id"] = connection_id
+        if (
+            resource.root_mapping_id not in provider_runtime.enabled_roots
+            or connection_id is None
+        ):
+            raise DownloadError(
+                "DL-002",
+                "AList not configured",
+                "alist_connection",
+                503,
+            )
         return DownloadResolution(
-            url=f"https://download.example/conn{connection.id}/{resource.id}",
-            target_host="download.example", base_path="/", has_sign=True, steps=[],
+            url=f"https://download.example/conn{connection_id}/{resource.id}",
+            target_host="download.example",
+            base_path="/",
+            has_sign=True,
+            steps=[],
         )
 
     async def _fake_preview(resource, provider_runtime, force_refresh=False):
-        connection_id = provider_runtime.connection_id_for(resource.root_mapping_id)
+        connection_id = provider_runtime.connection_id_for(
+            resource.root_mapping_id
+        )
         captured["preview_connection_id"] = connection_id
-        provider_runtime.require_enabled(resource.root_mapping_id)
+        provider_runtime.require_preview_enabled(resource.root_mapping_id)
         return PreviewResolution(
             url=f"https://preview.example/conn{connection_id}/{resource.id}",
-            target_host="preview.example", cache_hit=False,
+            target_host="preview.example",
+            cache_hit=False,
         )
 
     async def _fake_ensure_cached(resource, provider_runtime):
-        connection_id = provider_runtime.connection_id_for(resource.root_mapping_id)
+        connection_id = provider_runtime.connection_id_for(
+            resource.root_mapping_id
+        )
         captured["office_connection_id"] = connection_id
-        provider_runtime.require_enabled(resource.root_mapping_id)
+        provider_runtime.require_preview_enabled(resource.root_mapping_id)
         return Path(f"/tmp/fake-office-{resource.id}")
 
     async def _fake_text_preview(resource, provider_runtime):
-        connection_id = provider_runtime.connection_id_for(resource.root_mapping_id)
+        connection_id = provider_runtime.connection_id_for(
+            resource.root_mapping_id
+        )
         captured["text_connection_id"] = connection_id
-        provider_runtime.require_enabled(resource.root_mapping_id)
+        provider_runtime.require_preview_enabled(resource.root_mapping_id)
         return {
             "content": f"conn{connection_id}:{resource.id}",
             "truncated": False,
@@ -218,13 +239,38 @@ def _install_resolvers(monkeypatch, captured):
     async def _fake_rate(address, now=None):
         return DownloadRateDecision(allowed=True)
 
-    monkeypatch.setattr("cloudsite.routers.downloads.resolve_download_entry", _fake_download)
-    monkeypatch.setattr("cloudsite.routers.downloads.check_download_rate", _fake_rate)
-    monkeypatch.setattr("cloudsite.routers.previews.provider_runtime", lambda _state: runtime)
-    monkeypatch.setattr("cloudsite.routers.resources.provider_runtime", lambda _state: runtime)
-    monkeypatch.setattr("cloudsite.routers.previews.resolve_preview_url", _fake_preview)
-    monkeypatch.setattr("cloudsite.routers.resources.ensure_preview_cached", _fake_ensure_cached)
-    monkeypatch.setattr("cloudsite.routers.resources.load_text_preview", _fake_text_preview)
+    monkeypatch.setattr(
+        "cloudsite.routers.downloads.provider_runtime",
+        lambda _state: runtime,
+    )
+    monkeypatch.setattr(
+        "cloudsite.routers.downloads.resolve_download_entry",
+        _fake_download,
+    )
+    monkeypatch.setattr(
+        "cloudsite.routers.downloads.check_download_rate",
+        _fake_rate,
+    )
+    monkeypatch.setattr(
+        "cloudsite.routers.previews.provider_runtime",
+        lambda _state: runtime,
+    )
+    monkeypatch.setattr(
+        "cloudsite.routers.resources.provider_runtime",
+        lambda _state: runtime,
+    )
+    monkeypatch.setattr(
+        "cloudsite.routers.previews.resolve_preview_url",
+        _fake_preview,
+    )
+    monkeypatch.setattr(
+        "cloudsite.routers.resources.ensure_preview_cached",
+        _fake_ensure_cached,
+    )
+    monkeypatch.setattr(
+        "cloudsite.routers.resources.load_text_preview",
+        _fake_text_preview,
+    )
 
 
 def _authed_client(transport, user_token):

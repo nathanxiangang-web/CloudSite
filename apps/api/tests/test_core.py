@@ -602,47 +602,40 @@ async def test_preview_recovers_after_provider_returns_without_process_restart()
     assert recovered.cache_hit is False
 
 
-async def test_download_recovers_after_alist_returns_without_process_restart(monkeypatch):
-    resource = SimpleNamespace(path="/软件/tool.zip")
-    connection = SimpleNamespace(
-        enabled=True,
-        base_url="https://alist.example",
-        base_path="/",
-        username="user",
-        password_ciphertext="ciphertext",
+async def test_download_recovers_after_provider_returns_without_process_restart():
+    resource = SimpleNamespace(
+        id="r-download-recover",
+        path="/软件/tool.zip",
+        root_mapping_id=1,
     )
     attempts = 0
 
-    class FakeClient:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get_download_entry(self, _path):
+    class Runtime:
+        async def download_entry(self, *, root_mapping_id, path):
             nonlocal attempts
+            assert root_mapping_id == 1
+            assert path == "/软件/tool.zip"
             attempts += 1
             if attempts == 1:
-                raise AListError("offline detail must not leak", "AL-002")
-            return SimpleNamespace(
+                raise ProviderAccessError(
+                    "unreachable",
+                    "private upstream detail must not leak",
+                    status_code=503,
+                )
+            return ProviderEntry(
                 url="https://alist.example/d/tool.zip",
                 host="alist.example",
                 base_path="/",
                 has_sign=False,
             )
 
-    monkeypatch.setattr(delivery_download_mod, "decrypt_secret", lambda _value: "password")
-    monkeypatch.setattr(delivery_download_mod, "AListClient", FakeClient)
+    runtime = Runtime()
     with pytest.raises(DownloadError) as raised:
-        await resolve_download_entry(resource, connection)
+        await resolve_download_entry(resource, runtime)
     assert raised.value.code == "DL-002"
     assert raised.value.status_code == 503
-    assert "offline detail" not in raised.value.message
-    recovered = await resolve_download_entry(resource, connection)
+    assert "private upstream detail" not in raised.value.message
+    recovered = await resolve_download_entry(resource, runtime)
     assert recovered.url == "https://alist.example/d/tool.zip"
 
 
