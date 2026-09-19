@@ -174,9 +174,23 @@ async def get_wizard_state(
 ) -> dict[str, Any]:
     row = await _get_or_create_wizard(state)
     _normalize_legacy_progress(row)
+    site = await get_admin_site_settings(state)
+    presentation = await get_admin_presentation(state)
+    config = presentation["config"]
+    theme = config.get("theme_tokens", {})
+    payload = _state_payload(row)
+    payload["draft"] = {
+        "preset": str(config.get("preset") or "software"),
+        "site_name": str(site.get("site_name") or ""),
+        "home_title": str(site.get("home_title") or ""),
+        "description": str(site.get("description") or ""),
+        "hero_subtitle": str(site.get("hero_subtitle") or ""),
+        "accent_color": str(theme.get("accent_color") or "#2563eb"),
+        "card_radius": int(theme.get("card_radius") or 12),
+    }
     state.add(row)
     await state.commit()
-    return _state_payload(row)
+    return payload
 
 
 async def get_setup_status(
@@ -457,7 +471,18 @@ async def process_wizard_step(
         )
 
     row = await _get_or_create_wizard(state)
-    _normalize_legacy_progress(row)
+    legacy_current = row.current_step
+    if not (
+        legacy_current in _LEGACY_WIZARD_STEPS
+        and step == legacy_current
+    ):
+        _normalize_legacy_progress(row)
+    if step != row.current_step:
+        raise SetupWorkflowError(
+            "WIZARD_STEP_OUT_OF_ORDER",
+            f"当前应处理步骤：{row.current_step}",
+            status_code=409,
+        )
     if step == "connect":
         result = await _process_connect(
             state,
@@ -498,10 +523,47 @@ async def process_wizard_step(
     }
 
 
-async def skip_wizard(
+async def go_back_wizard(
     state: AsyncSession,
 ) -> dict[str, Any]:
     row = await _get_or_create_wizard(state)
+    _normalize_legacy_progress(row)
+    if row.wizard_completed:
+        return {"ok": True, "state": _state_payload(row)}
+    try:
+        index = WIZARD_STEPS.index(row.current_step)
+    except ValueError:
+        row.current_step = "connect"
+    else:
+        row.current_step = WIZARD_STEPS[max(0, index - 1)]
+    state.add(row)
+    await state.commit()
+    return {"ok": True, "state": _state_payload(row)}
+
+
+async def skip_wizard(
+    state: AsyncSession,
+    *,
+    provided_setup_token: str = "",
+    expected_setup_token: str = "",
+) -> dict[str, Any]:
+    row = await _get_or_create_wizard(state)
+    if not row.connect_done:
+        if not expected_setup_token:
+            raise SetupWorkflowError(
+                "SETUP_UNAVAILABLE",
+                "服务器未配置初始化令牌",
+                status_code=503,
+            )
+        if not verify_setup_token(
+            provided_setup_token,
+            expected_setup_token,
+        ):
+            raise SetupWorkflowError(
+                "SETUP_FORBIDDEN",
+                "初始化令牌错误",
+                status_code=403,
+            )
     row.wizard_completed = True
     row.current_step = "publish"
     row.completed_at = _now_iso()
@@ -529,6 +591,7 @@ __all__ = [
     "complete_initial_alist_setup",
     "get_setup_status",
     "get_wizard_state",
+    "go_back_wizard",
     "process_wizard_step",
     "skip_wizard",
 ]
