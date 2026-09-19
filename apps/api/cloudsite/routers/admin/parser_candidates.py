@@ -25,12 +25,11 @@ from ...parser_candidate_schemas import (
     ParserCandidateTaskOutput,
     ParserEvaluationInput,
 )
-from ...services.parser_candidates import (
+from ...modules.automation.contracts.public import (
     ParserCandidateError,
     ParserCandidateNotFound,
     ParserCandidateTransitionInvalid,
 )
-from ...services.resource_name_parser import ParseResult
 
 router = APIRouter()
 
@@ -42,7 +41,7 @@ _CANDIDATE_STATUSES = frozenset(
 @router.post("/api/admin/parser-candidates/evaluate")
 async def admin_evaluate_parser(payload: ParserEvaluationInput):
     """Evaluate a bounded fixture set without creating tasks or Catalog data."""
-    from ...services.parser_evaluation import ParserEvaluationCase, evaluate_parser_cases
+    from ...modules.automation.contracts.public import ParserEvaluationCase, evaluate_parser_cases
 
     cases = [
         ParserEvaluationCase(
@@ -107,7 +106,7 @@ async def admin_list_parser_candidates(
     Invalid status or bounds are rejected before reaching the service layer.
     """
     from ...main import StateSession
-    from ...services.parser_candidate_batch import list_parser_candidates
+    from ...modules.automation.contracts.public import list_parser_candidates
 
     if status is not None and status not in _CANDIDATE_STATUSES:
         raise HTTPException(
@@ -151,7 +150,7 @@ async def admin_enqueue_parser_candidate(payload: ParserCandidateEnqueueInput):
     committed; the index session is read-only.
     """
     from ...main import IndexSession, StateSession
-    from ...services.parser_candidate_batch import enqueue_indexed_resource
+    from ...modules.automation.contracts.public import enqueue_indexed_resource
 
     async with StateSession() as state, IndexSession() as index:
         try:
@@ -179,7 +178,7 @@ async def admin_run_parser_candidate_batch(payload: ParserCandidateBatchInput):
     only on success. The index session is read-only for resource lookups.
     """
     from ...main import IndexSession, StateSession
-    from ...services.parser_candidate_batch import run_parser_candidate_batch
+    from ...modules.automation.contracts.public import run_parser_candidate_batch
 
     async with StateSession() as state, IndexSession() as index:
         try:
@@ -229,7 +228,7 @@ async def admin_retry_parser_candidate(
     committed.
     """
     from ...main import StateSession
-    from ...services.parser_candidates import retry_parser_candidate
+    from ...modules.automation.contracts.public import retry_parser_candidate
 
     async with StateSession() as state:
         try:
@@ -254,7 +253,7 @@ async def admin_recover_interrupted_candidates():
     retry operation. Only the state session is committed.
     """
     from ...main import StateSession
-    from ...services.parser_candidate_batch import recover_interrupted_candidates
+    from ...modules.automation.contracts.public import recover_interrupted_candidates
 
     async with StateSession() as state:
         try:
@@ -277,7 +276,7 @@ async def admin_recover_interrupted_candidates():
 async def admin_get_parser_candidate(task_id: str = Path(..., pattern=r"^pt_[0-9a-f]{32}$")):
     """Get a single parser candidate task by ID."""
     from ...main import StateSession
-    from ...services.parser_candidates import get_parser_candidate
+    from ...modules.automation.contracts.public import get_parser_candidate
 
     async with StateSession() as state:
         try:
@@ -294,7 +293,7 @@ async def admin_get_parser_candidate(task_id: str = Path(..., pattern=r"^pt_[0-9
 async def admin_cancel_parser_candidate(task_id: str = Path(..., pattern=r"^pt_[0-9a-f]{32}$")):
     """Cancel a pending or running parser candidate task."""
     from ...main import StateSession
-    from ...services.parser_candidates import cancel_parser_candidate
+    from ...modules.automation.contracts.public import cancel_parser_candidate
 
     async with StateSession() as state:
         try:
@@ -319,7 +318,7 @@ async def admin_seed_parser_candidates_from_sync(
     parser candidate tasks for each, skipping those already enqueued.
     """
     from ...main import StateSession, IndexSession
-    from ...services.parser_candidate_seeding import seed_parser_candidates_from_sync_run
+    from ...modules.automation.contracts.public import seed_parser_candidates_from_sync_run
 
     async with StateSession() as state, IndexSession() as index:
         try:
