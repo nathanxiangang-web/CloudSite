@@ -103,7 +103,7 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                             root_mapping_id=record.root_mapping_id,
                             depth=record.depth,
                             modified_at=record.modified_at,
-                            indexed_at=record.indexed_at or now,
+                            indexed_at=now,
                             status="active",
                         )
                     )
@@ -114,7 +114,7 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                     existing.content_type = record.content_type or record.category_id
                     existing.root_mapping_id = record.root_mapping_id
                     existing.modified_at = record.modified_at
-                    existing.indexed_at = record.indexed_at or now
+                    existing.indexed_at = now
                     existing.status = "active"
             else:
                 existing = await self._session.get(Resource, record.resource_id)
@@ -139,7 +139,7 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                             size=record.size or 0,
                             modified_at=record.modified_at,
                             thumbnail=record.thumbnail,
-                            indexed_at=record.indexed_at or now,
+                            indexed_at=now,
                             status="active",
                         )
                     )
@@ -154,7 +154,7 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                     existing.size = record.size or 0
                     existing.modified_at = record.modified_at
                     existing.thumbnail = record.thumbnail
-                    existing.indexed_at = record.indexed_at or now
+                    existing.indexed_at = now
                     existing.status = "active"
 
         await self._session.flush()
