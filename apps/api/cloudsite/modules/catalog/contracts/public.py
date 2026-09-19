@@ -38,6 +38,17 @@ from ..application.catalog_release import (
     CreateCatalogReleaseResult,
 )
 
+from ..application.public_queries import (
+    CatalogViewNotFound,
+    catalog_asset_view,
+    catalog_entry_view,
+    catalog_release_view,
+    public_catalog_asset_view,
+    public_catalog_entry_view,
+    public_catalog_release_view,
+    published_catalog_page,
+)
+
 __all__ = [
     "CatalogError",
     "CatalogEntryNotFound",
@@ -68,4 +79,13 @@ __all__ = [
     "apply_automation_asset",
     "revert_automation_target",
     "list_automation_revisions",
+    "CatalogViewNotFound",
+    "catalog_asset_view",
+    "catalog_entry_view",
+    "catalog_release_view",
+    "published_catalog_page",
+    "public_catalog_entry_view",
+    "public_catalog_release_view",
+    "public_catalog_asset_view",
 ]
+
