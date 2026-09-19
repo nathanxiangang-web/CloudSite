@@ -48,6 +48,9 @@ export function CatalogFollowButton({ entryId }: { entryId: string }) {
   if (auth.isLoading) {
     return <span className="catalog-follow-button placeholder" aria-busy="true">…</span>;
   }
+  if (auth.error) {
+    return <button type="button" className="button catalog-follow-button" title={auth.error.message} onClick={() => auth.refetch()}>账号状态不可用 · 重试</button>;
+  }
   if (!auth.data?.authenticated) {
     return (
       <Link className="button catalog-follow-button login-required" href={`/login?next=${encodeURIComponent(`/catalog/${entryId}`)}`}>
@@ -57,24 +60,36 @@ export function CatalogFollowButton({ entryId }: { entryId: string }) {
     );
   }
 
+  if (status.isLoading) {
+    return <span className="catalog-follow-button placeholder" aria-busy="true">正在读取关注状态…</span>;
+  }
+  if (status.error) {
+    return <button type="button" className="button catalog-follow-button" title={status.error.message} onClick={() => status.refetch()}>关注状态不可用 · 重试</button>;
+  }
+
   const favorited = Boolean(status.data?.favorited);
   const notifyEnabled = Boolean(status.data?.notify_enabled);
+  const actionError = follow.error || unfollow.error || toggleNotify.error;
 
   if (!favorited) {
     return (
-      <button
-        type="button"
-        className="button primary catalog-follow-button"
-        disabled={follow.isPending}
-        onClick={() => follow.mutate()}
-      >
-        <Star size={16} />
-        {follow.isPending ? "关注中…" : "关注"}
-      </button>
+      <>
+        <button
+          type="button"
+          className="button primary catalog-follow-button"
+          disabled={follow.isPending}
+          onClick={() => follow.mutate()}
+        >
+          <Star size={16} />
+          {follow.isPending ? "关注中…" : follow.error ? "关注失败，重试" : "关注"}
+        </button>
+        {actionError && <small className="form-error">{actionError.message}</small>}
+      </>
     );
   }
 
   return (
+    <>
     <div className="catalog-follow-button-group">
       <button
         type="button"
@@ -96,5 +111,7 @@ export function CatalogFollowButton({ entryId }: { entryId: string }) {
         {notifyEnabled ? "通知开" : "通知关"}
       </button>
     </div>
+    {actionError && <small className="form-error">{actionError.message}</small>}
+    </>
   );
 }
