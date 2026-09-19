@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from cloudsite.services import roles
+from cloudsite.modules.users.contracts import public as roles
 
 
 def test_list_roles():

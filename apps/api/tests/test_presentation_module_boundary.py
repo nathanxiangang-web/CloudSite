@@ -15,10 +15,6 @@ from cloudsite.modules.presentation.contracts.public import (
 from cloudsite.modules.presentation.infrastructure.models import (
     SitePresentation as ModuleSitePresentation,
 )
-from cloudsite.services.presentation import (
-    PresentationConfig as LegacyPresentationConfig,
-)
-
 
 async def _store():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -28,9 +24,8 @@ async def _store():
     return engine, factory
 
 
-async def test_legacy_presentation_surfaces_reexport_module_owners():
+async def test_legacy_presentation_model_reexports_module_owner():
     assert LegacySitePresentation is ModuleSitePresentation
-    assert LegacyPresentationConfig is PresentationConfig
 
 
 async def test_presentation_lifecycle_and_public_projection():
