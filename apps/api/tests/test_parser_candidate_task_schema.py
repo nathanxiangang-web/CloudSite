@@ -71,7 +71,7 @@ async def test_fresh_init_creates_parser_candidate_tasks_table(tmp_path, monkeyp
 
     async with state_engine.connect() as conn:
         assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
-                tables = await _table_names(conn)
+        tables = await _table_names(conn)
         assert TASK_TABLE in tables, f"missing table {TASK_TABLE}"
 
         cols = await _columns(conn, TASK_TABLE)
