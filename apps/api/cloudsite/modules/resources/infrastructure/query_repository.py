@@ -19,6 +19,7 @@ from ..domain.views import (
     DiagnosticResourceView,
     FolderDetailView,
     FolderSummaryView,
+    HomeInventoryView,
     ParentSummaryView,
     ParserResourceView,
     ResourceDetailView,
@@ -558,6 +559,242 @@ class SqlAlchemyResourceQueryRepository(ResourceQueryRepository):
             str(content_type): int(count or 0)
             for content_type, count in rows
         }
+
+    async def root_inventory_counts(
+        self,
+        *,
+        enabled_root_ids: set[int],
+    ) -> tuple[dict[int, int], dict[int, int]]:
+        if not enabled_root_ids:
+            return {}, {}
+
+        resource_counts = {
+            int(root_id): int(count or 0)
+            for root_id, count in (
+                await self._session.execute(
+                    select(Resource.root_mapping_id, func.count())
+                    .select_from(Resource)
+                    .where(
+                        Resource.status == "active",
+                        Resource.root_mapping_id.in_(enabled_root_ids),
+                    )
+                    .group_by(Resource.root_mapping_id)
+                )
+            ).all()
+            if root_id is not None
+        }
+        folder_counts = {
+            int(root_id): int(count or 0)
+            for root_id, count in (
+                await self._session.execute(
+                    select(Folder.root_mapping_id, func.count())
+                    .select_from(Folder)
+                    .where(
+                        Folder.status == "active",
+                        Folder.root_mapping_id.in_(enabled_root_ids),
+                    )
+                    .group_by(Folder.root_mapping_id)
+                )
+            ).all()
+            if root_id is not None
+        }
+        return resource_counts, folder_counts
+
+    async def home_inventory(
+        self,
+        *,
+        enabled_root_ids: set[int],
+        content_types: tuple[str, ...],
+        recent_limit: int,
+        popular_limit: int,
+        popular_strategy: str,
+        featured_resource_ids: list[str],
+        manual_root_order: tuple[int, ...],
+    ) -> HomeInventoryView:
+        counts = {content_type: 0 for content_type in content_types}
+        if not enabled_root_ids:
+            return HomeInventoryView(
+                recent=(),
+                popular=(),
+                counts=counts,
+                root_resource_counts={},
+                root_folder_counts={},
+                resource_count=0,
+                folder_count=0,
+                total_size=0,
+            )
+
+        scope = (
+            Resource.status == "active",
+            Resource.root_mapping_id.in_(enabled_root_ids),
+        )
+
+        type_rows = (
+            await self._session.execute(
+                select(Resource.content_type, func.count())
+                .select_from(Resource)
+                .where(*scope)
+                .group_by(Resource.content_type)
+            )
+        ).all()
+        for content_type, count in type_rows:
+            if content_type in counts:
+                counts[str(content_type)] = int(count or 0)
+
+        recent_rows: list[Resource] = []
+        if recent_limit > 0:
+            recent_rows = list(
+                (
+                    await self._session.scalars(
+                        select(Resource)
+                        .where(*scope)
+                        .order_by(
+                            desc(Resource.modified_at),
+                            Resource.id,
+                        )
+                        .limit(recent_limit)
+                    )
+                ).all()
+            )
+
+        popular_rows: list[Resource] = []
+        if popular_limit > 0:
+            if popular_strategy == "featured" and featured_resource_ids:
+                popular_rows = list(
+                    (
+                        await self._session.scalars(
+                            select(Resource)
+                            .where(
+                                *scope,
+                                Resource.id.in_(featured_resource_ids),
+                            )
+                            .order_by(
+                                desc(Resource.modified_at),
+                                Resource.id,
+                            )
+                            .limit(popular_limit)
+                        )
+                    ).all()
+                )
+                if len(popular_rows) < popular_limit:
+                    seen_ids = {row.id for row in popular_rows}
+                    extra = select(Resource).where(*scope)
+                    if seen_ids:
+                        extra = extra.where(
+                            Resource.id.notin_(seen_ids)
+                        )
+                    popular_rows.extend(
+                        list(
+                            (
+                                await self._session.scalars(
+                                    extra.order_by(
+                                        desc(Resource.modified_at),
+                                        Resource.id,
+                                    ).limit(
+                                        popular_limit - len(popular_rows)
+                                    )
+                                )
+                            ).all()
+                        )
+                    )
+            elif popular_strategy == "manual":
+                candidate_limit = (
+                    min(
+                        popular_limit * max(len(manual_root_order), 1),
+                        200,
+                    )
+                    if manual_root_order
+                    else popular_limit
+                )
+                candidates = list(
+                    (
+                        await self._session.scalars(
+                            select(Resource)
+                            .where(*scope)
+                            .order_by(
+                                desc(Resource.modified_at),
+                                Resource.id,
+                            )
+                            .limit(candidate_limit)
+                        )
+                    ).all()
+                )
+                root_rank = {
+                    root_id: index
+                    for index, root_id in enumerate(manual_root_order)
+                }
+                candidates.sort(
+                    key=lambda row: (
+                        root_rank.get(row.root_mapping_id, 999999),
+                        -(
+                            row.modified_at.timestamp()
+                            if row.modified_at
+                            else 0
+                        ),
+                    )
+                )
+                popular_rows = candidates[:popular_limit]
+            else:
+                popular_rows = list(
+                    (
+                        await self._session.scalars(
+                            select(Resource)
+                            .where(*scope)
+                            .order_by(
+                                desc(Resource.modified_at),
+                                Resource.id,
+                            )
+                            .limit(popular_limit)
+                        )
+                    ).all()
+                )
+
+        root_resource_counts, root_folder_counts = (
+            await self.root_inventory_counts(
+                enabled_root_ids=enabled_root_ids,
+            )
+        )
+        resource_count = int(
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Resource)
+                .where(*scope)
+            )
+            or 0
+        )
+        folder_count = int(
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Folder)
+                .where(
+                    Folder.status == "active",
+                    Folder.root_mapping_id.in_(enabled_root_ids),
+                )
+            )
+            or 0
+        )
+        total_size = int(
+            await self._session.scalar(
+                select(func.coalesce(func.sum(Resource.size), 0))
+                .where(*scope)
+            )
+            or 0
+        )
+
+        return HomeInventoryView(
+            recent=tuple(
+                self._resource_view(row) for row in recent_rows
+            ),
+            popular=tuple(
+                self._resource_view(row) for row in popular_rows
+            ),
+            counts=counts,
+            root_resource_counts=root_resource_counts,
+            root_folder_counts=root_folder_counts,
+            resource_count=resource_count,
+            folder_count=folder_count,
+            total_size=total_size,
+        )
 
     async def list_resources(
         self,
