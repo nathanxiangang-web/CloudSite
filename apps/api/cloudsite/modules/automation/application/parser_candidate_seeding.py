@@ -11,10 +11,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Resource, SyncChange, SyncRun
+from ...indexing.contracts.public import legacy_sync_queries
 from .parser_candidate_batch import enqueue_indexed_resource
 from .parser_candidates import ParserCandidateError
 
@@ -69,28 +68,20 @@ async def seed_parser_candidates_from_sync_run(
     if not isinstance(after_change_id, int) or isinstance(after_change_id, bool) or after_change_id < 0:
         raise ParserCandidateError("after_change_id must be a non-negative integer")
 
-    sync_run = await index.get(SyncRun, sync_run_id)
+    sync_reader = legacy_sync_queries(index)
+    sync_run = await sync_reader.get_run(sync_run_id)
     if sync_run is None:
         raise ParserCandidateError("sync run not found")
     if sync_run.status not in _SEEDABLE_RUN_STATUSES:
         raise ParserCandidateError("sync run is not completed or partial")
 
-    rows = list(
-        (
-            await index.scalars(
-                select(SyncChange)
-                .where(
-                    SyncChange.sync_run_id == sync_run_id,
-                    SyncChange.id > after_change_id,
-                )
-                .order_by(SyncChange.id)
-                .limit(max_items + 1)
-            )
-        ).all()
+    page = await sync_reader.list_changes(
+        sync_run_id=sync_run_id,
+        after_change_id=after_change_id,
+        limit=max_items,
     )
-
-    has_more = len(rows) > max_items
-    process_rows = rows[:max_items]
+    has_more = page.has_more
+    process_rows = page.items
 
     created = 0
     existing = 0
@@ -103,13 +94,15 @@ async def seed_parser_candidates_from_sync_run(
         if change.object_type != "resource" or change.change_type not in _SEED_CHANGE_TYPES:
             skipped += 1
             continue
-        resource = await index.get(Resource, change.object_id)
-        if resource is None or resource.status != "active":
-            skipped += 1
-            continue
         try:
             async with state.begin_nested():
                 _, was_created = await enqueue_indexed_resource(state, index, change.object_id)
+        except ParserCandidateError as exc:
+            if str(exc) == "indexed resource is unavailable or inactive":
+                skipped += 1
+            else:
+                error += 1
+            continue
         except Exception:
             error += 1
             continue
