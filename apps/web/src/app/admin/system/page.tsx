@@ -114,6 +114,12 @@ export default function SystemPage() {
   };
   const submitAlist = (event: FormEvent) => { event.preventDefault(); saveAlist.mutate(); };
   const breadcrumbs = browserPath.split("/").filter(Boolean);
+  const primaryLoading = alist.isLoading || mappings.isLoading || system.isLoading;
+  const primaryError = alist.error || mappings.error || system.error;
+
+  if (primaryLoading) return <AdminShell title="系统"><div className="panel loading">正在加载系统设置…</div></AdminShell>;
+  if (primaryError) return <AdminShell title="系统"><div className="panel empty error-state">系统设置加载失败：{primaryError.message}<button type="button" onClick={() => { void alist.refetch(); void mappings.refetch(); void system.refetch(); }}>重试</button></div></AdminShell>;
+  if (!alist.data || !mappings.data || !system.data) return null;
 
   return <AdminShell title="系统"><div className="admin-page">
     <nav className="admin-tabs" role="tablist" aria-label="系统设置分区">
@@ -143,13 +149,13 @@ export default function SystemPage() {
         {mappingForm.alist_path ? <div className="mapping-preview"><span>映射预览</span><strong>网站“{mappingForm.display_name || "未命名"}”资源库</strong><ChevronRight /><b>AList {mappingForm.alist_path}</b></div> : <div className="mapping-preview empty-preview">请先从上方选择一个 AList 文件夹</div>}
         <details className="advanced-path"><summary>高级设置：手动输入路径</summary><label>AList 完整路径<input value={mappingForm.alist_path} onChange={(e) => { const path = e.target.value; setMappingForm({ ...mappingForm, alist_path: path }); setSelectedDirectory(path ? { name: pathName(path), path, modified: null } : null); }} placeholder="例如 /软件" /></label></details>
         <div className="mapping-submit">{editingMappingId && <button type="button" onClick={() => { setEditingMappingId(null); setMappingForm({ content_type: "software", display_name: "", alist_path: "" }); }}>取消编辑</button>}<button className="primary" disabled={!mappingForm.alist_path || !mappingForm.display_name || addMapping.isPending}><FolderPlus />{addMapping.isPending ? "正在保存…" : editingMappingId ? "保存映射修改" : "添加映射"}</button></div>
-        {addMapping.error && <p className="form-error">{addMapping.error.message}</p>}
+        {(addMapping.error || toggleMapping.error || removeMapping.error) && <p className="form-error">{(addMapping.error || toggleMapping.error || removeMapping.error)?.message}</p>}
       </form>
     </section>
     </div>}
 
     {tab === "sync" && <div className="admin-tab-panel admin-tab-panel-narrow">
-    <section className="panel"><h2><RefreshCw />自动同步</h2><div className="setting-row"><span><strong>自动同步</strong><small>按同步周期低速全量扫描 AList 变化</small></span><input className="toggle" type="checkbox" checked={systemForm.automatic_sync} onChange={(e) => setSystemForm({ ...systemForm, automatic_sync: e.target.checked })} /></div><label className="select-label">同步间隔<select value={systemForm.sync_interval_minutes} onChange={(e) => setSystemForm({ ...systemForm, sync_interval_minutes: Number(e.target.value) })}><option value={180}>3 小时</option><option value={360}>6 小时</option><option value={720}>12 小时</option><option value={1440}>24 小时</option></select></label><div className="setting-row"><span><strong>启动到期检查</strong><small>仅当距离上次同步结束已超过设定周期，才在启动后延迟同步</small></span><input className="toggle" type="checkbox" checked={systemForm.sync_on_startup} onChange={(e) => setSystemForm({ ...systemForm, sync_on_startup: e.target.checked })} /></div><button className="primary" onClick={() => saveSystem.mutate()}><Save />保存同步设置</button></section>
+    <section className="panel"><h2><RefreshCw />自动同步</h2><div className="setting-row"><span><strong>自动同步</strong><small>按同步周期低速全量扫描 AList 变化</small></span><input className="toggle" type="checkbox" checked={systemForm.automatic_sync} onChange={(e) => setSystemForm({ ...systemForm, automatic_sync: e.target.checked })} /></div><label className="select-label">同步间隔<select value={systemForm.sync_interval_minutes} onChange={(e) => setSystemForm({ ...systemForm, sync_interval_minutes: Number(e.target.value) })}><option value={180}>3 小时</option><option value={360}>6 小时</option><option value={720}>12 小时</option><option value={1440}>24 小时</option></select></label><div className="setting-row"><span><strong>启动到期检查</strong><small>仅当距离上次同步结束已超过设定周期，才在启动后延迟同步</small></span><input className="toggle" type="checkbox" checked={systemForm.sync_on_startup} onChange={(e) => setSystemForm({ ...systemForm, sync_on_startup: e.target.checked })} /></div><button className="primary" disabled={saveSystem.isPending} onClick={() => saveSystem.mutate()}><Save />{saveSystem.isPending ? "正在保存…" : "保存同步设置"}</button>{saveSystem.isSuccess && <p className="form-success">同步设置已保存。</p>}{saveSystem.error && <p className="form-error">{saveSystem.error.message}</p>}</section>
     </div>}
 
     {tab === "status" && <div className="admin-tab-panel">
