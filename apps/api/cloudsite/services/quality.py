@@ -112,6 +112,19 @@ class DetectionResult:
 
 
 @dataclass
+class DetectionRunRecord:
+    run_id: str
+    started_at: datetime
+    completed_at: datetime | None
+    items_found: int
+    items_deduplicated: int
+    budget_ms: int
+    actual_ms: int | None
+    status: str
+    breakdown: dict[str, Any]
+
+
+@dataclass
 class TodoSummary:
     todo_id: str
     todo_type: str
@@ -481,6 +494,50 @@ async def run_quality_detection(
         actual_ms=actual_ms,
         status=run.status,
         breakdown=breakdown,
+    )
+
+
+async def list_detection_runs(
+    state: AsyncSession,
+    *,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[DetectionRunRecord], int]:
+    """List quality detection runs without exposing ORM rows."""
+
+    total = int(
+        await state.scalar(
+            select(func.count()).select_from(QualityDetectionRun)
+        )
+        or 0
+    )
+    offset = (page - 1) * page_size
+    rows = list(
+        (
+            await state.scalars(
+                select(QualityDetectionRun)
+                .order_by(QualityDetectionRun.started_at.desc())
+                .offset(offset)
+                .limit(page_size)
+            )
+        ).all()
+    )
+    return (
+        [
+            DetectionRunRecord(
+                run_id=row.run_id,
+                started_at=row.started_at,
+                completed_at=row.completed_at,
+                items_found=row.items_found,
+                items_deduplicated=row.items_deduplicated,
+                budget_ms=row.budget_ms,
+                actual_ms=row.actual_ms,
+                status=row.status,
+                breakdown=_decode_detail(row.detail_json),
+            )
+            for row in rows
+        ],
+        total,
     )
 
 
