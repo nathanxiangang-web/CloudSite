@@ -4,6 +4,7 @@ from ..application.connection_admin import (
     ProviderAdminError,
     admin_connection_settings,
     browse_admin_directories,
+    check_provider_health,
     save_admin_connection,
     test_admin_connection,
 )
@@ -80,6 +81,7 @@ __all__ = [
     "ProviderAdminError",
     "admin_connection_settings",
     "browse_admin_directories",
+    "check_provider_health",
     "save_admin_connection",
     "test_admin_connection",
     "create_root_mapping",
