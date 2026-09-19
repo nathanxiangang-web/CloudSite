@@ -46,7 +46,12 @@ export default function ParserCandidatesPage() {
   });
   const retry = useMutation({
     mutationFn: (taskId: string) => api<ParserCandidateTask>(parserCandidateRetryPath(taskId), { method: "POST", body: JSON.stringify({ max_retries: 3 }) }),
-    onSuccess: refresh,
+    onSuccess: () => {
+      const visibleCount = Math.min(candidates.data?.total_returned ?? 0, PAGE_SIZE);
+      const hasNext = (candidates.data?.total_returned ?? 0) > PAGE_SIZE;
+      if (status === "failed" && page > 1 && visibleCount === 1 && !hasNext) setPage(page - 1);
+      refresh();
+    },
   });
   const evaluate = useMutation({
     mutationFn: () => api<{ samples: number; aggregate: { accuracy: number; unknown_rate: number; misclassification_rate: number } }>("/api/admin/parser-candidates/evaluate", { method: "POST", body: JSON.stringify({ cases: DEFAULT_PARSER_EVALUATION_CASES }) }),
