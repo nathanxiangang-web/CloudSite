@@ -6,15 +6,14 @@ instead of the legacy rolling window. It wires the new
 and indexing store, executes a scan+reconcile pass for each requested
 category, and returns a summary dict.
 
-:func:`run_indexing_v2_production` provides the production wiring:
-it loads AList connections + content roots from the state DB, builds
-an AListProviderAdapter and a ProductionIndexingStore (writing to
-folders/resources tables), and delegates to run_indexing_v2.
+:func:`run_indexing_v2_production` owns scan orchestration while callers inject
+the production store factory. This keeps Folder/Resource persistence outside
+the Indexing module boundary.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from ..application.reconcile import ReconcileResult, ReconcileService, WriteSummary
 from ..application.scan_category import ScanCategoryResult, ScanCategoryService
@@ -98,12 +97,15 @@ async def run_indexing_v2(
     return summary.to_dict()
 
 
-async def run_indexing_v2_production() -> dict[str, Any]:
+async def run_indexing_v2_production(
+    *,
+    store_factory: Callable[[Any], IndexingStore],
+) -> dict[str, Any]:
     """Production entry point for v2 indexing.
 
-    Loads AList connections + content roots, builds real adapter/store,
-    and runs scan+reconcile for every enabled content type. Writes go
-    to the folders/resources tables so the frontend sees the data.
+    Loads AList connections + content roots, builds the provider adapter, and
+    runs scan+reconcile for every enabled content type. The application layer
+    injects a store factory so Indexing does not own Folder/Resource ORM access.
     """
     import asyncio
     import time
@@ -114,7 +116,6 @@ async def run_indexing_v2_production() -> dict[str, Any]:
     from sqlalchemy import select
 
     from .alist_adapter import AListProviderAdapter
-    from .production_store import ProductionIndexingStore
 
     t0 = time.time()
     await log_operation("sync", "v2_sync_started", "v2 indexing sync started")
@@ -155,7 +156,7 @@ async def run_indexing_v2_production() -> dict[str, Any]:
                         int(time.time() - t0), path, entries_scanned + count,
                     )
                 async with IndexSession() as session:
-                    store = ProductionIndexingStore(session)
+                    store = store_factory(session)
                     result = await run_indexing_v2(
                         adapter=adapter,
                         store=store,

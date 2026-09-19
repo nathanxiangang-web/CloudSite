@@ -7,16 +7,17 @@ temporarily, but it may only decrease.
 
 ## Current baseline
 
-The current reviewed baseline records **88 exact debt IDs**:
+The current reviewed baseline records **87 exact debt IDs**:
 
 | Rule | Baseline | Meaning |
 | --- | ---: | --- |
-| `module_legacy_import` | 25 | A business module still imports `cloudsite.models`, `cloudsite.database`, `cloudsite.services`, or `cloudsite.main`. |
+| `module_legacy_import` | 24 | A business module still imports `cloudsite.models`, `cloudsite.database`, `cloudsite.services`, or `cloudsite.main`. |
 | `router_orm_import` | 63 | A legacy router still imports SQLAlchemy, shared ORM models, or the legacy database layer directly. |
 | `cross_module_internal_import` | 0 | A business module bypasses another module's `contracts/*` boundary. This stays locked at zero. |
 
-The baseline was tightened from 90 to 88 after the Identity admin diagnostics
-router stopped importing SQLAlchemy and `cloudsite.models`.
+The baseline tightened from 90 to 88 after the Identity admin diagnostics
+router stopped importing SQLAlchemy and `cloudsite.models`, then to 87 when
+Indexing stopped importing shared Folder/Resource ORM through `cloudsite.models`.
 
 The machine-readable list lives in
 `docs/development/architecture-debt-baseline.json`.
@@ -60,7 +61,7 @@ allow-list entry and later reappear.
 Example:
 
 ```text
-90 -> 88 -> 83 -> 71 -> ... -> 0
+90 -> 88 -> 87 -> 83 -> 71 -> ... -> 0
 ```
 
 The ratchet therefore records the actual current debt, not the historical

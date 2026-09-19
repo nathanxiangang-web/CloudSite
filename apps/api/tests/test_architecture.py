@@ -221,6 +221,26 @@ class TestIdentityAdminRouterBoundary:
         assert "identity_candidates_payload" in source
 
 
+class TestIndexingResourcePersistenceBoundary:
+    """Indexing may consume Resources contracts but must not own resource ORM."""
+
+    def test_production_store_has_no_resource_orm_or_sqlalchemy_dependency(self):
+        store_file = (
+            CLOUDSITE
+            / "modules"
+            / "indexing"
+            / "infrastructure"
+            / "production_store.py"
+        )
+        source = store_file.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "sqlalchemy" not in source
+        assert "modules.resources.infrastructure" not in source
+        assert "modules.resources.contracts" in source
+
+
+
 class TestModuleStructure:
     """Validate that each module has the required minimum structure."""
 

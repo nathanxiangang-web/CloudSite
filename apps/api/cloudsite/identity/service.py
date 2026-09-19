@@ -106,17 +106,18 @@ async def cascade_rename_descendants(
     new_path_prefix: str,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    """Compatibility facade for index-owned descendant path mutation.
+    """Compatibility facade for Resources-owned descendant path mutation.
 
-    ``folder_id`` and ``now`` remain in the legacy signature for callers, but
-    the mutation itself is owned by the Indexing production store.
+    ``folder_id`` and ``now`` remain in the legacy signature for callers.
+    Resources owns Folder/Resource persistence; the caller still owns the
+    transaction and this facade does not commit.
     """
-    from ..modules.indexing.infrastructure.production_store import (
-        ProductionIndexingStore,
+    from ..modules.resources.infrastructure.inventory_repository import (
+        SqlAlchemyResourceInventoryRepository,
     )
 
-    store = ProductionIndexingStore(session)
-    return await store.cascade_descendant_paths(
+    repository = SqlAlchemyResourceInventoryRepository(session)
+    return await repository.cascade_descendant_paths(
         old_path_prefix,
         new_path_prefix,
     )

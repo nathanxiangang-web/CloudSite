@@ -16,18 +16,30 @@ unchanged.
 
 ## R2 — Authoritative persistence port
 
-Move Folder/Resource mutation behind Resources-owned application ports.
+Status: implemented in this change.
+
+Folder/Resource reconciliation now crosses a Resources-owned public contract.
 
 ```text
 Indexing
   -> modules/resources/contracts
-      -> Resources mutation service
-          -> Resources repository
+      -> ResourceInventoryPort
+          -> SqlAlchemyResourceInventoryRepository
               -> Folder / Resource ORM
 ```
 
-At the end of R2, Indexing no longer imports `cloudsite.models.Folder/Resource`
-and does not import Resources infrastructure internals.
+Indexing's `ProductionIndexingStore` is now a persistence-neutral adapter over
+`ResourceInventoryPort`; it imports neither SQLAlchemy nor `cloudsite.models`
+nor Resources infrastructure internals. Top-level task composition wires the
+adapter to `SqlAlchemyResourceInventoryRepository`, preserving the existing
+caller-owned transaction and commit boundary.
+
+Parent folder IDs are resolved while building the Indexing snapshot, before the
+record crosses into Resources. Descendant path mutation is also Resources-owned;
+the legacy Identity facade delegates to the Resources repository.
+
+This slice removes one tracked `module_legacy_import` debt ID and ratchets the
+architecture baseline from 88 to 87.
 
 ## R3 — Read/query boundary
 
