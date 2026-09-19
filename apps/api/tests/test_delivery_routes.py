@@ -165,7 +165,7 @@ async def test_client_view_draft_denied(monkeypatch):
 
 
 async def test_client_feedback(monkeypatch):
-    client, _ = await _setup(monkeypatch)
+    client, state_factory = await _setup(monkeypatch)
     try:
         create_resp = await client.post("/api/admin/delivery-packages", json={"name": "Feedback Test"}, headers=ORIGIN, cookies=_admin_cookies())
         package_id = create_resp.json()["package_id"]
@@ -182,6 +182,20 @@ async def test_client_feedback(monkeypatch):
             "message": "All files received",
         }, headers=ORIGIN)
         assert resp.status_code == 200
+
+        from cloudsite.models import OperationLog
+        from sqlalchemy import select
+        async with state_factory() as state:
+            row = await state.scalar(
+                select(OperationLog).where(
+                    OperationLog.module == "delivery",
+                    OperationLog.action == "feedback",
+                )
+            )
+            assert row is not None
+            assert package_id in row.message
+            assert "confirmed" in row.message
+            assert "All files received" in row.message
     finally:
         await client.aclose()
 
