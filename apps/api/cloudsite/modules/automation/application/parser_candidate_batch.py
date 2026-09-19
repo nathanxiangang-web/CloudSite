@@ -13,7 +13,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import ParserCandidateTask, Resource
+from ...resources.contracts.public import resource_queries
+from ..domain.resource_name_parser import PARSER_VERSION
+from ..infrastructure.models import ParserCandidateTask
 from .parser_candidate_runner import (
     ParserCandidateRunResult,
     parser_input_fingerprint,
@@ -24,7 +26,6 @@ from .parser_candidates import (
     enqueue_parser_candidate,
     fail_parser_candidate,
 )
-from ....services.resource_name_parser import PARSER_VERSION
 
 INTERRUPTED_MESSAGE = "parser candidate interrupted by restart"
 
@@ -62,7 +63,7 @@ async def enqueue_indexed_resource(
     state session is flushed but not committed.
     """
 
-    resource = await index.get(Resource, resource_id)
+    resource = await resource_queries(index).parser_resource(resource_id=resource_id)
     if resource is None or resource.status != "active":
         raise ParserCandidateError("indexed resource is unavailable or inactive")
     fingerprint = parser_input_fingerprint(resource)
