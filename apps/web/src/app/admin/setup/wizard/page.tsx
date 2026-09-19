@@ -24,14 +24,12 @@ type WizardState = {
 
 type RootMapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
 
-const STEPS = ["connect", "scope", "preset", "samples", "brand", "preview", "publish"] as const;
+const STEPS = ["connect", "scope", "preset", "brand", "publish"] as const;
 const STEP_LABELS: Record<string, string> = {
   connect: "连接 AList",
   scope: "选择范围",
   preset: "选择预设",
-  samples: "样本整理",
   brand: "品牌设置",
-  preview: "预览",
   publish: "发布",
 };
 
@@ -190,17 +188,6 @@ export default function SetupWizardPage() {
         </form>
       )}
 
-      {currentStep === "samples" && (
-        <form className="form-stack" onSubmit={(e) => { e.preventDefault(); submitStep("samples", {}); }}>
-          <h2>样本整理</h2>
-          <p className="panel-intro">标记样本资源整理完成。此步仅记录状态，不做实际整理。</p>
-          <div className="form-actions">
-            <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
-            <button className="primary" disabled={stepMutation.isPending}><Check />标记完成</button>
-          </div>
-        </form>
-      )}
-
       {currentStep === "brand" && (
         <form className="form-stack" onSubmit={handleBrandSubmit}>
           <h2>品牌设置</h2>
@@ -218,26 +205,10 @@ export default function SetupWizardPage() {
         </form>
       )}
 
-      {currentStep === "preview" && (
-        <form className="form-stack" onSubmit={(e) => { e.preventDefault(); submitStep("preview", {}); }}>
-          <h2>预览配置</h2>
-          <p className="panel-intro">确认当前配置效果，生成预览快照（不发布）。</p>
-          <div className="presentation-preview">
-            <p>站点名称：{brandForm.site_name || "CloudSite"}</p>
-            <p>预设：{preset}</p>
-            <p>主题色：<span style={{ display: "inline-block", width: 14, height: 14, background: brandForm.accent_color, borderRadius: 2, verticalAlign: "middle" }} /> {brandForm.accent_color}</p>
-          </div>
-          <div className="form-actions">
-            <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
-            <button className="primary" disabled={stepMutation.isPending}><ArrowRight />下一步</button>
-          </div>
-        </form>
-      )}
-
       {currentStep === "publish" && (
         <form className="form-stack" onSubmit={(e) => { e.preventDefault(); submitStep("publish", {}); }}>
           <h2>发布站点</h2>
-          <p className="panel-intro">确认配置并完成建站。完成后可登录管理后台继续调整。</p>
+          <p className="panel-intro">确认配置并正式启用站点呈现。完成后可登录管理后台继续调整。</p>
           <div className="form-actions">
             <button type="button" onClick={goBack}><ArrowLeft />上一步</button>
             <button className="primary" disabled={stepMutation.isPending}><Check />完成建站</button>
