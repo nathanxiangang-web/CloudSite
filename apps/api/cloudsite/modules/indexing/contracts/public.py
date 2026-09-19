@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from ..api.admin_status import (
     indexing_v2_enabled,
+    read_sync_circuit_status,
     read_v2_sync_progress,
     toggle_automatic_sync,
     validate_manual_sync_paths,
@@ -46,6 +47,7 @@ __all__ = [
     "legacy_sync_queries",
     "indexing_v2_enabled",
     "read_v2_sync_progress",
+    "read_sync_circuit_status",
     "toggle_automatic_sync",
     "validate_manual_sync_paths",
 ]
