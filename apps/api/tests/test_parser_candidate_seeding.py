@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.models import Resource, SyncChange, SyncRun
-from cloudsite.services.parser_candidate_batch import enqueue_indexed_resource
-from cloudsite.services.parser_candidates import ParserCandidateError
-from cloudsite.services.parser_candidate_seeding import (
+from cloudsite.modules.automation.contracts.public import enqueue_indexed_resource
+from cloudsite.modules.automation.contracts.public import ParserCandidateError
+from cloudsite.modules.automation.contracts.public import (
     seed_parser_candidates_from_sync_run,
 )
 from cloudsite.services.resource_name_parser import PARSER_VERSION
