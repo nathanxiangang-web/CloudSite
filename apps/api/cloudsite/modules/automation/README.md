@@ -50,6 +50,7 @@ semantically belongs to automation; it will be reassigned during migration.
 - platform/db
 - platform/tasks (for batch processing and AI generation jobs)
 - modules/catalog (via contracts) - to read entries and apply approved changes.
+- modules/resources (via contracts) - persistence-neutral parser input lookup.
 - plugins/ai (optional, env-gated) - for AI-powered suggestion generation.
 
 ## Events/Tasks
@@ -91,8 +92,14 @@ semantically belongs to automation; it will be reassigned during migration.
 
 ## Current Migration Status
 
-Code is currently in `services/suggestion_*.py` and
-`services/parser_candidate*.py`. These move to `modules/automation/` in Phase
-3. The module skeleton exists with empty layers. The AI plugin integration
-will be wired through plugins/ai during migration, keeping the module itself
-free of provider-specific code.
+The parser subdomain is now module-owned. `ParserCandidateTask` lives in
+`infrastructure/models.py`, the deterministic resource-name parser lives in
+`domain/resource_name_parser.py`, and parser candidate execution reads indexed
+resource metadata only through the Resources public contract. Historical
+`cloudsite.models.ParserCandidateTask` and
+`cloudsite.services.resource_name_parser` paths remain compatibility facades.
+
+The remaining shared-core debt is intentionally limited to the legacy sync
+seeding bridge plus suggestion generation/review. Those four debt IDs are the
+next Automation migration slice; suggestion apply must move through Catalog
+contracts rather than importing Catalog ORM or legacy services directly.

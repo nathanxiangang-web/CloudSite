@@ -8,13 +8,14 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import ParserCandidateTask, Resource
+from ...resources.contracts.public import ParserResourceView, resource_queries
+from ..domain.resource_name_parser import PARSER_VERSION, ParseResult, parse_resource_name
+from ..infrastructure.models import ParserCandidateTask
 from .parser_candidates import (
     claim_parser_candidate,
     complete_parser_candidate,
     fail_parser_candidate,
 )
-from ....services.resource_name_parser import PARSER_VERSION, ParseResult, parse_resource_name
 
 
 @dataclass(frozen=True)
@@ -24,7 +25,7 @@ class ParserCandidateRunResult:
     error: str | None
 
 
-def parser_input_fingerprint(resource: Resource) -> str:
+def parser_input_fingerprint(resource: ParserResourceView) -> str:
     """Fingerprint only the indexed fields consumed by the deterministic parser."""
 
     value = json.dumps(
@@ -56,12 +57,12 @@ async def run_parser_candidate(
 
     task = await claim_parser_candidate(state, task_id)
     error: str | None = None
-    resource: Resource | None = None
+    resource: ParserResourceView | None = None
 
     if task.parser_version != PARSER_VERSION:
         error = f"unsupported parser version: {task.parser_version}"
     else:
-        resource = await index.get(Resource, task.resource_id)
+        resource = await resource_queries(index).parser_resource(resource_id=task.resource_id)
         if resource is None or resource.status != "active":
             error = "parser input resource is unavailable"
         elif parser_input_fingerprint(resource) != task.input_fingerprint:
