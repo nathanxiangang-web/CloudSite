@@ -30,4 +30,10 @@ class IndexingServicePort(Protocol):
         ...
 
 
-__all__ = ['IndexingServicePort']
+__all__ = [
+    "IndexingServicePort",
+    "LegacySyncRunView",
+    "LegacySyncChangeView",
+    "LegacySyncChangePage",
+    "legacy_sync_queries",
+]
