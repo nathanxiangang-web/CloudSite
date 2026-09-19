@@ -16,6 +16,9 @@ allowed_dependencies:
 owned_tables:
   - "users"
   - "user_sessions"
+  - "user_favorites"
+  - "user_resource_history"
+  - "user_playback_progress"
 
 forbidden_dependencies:
   - "cloudsite.main"

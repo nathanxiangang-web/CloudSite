@@ -32,7 +32,13 @@ from .modules.indexing.infrastructure.legacy_models import (
 )
 from .modules.automation.infrastructure.models import CatalogSuggestion, ParserCandidateTask
 from .modules.collections.infrastructure.models import Collection, CollectionItem
-from .modules.users.infrastructure.models import User, UserSession
+from .modules.users.infrastructure.models import (
+    User,
+    UserFavorite,
+    UserPlaybackProgress,
+    UserResourceHistory,
+    UserSession,
+)
 from .modules.submissions.infrastructure.models import Submission
 from .modules.shares.infrastructure.models import Share, ShareVerifyAttempt
 from .modules.presentation.infrastructure.models import (
@@ -95,51 +101,6 @@ class AdminSession(StateBase):
     epoch: Mapped[int] = mapped_column(Integer, default=1, index=True)
     created_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-
-
-class UserFavorite(StateBase):
-    __tablename__ = "user_favorites"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    resource_id: Mapped[str] = mapped_column(String(64), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    __table_args__ = (
-        UniqueConstraint("user_id", "resource_id"),
-        Index("ix_user_favorites_user_created_at", "user_id", "created_at"),
-    )
-
-
-class UserResourceHistory(StateBase):
-    __tablename__ = "user_resource_history"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    resource_id: Mapped[str] = mapped_column(String(64), index=True)
-    first_viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    view_count: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    __table_args__ = (
-        UniqueConstraint("user_id", "resource_id"),
-        Index("ix_user_resource_history_user_last_viewed_at", "user_id", "last_viewed_at"),
-    )
-
-
-class UserPlaybackProgress(StateBase):
-    __tablename__ = "user_playback_progress"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    resource_id: Mapped[str] = mapped_column(String(64), index=True)
-    position_seconds: Mapped[int] = mapped_column(Integer, default=0)
-    duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
-    completed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    last_played_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    __table_args__ = (
-        UniqueConstraint("user_id", "resource_id"),
-        Index("ix_user_playback_progress_user_last_played_at", "user_id", "last_played_at"),
-        Index("ix_user_playback_progress_user_completed", "user_id", "completed"),
-    )
 
 
 class CatalogSearchProjectionState(IndexBase):
