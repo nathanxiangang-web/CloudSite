@@ -467,10 +467,7 @@ async def verify_attempt_failed(
             ShareVerifyAttempt.ip_hash == key,
         )
     )
-    if (
-        row is None
-        or aware_utc(row.window_started_at) <= window_started
-    ):
+    if row is None:
         state.add(
             ShareVerifyAttempt(
                 share_token=share_token,
@@ -480,6 +477,12 @@ async def verify_attempt_failed(
                 updated_at=now,
             )
         )
+        return False
+    if aware_utc(row.window_started_at) <= window_started:
+        row.fail_count = 1
+        row.window_started_at = now
+        row.challenge_required_until = None
+        row.updated_at = now
         return False
 
     row.fail_count += 1
