@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .outbox import enqueue_catalog_search_outbox
@@ -78,12 +78,16 @@ async def pending_catalog_search_outbox(
 async def mark_catalog_search_outbox_consumed(
     state: AsyncSession,
     *,
-    outbox_id: str,
+    outbox_ids: list[str],
     consumed_at: datetime,
 ) -> None:
-    row = await state.get(CatalogSearchOutbox, outbox_id)
-    if row is not None:
-        row.consumed_at = consumed_at
+    if not outbox_ids:
+        return
+    await state.execute(
+        update(CatalogSearchOutbox)
+        .where(CatalogSearchOutbox.outbox_id.in_(outbox_ids))
+        .values(consumed_at=consumed_at)
+    )
 
 
 async def catalog_search_projection_source(
