@@ -63,10 +63,15 @@ EXPECTED_ENTRY_COLUMNS = {
     "id",
     "scan_run_id",
     "dir_path",
+    "path",
+    "parent_path",
     "resource_id",
     "name",
     "is_dir",
+    "size",
     "modified",
+    "content_hash",
+    "metadata_json",
     "metadata_hash",
     "staged_at",
 }
@@ -225,6 +230,28 @@ async def test_unique_constraints(tmp_path, monkeypatch):
             )
 
     async with state_engine.begin() as conn:
+        entry_id = str(uuid.uuid4())
+        await conn.execute(
+            text(
+                "INSERT INTO index_scan_entries "
+                "(id, scan_run_id, dir_path, path, resource_id, name, is_dir) "
+                "VALUES (:id, :run, '/same', '/same/file', 'res-1', 'file', 0)"
+            ),
+            {"id": entry_id, "run": run_id},
+        )
+
+    async with state_engine.begin() as conn:
+        with pytest.raises(Exception):
+            await conn.execute(
+                text(
+                    "INSERT INTO index_scan_entries "
+                    "(id, scan_run_id, dir_path, path, resource_id, name, is_dir) "
+                    "VALUES (:id, :run, '/same', '/same/file-again', 'res-1', 'file', 0)"
+                ),
+                {"id": str(uuid.uuid4()), "run": run_id},
+            )
+
+    async with state_engine.begin() as conn:
         other_run = str(uuid.uuid4())
         await conn.execute(
             text(
@@ -267,6 +294,7 @@ async def test_indexes(tmp_path, monkeypatch):
     assert "ix_index_scan_dirs_scan_run_status" in names["index_scan_dirs"]
     assert "ix_index_scan_entries_scan_run_id" in names["index_scan_entries"]
     assert "ix_index_scan_entries_resource_id" in names["index_scan_entries"]
+    assert "ux_index_scan_entries_run_resource" in names["index_scan_entries"]
 
     await state_engine.dispose()
     await index_engine.dispose()
@@ -322,6 +350,91 @@ async def test_old_v30_db_upgrades_to_v31(tmp_path, monkeypatch):
                 {"n": table},
             )
             assert row.fetchone() is not None, f"table {table} missing after upgrade"
+
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+async def test_v32_to_v33_repairs_staging_semantics(tmp_path, monkeypatch):
+    state_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'state.db'}")
+    index_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'index.db'}")
+    _enable_foreign_keys(state_engine)
+    _enable_foreign_keys(index_engine)
+
+    async with state_engine.begin() as conn:
+        await conn.run_sync(StateBase.metadata.create_all)
+        await conn.exec_driver_sql("DROP TABLE index_scan_entries")
+        await conn.exec_driver_sql(
+            "CREATE TABLE index_scan_entries("
+            "id VARCHAR(36) PRIMARY KEY,"
+            "scan_run_id VARCHAR(36) NOT NULL REFERENCES index_scan_runs(id) ON DELETE CASCADE,"
+            "dir_path TEXT NOT NULL,"
+            "resource_id TEXT NOT NULL,"
+            "name TEXT NOT NULL,"
+            "is_dir BOOLEAN NOT NULL DEFAULT 0,"
+            "modified DATETIME,"
+            "metadata_hash TEXT,"
+            "staged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO content_root_mappings "
+                "(id, connection_id, content_type, display_name, alist_path, enabled, "
+                "sort_order, home_order, created_at, updated_at) "
+                "VALUES (801, 1, 'software', 'root-v32', '/v32', 1, 0, 0, "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            )
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO index_scan_runs "
+                "(id, root_mapping_id, status, started_at) "
+                "VALUES ('run-v32', 801, 'running', CURRENT_TIMESTAMP)"
+            )
+        )
+        for entry_id in ("dup-1", "dup-2"):
+            await conn.execute(
+                text(
+                    "INSERT INTO index_scan_entries "
+                    "(id, scan_run_id, dir_path, resource_id, name, is_dir, metadata_hash) "
+                    "VALUES (:id, 'run-v32', '/v32/file.zip', 'same-resource', 'file.zip', 0, 'hash-1')"
+                ),
+                {"id": entry_id},
+            )
+        from cloudsite.migrations import set_state_schema_version
+        await set_state_schema_version(conn, 32)
+
+    monkeypatch.setattr(database, "state_engine", state_engine)
+    monkeypatch.setattr(database, "index_engine", index_engine)
+    await database.init_databases()
+
+    async with state_engine.connect() as conn:
+        assert await get_state_schema_version(conn) == CURRENT_SCHEMA_VERSION
+        columns = await conn.exec_driver_sql("PRAGMA table_info(index_scan_entries)")
+        names = {row[1] for row in columns.fetchall()}
+        assert {"path", "parent_path", "size", "content_hash", "metadata_json"} <= names
+
+        rows = await conn.execute(
+            text(
+                "SELECT path, content_hash, COUNT(*) "
+                "FROM index_scan_entries "
+                "WHERE scan_run_id='run-v32' GROUP BY resource_id"
+            )
+        )
+        row = rows.one()
+        assert row[0] == "/v32/file.zip"
+        assert row[1] == "hash-1"
+        assert row[2] == 1
+
+        with pytest.raises(Exception):
+            await conn.execute(
+                text(
+                    "INSERT INTO index_scan_entries "
+                    "(id, scan_run_id, dir_path, path, resource_id, name, is_dir) "
+                    "VALUES ('dup-3', 'run-v32', '/v32', '/v32/again.zip', "
+                    "'same-resource', 'again.zip', 0)"
+                )
+            )
 
     await state_engine.dispose()
     await index_engine.dispose()
