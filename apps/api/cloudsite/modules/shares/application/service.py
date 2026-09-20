@@ -2,8 +2,8 @@
 
 Owns Share/ShareVerifyAttempt persistence-facing lifecycle operations while
 exposing persistence-neutral ShareView objects to routers and other modules.
-Target/scope resolution remains on the legacy compatibility edge during this
-migration step.
+Target/scope orchestration is split into application/target_scope.py so it can
+compose Resources and Collections public contracts without cross-domain ORM.
 """
 
 from __future__ import annotations
