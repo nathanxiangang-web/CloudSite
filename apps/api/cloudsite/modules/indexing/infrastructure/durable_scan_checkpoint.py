@@ -68,6 +68,23 @@ class ResumeResult:
     pending_dirs: list[SimpleNamespace]
 
 
+@dataclass(slots=True)
+class CompleteGateResult:
+    """Complete Gate outcome (V2 doc sections 18-19).
+
+    ``complete`` is True only when every dir is done and the snapshot
+    pagination is complete. ``reason`` identifies which condition failed
+    (one of: pending_dirs, running_dirs, failed_dirs,
+    pagination_incomplete) or None when complete. ``suppressed_count``
+    reports how many dirs are not done when the gate fails, so callers
+    can surface the magnitude of the incomplete scan.
+    """
+
+    complete: bool
+    reason: str | None
+    suppressed_count: int
+
+
 class ScanRunManager:
     """Scan run lifecycle: start / complete / fail / cancel / expire stale."""
 
@@ -287,15 +304,63 @@ class DirCheckpoint:
             pending_dirs=pending,
         )
 
-    async def is_scan_complete(self, run_id: str) -> bool:
-        """Complete gate: pending==0 and running==0 and failed==0."""
+    async def is_scan_complete(
+        self,
+        run_id: str,
+        pagination_complete: bool = True,
+    ) -> CompleteGateResult:
+        """Complete gate (V2 doc sections 18-19).
+
+        Returns a CompleteGateResult that is complete only when:
+        - pending dirs == 0
+        - running dirs == 0
+        - failed dirs == 0
+        - pagination_complete is True
+
+        ``pagination_complete`` defaults to True so callers that only need
+        the dir-state gate can invoke ``is_scan_complete(run_id)`` and get
+        a meaningful result. Callers that also tracked pagination should
+        pass the snapshot's ``pagination_complete`` flag.
+
+        ``suppressed_count`` is the number of not-done dirs when the gate
+        fails on a dir condition, or 0 when it fails only on pagination.
+        """
         pending = await self._repo.count_dirs(run_id, "pending")
         running = await self._repo.count_dirs(run_id, "running")
         failed = await self._repo.count_dirs(run_id, "failed")
-        return pending == 0 and running == 0 and failed == 0
+        if pending > 0:
+            return CompleteGateResult(
+                complete=False,
+                reason="pending_dirs",
+                suppressed_count=pending,
+            )
+        if running > 0:
+            return CompleteGateResult(
+                complete=False,
+                reason="running_dirs",
+                suppressed_count=running,
+            )
+        if failed > 0:
+            return CompleteGateResult(
+                complete=False,
+                reason="failed_dirs",
+                suppressed_count=failed,
+            )
+        if not pagination_complete:
+            return CompleteGateResult(
+                complete=False,
+                reason="pagination_incomplete",
+                suppressed_count=0,
+            )
+        return CompleteGateResult(
+            complete=True,
+            reason=None,
+            suppressed_count=0,
+        )
 
 
 __all__ = [
+    "CompleteGateResult",
     "DirCheckpoint",
     "RESUME_MAX_AGE",
     "ResumeResult",
