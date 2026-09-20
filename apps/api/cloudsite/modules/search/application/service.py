@@ -258,11 +258,12 @@ async def recover_search_index_if_dirty() -> int:
     dirty-state inspection and rebuild orchestration through platform DB and
     Resources contracts. A failed rebuild leaves the dirty marker set.
     """
-    async with state_session() as state, index_session() as index:
+    async with state_session() as state:
         if not await search_index_is_dirty(state):
             return 0
-        result = await rebuild_public_search_index(state, index)
-        return result.indexed
+        async with index_session() as index:
+            result = await rebuild_public_search_index(state, index)
+            return result.indexed
 
 
 __all__ = [
