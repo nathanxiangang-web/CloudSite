@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+RECENT_PATHS_MAX = 64
+
 
 def _as_utc(value: object) -> datetime | None:
     if value is None:
@@ -29,6 +31,16 @@ def _progress_payload(value: object) -> dict[str, object]:
     except (TypeError, ValueError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _bounded_recent_paths(value: object) -> list[str]:
+    if isinstance(value, str):
+        paths = [value] if value else []
+    elif isinstance(value, (list, tuple)):
+        paths = [str(item) for item in value if str(item)]
+    else:
+        paths = []
+    return paths[-RECENT_PATHS_MAX:]
 
 
 async def read_v2_sync_progress(
@@ -89,15 +101,7 @@ async def v2_sync_due(
 async def recover_interrupted_v2_sync(
     state: AsyncSession,
 ) -> bool:
-    """Mark a v2_sync_progress row left "running" by a crashed process as failed.
-
-    A row whose status is "running" at process start can never be completed by
-    the dead worker, so every sync path treats the run as forever-active and
-    blocks scheduling. This folds such rows to "failed" with an explicit
-    error_message and commits the change.
-
-    Returns True when a stale running row was recovered, False otherwise.
-    """
+    """Mark a v2_sync_progress row left "running" by a crashed process as failed."""
     row = (
         await state.execute(
             text(
@@ -114,12 +118,18 @@ async def recover_interrupted_v2_sync(
         return False
     progress["status"] = "failed"
     progress["error_message"] = "interrupted by process restart"
+    progress["active_workers"] = 0
+    progress["known_pending"] = 0
     await state.execute(
         text(
             "UPDATE system_settings SET value = :value, updated_at = :now "
             "WHERE key = :key"
         ),
-        {"value": json.dumps(progress), "now": datetime.now(timezone.utc), "key": "v2_sync_progress"},
+        {
+            "value": json.dumps(progress),
+            "now": datetime.now(timezone.utc),
+            "key": "v2_sync_progress",
+        },
     )
     await state.commit()
     return True
@@ -130,28 +140,55 @@ async def write_v2_sync_progress(
     *,
     status: str,
     categories_done: int = 0,
-    categories_total: int = 0,
     elapsed_seconds: int = 0,
-    current_path: str = "",
-    entries_scanned: int = 0,
+    active_workers: int = 0,
+    directories_done: int = 0,
+    known_pending: int = 0,
+    entries_discovered: int = 0,
+    recent_paths: list[str] | tuple[str, ...] | None = None,
     added: int = 0,
     changed: int = 0,
     removed: int = 0,
     unchanged: int = 0,
+    # Compatibility-only inputs from the pre-concurrent status writer.
+    # They are accepted so older call sites do not break, but are not persisted
+    # as fake-total/current-position fields.
+    categories_total: int | None = None,
+    current_path: str | list[str] | None = None,
+    entries_scanned: int | None = None,
 ) -> None:
-    """Persist v2 sync progress to SystemSetting for status endpoint."""
-    payload = json.dumps({
-        "status": status,
-        "categories_done": categories_done,
-        "categories_total": categories_total,
-        "elapsed_seconds": elapsed_seconds,
-        "current_path": current_path,
-        "entries_scanned": entries_scanned,
-        "added": added,
-        "changed": changed,
-        "removed": removed,
-        "unchanged": unchanged,
-    })
+    """Persist truthful V2 concurrent-scan progress.
+
+    V2 does not know the future directory total during BFS, so no total or
+    percentage field is stored. recent_paths is bounded and represents
+    recently observed work, not one canonical current directory.
+    """
+    del categories_total
+
+    if recent_paths is None:
+        recent_paths = _bounded_recent_paths(current_path)
+    else:
+        recent_paths = _bounded_recent_paths(recent_paths)
+
+    if entries_scanned is not None and entries_discovered == 0:
+        entries_discovered = max(int(entries_scanned), 0)
+
+    payload = json.dumps(
+        {
+            "status": status,
+            "categories_done": max(int(categories_done), 0),
+            "elapsed_seconds": max(int(elapsed_seconds), 0),
+            "active_workers": max(int(active_workers), 0),
+            "directories_done": max(int(directories_done), 0),
+            "known_pending": max(int(known_pending), 0),
+            "entries_discovered": max(int(entries_discovered), 0),
+            "recent_paths": recent_paths,
+            "added": max(int(added), 0),
+            "changed": max(int(changed), 0),
+            "removed": max(int(removed), 0),
+            "unchanged": max(int(unchanged), 0),
+        }
+    )
     await state.execute(
         text(
             "INSERT INTO system_settings(key, value, value_type, updated_at) "
@@ -215,6 +252,7 @@ async def toggle_automatic_sync(
 
 
 __all__ = [
+    "RECENT_PATHS_MAX",
     "read_v2_sync_progress",
     "recover_interrupted_v2_sync",
     "write_v2_sync_progress",
