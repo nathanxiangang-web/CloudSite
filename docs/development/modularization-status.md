@@ -34,7 +34,7 @@ A module being `partial` does not by itself justify more refactoring.
 | Module | Manifest | Current convergence note |
 | --- | --- | --- |
 | Indexing | `active` | Production v2 scan/reconcile is the active path. I2a moves operation logging to platform observability; I2b moves provider loading behind the Providers scan-source contract. |
-| Search | `partial` | Public query/rebuild boundary exists. S2a moves dirty-index startup recovery into Search. Remaining work: verify row-level FTS delta callers, move Catalog projection ownership, and make rebuild task-driven. |
+| Search | `partial` | Public query/rebuild boundary exists. S2a moves dirty recovery into Search; S2b removes the caller-zero legacy row-level delta path. Remaining work: Catalog projection ownership and task-driven rebuild. |
 | Resources | `partial` | Authoritative Folder/Resource persistence and public query/preview/download boundaries are module-owned. Remaining work is compatibility-facade/caller cleanup, not another persistence rewrite. |
 | Providers | `partial` | Connection/root administration, download/preview runtime, and inventory scan-source composition are module-owned. Low-level AList transport compatibility still remains internal to Providers. |
 | Identity | `partial` | Resource/folder identity persistence, matching, descendant path mutation boundary, and admin query boundary are module-owned. Remaining work is compatibility/migration orchestration cleanup only where callers still exist. |
