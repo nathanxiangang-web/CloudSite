@@ -2,111 +2,103 @@
 
 ## Responsibility
 
-Storage provider abstraction and the AList client gateway. This module is the
-only code that talks to AList or any storage backend. It exposes a capability
-model so that indexing, resources, and delivery can query what a provider
-supports (streaming, range requests, thumbnail) without knowing the backend.
+Providers owns storage-provider configuration, root mappings, provider runtime
+access, and scan-source composition. It is the boundary that prevents business
+modules such as Indexing, Resources, and Delivery from depending on AList
+credentials, provider ORM, or low-level transport details.
 
 Core duties:
-- Manage provider connections (AList instances).
-- Map content roots to provider storage paths.
-- Expose provider capabilities (stream, preview, delta sync, list).
-- Act as the HTTP client to AList for list, detail, and download entries.
-- Track per-provider sync state for delta inventory.
+- Manage AList/provider connection lifecycle and encrypted credentials.
+- Manage content-root to provider-path mappings.
+- Expose provider information, enabled roots, runtime access, and capabilities.
+- Build provider-neutral scan sources for Indexing.
+- Resolve provider download/preview entries through the Providers runtime.
+- Keep low-level AList construction and credential decryption inside the
+  Providers boundary.
 
-## Public API
+## Public Contract
 
-- `ProviderRegistry` - list and look up configured providers.
-- `ProviderCapability` - query supported operations for a provider.
-- `AListClient` - low-level gateway (list, detail, download entry).
-- `resolve_content_root(mapping)` - translate a content root to provider path.
-- `get_download_entry(resource_id)` - build the AList 302 redirect target.
+Consumers should use `contracts/public.py`. Important contract groups include:
 
-Exports live in `contracts/public.py`.
+- provider/root information: `enabled_content_roots`, `enabled_root_ids`,
+  `provider_info`, `provider_connected`, `public_storage_info`;
+- provider runtime: `ProviderRuntimePort`, `ProviderEntry`,
+  `provider_runtime`;
+- indexing scan source: `ProviderScanPort`, `ProviderScanRoot`,
+  `ProviderScanSource`, `enabled_provider_scan_sources`;
+- connection administration and health/test/save workflows;
+- root-mapping CRUD/path validation;
+- provider registry/capability/sync-strategy contracts.
 
-## Domain Model
+`AListClient` itself is **not** a cross-module public contract. The current
+`GenericAListProvider` adapter and Providers application services may compose
+the legacy low-level transport internally, but other modules should not import
+that transport directly.
 
-- Provider (id, name, kind, base_url, status)
-- Connection (id, provider_id, config, credentials_ref)
-- ContentRootMapping (content_root_id, provider_id, storage_path)
-- ProviderCapability (provider_id, supports_stream, supports_preview, supports_delta)
-- ProviderSyncState (provider_id, last_cursor, last_scan_at)
+## Persistence
 
-## Database Tables
+Providers owns:
+- `alist_connections`
+- `content_root_mappings`
+- `provider_sync_state`
 
-- `alist_connections` - AList instance connections and credentials.
-- `content_root_mappings` - content root to provider path mapping.
-- `provider_sync_state` - delta sync cursor per provider.
+The ORM declarations live under
+`modules/providers/infrastructure/models.py`; root-model exports remain
+compatibility aliases where still required.
 
 ## Dependencies
 
 - platform/db
-- platform/http (HTTP client, retry, timeout)
-- platform/security (credential decryption for provider auth)
+- platform/http
+- platform/security
 - platform/observability
 
-No dependency on any business module. Providers is a leaf infrastructure domain
-that other modules consume.
-
-## Events/Tasks
-
-- Emits `provider.connected`, `provider.disconnected`, `provider.object_changed`.
-- Emits `provider.capability_changed` when a provider upgrade changes support.
-- No background tasks of its own; indexing drives scan orchestration.
+Providers should not depend on business-module internals.
 
 ## Security
 
-- Provider credentials are encrypted at rest via platform/security.
-- Credential decryption happens only inside this module, never exported.
-- AList base URLs are validated; no arbitrary outbound HTTP.
-- Download entries are signed or scoped to prevent URL tampering.
-- Never log decrypted credentials.
+- Provider credentials are encrypted at rest.
+- Credential decryption stays inside Providers and is not exposed in public
+  DTOs/contracts.
+- Provider URLs and paths are validated before outbound operations.
+- Never log decrypted credentials or secret-bearing download URLs.
+- Other modules must use Providers contracts rather than importing AList
+  transport or provider ORM.
 
 ## Failure Modes
 
-- AList unreachable: list/detail calls return a typed ProviderUnavailable error;
-  callers degrade gracefully (stale data, retry task).
-- Credential rotation: connection marked stale; admin re-auth required.
-- Capability mismatch: a provider claims stream but lacks range support;
-  capability probe on connect detects and downgrades the flag.
-- Rate limit from AList: client backs off via platform/http retry policy.
-
-## Tests
-
-- `tests/unit/` - capability probing, content root resolution, client parsing.
-- `tests/contract/` - public API stability, AList response parsing contracts.
-- Target coverage: connection lifecycle, capability detection, error mapping.
-
-## Do Not
-
-- Do not let other modules import AList client directly; use contracts.
-- Do not store decrypted credentials in memory beyond the request scope.
-- Do not hardcode AList endpoints; read from connection config.
-- Do not block on provider calls in request handlers; use tasks for scans.
+- Provider unavailable: expose typed/provider-neutral runtime failures to
+  callers.
+- Invalid credentials or connection settings: admin test/save flow fails
+  without leaking ciphertext/plaintext secrets.
+- Invalid root path: root-mapping validation rejects the change.
+- Scan-source construction failure: Indexing receives a provider-boundary
+  failure rather than direct AList/ORM objects.
 
 ## Current Migration Status
 
-Migration status: partial. `AListConnection`, `ContentRootMapping`, and
-`ProviderSyncState` ORM declarations are now owned by
-`modules/providers/infrastructure/models.py`; `cloudsite.models` remains an
-exact compatibility re-export. The module's provider-info service now uses the
-module-owned connection ORM and no longer imports `cloudsite.models`.
+Migration status remains `partial`, but the production ownership boundary has
+reached its current stop point:
 
-Low-level AList transport still lives in the legacy `cloudsite.alist` surface
-as a transitional transport adapter, but all admin connection lifecycle work now
-stays inside Providers:
+- `AListConnection`, `ContentRootMapping`, and `ProviderSyncState` ORM
+  ownership is module-local;
+- admin connection lifecycle, credential crypto, test/save/health operations,
+  directory browsing, and root-mapping management are Providers-owned;
+- production download/preview resolution is exposed through the Providers
+  runtime contract;
+- production inventory scanning is composed by Providers and gives Indexing
+  only provider-neutral scan ports/root DTOs.
 
-- connection settings are exposed as persistence-neutral dictionaries;
-- credential decryption/encryption happens inside the Providers boundary;
-- test/save operations own status persistence and audit logging;
-- directory browsing consumes stored credentials without exposing ciphertext;
-- `routers/admin/alist.py` is ORM/SQLAlchemy/crypto/AListClient-free.
-- root-mapping CRUD and AList path validation live in
-  `application/root_mappings.py`; the admin root router is ORM/SQLAlchemy/
-  crypto/AListClient-free.
+The low-level AList HTTP transport still lives in the legacy
+`cloudsite.alist` surface. That location is an intentional compatibility/
+internal edge at this stage, not an automatic migration task. Physically moving
+it would add churn without changing the cross-module boundary because
+production consumers already go through Providers contracts.
 
-Providers also exposes runtime gateways through its public contract:
-download/preview resolution and production scan-source composition. The scan
-source keeps connection ORM, credential decryption, and AListClient construction
-inside Providers; Indexing receives only `ProviderScanPort` plus
-`ProviderScanRoot` DTOs.
+Revisit that transport only when at least one concrete need exists, such as:
+- a real cross-module caller still bypassing Providers;
+- replacing/supporting another storage backend;
+- transport-specific testing/maintenance pain that the move materially reduces.
+
+Until then, preserve the boundary and avoid refactoring solely to make the
+folder layout look purer.
