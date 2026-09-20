@@ -150,6 +150,21 @@ class AListProviderAdapter:
         pagination_complete = True
         sentinel: tuple[str, int] | None = None
 
+        def refresh_metrics() -> None:
+            self.last_scan_metrics = {
+                "active_workers": state["active_workers"],
+                "dirs_done": state["dirs_done"],
+                "dirs_pending": max(
+                    state["work_remaining"] - state["active_workers"], 0
+                ),
+                "entries_discovered": len(entries),
+            }
+
+        async def publish_progress() -> None:
+            refresh_metrics()
+            if on_progress:
+                await on_progress(list(recent_paths), len(entries))
+
         async def worker() -> None:
             nonlocal pagination_complete
             while True:
@@ -160,6 +175,7 @@ class AListProviderAdapter:
                 state["active_workers"] += 1
                 recent_paths.append(current_path)
                 parent_entry = folders_by_path[current_path]
+                await publish_progress()
                 try:
                     items = await self._provider.list_path(current_path)
                 except AListError as exc:
@@ -171,13 +187,11 @@ class AListProviderAdapter:
                     state["active_workers"] -= 1
                     state["dirs_done"] += 1
                     state["work_remaining"] -= 1
+                    await publish_progress()
                     if state["work_remaining"] == 0:
                         for _ in range(max_workers):
                             await queue.put(sentinel)
                     continue
-
-                if on_progress:
-                    await on_progress(list(recent_paths), len(entries))
 
                 for item in items:
                     name = str(item.get("name") or "").strip()
@@ -220,6 +234,7 @@ class AListProviderAdapter:
                 state["active_workers"] -= 1
                 state["dirs_done"] += 1
                 state["work_remaining"] -= 1
+                await publish_progress()
                 if state["work_remaining"] == 0:
                     for _ in range(max_workers):
                         await queue.put(sentinel)
