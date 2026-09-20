@@ -7,7 +7,7 @@ opts into E2E seed mode and insecure-development mode.
 from fastapi import APIRouter, HTTPException, Request
 
 from ..config import settings
-from ..e2e_seed import seed_e2e_content
+from ..infrastructure.e2e_seed import seed_e2e_content
 
 router = APIRouter()
 
