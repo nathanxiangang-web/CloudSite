@@ -82,7 +82,7 @@ async def admin_session_middleware(request: Request, call_next):
                 )
         return await call_next(request)
 
-    public_api_paths = {"/api/health", "/api/ready", "/api/auth/login", "/api/auth/register", "/api/site"}
+    public_api_paths = {"/api/health", "/api/ready", "/api/auth/login", "/api/auth/register", "/api/site", "/api/_e2e/seed"}
     preview_ticket_valid = False
     if path.startswith("/p/"):
         resource_id = path.removeprefix("/p/")
