@@ -16,6 +16,8 @@ from ..modules.indexing.infrastructure.production_store import ProductionIndexin
 from ..modules.resources.infrastructure.inventory_repository import (
     SqlAlchemyResourceInventoryRepository,
 )
+from ..modules.search.contracts.public import rebuild_public_search_index
+from ..platform.db import index_session, state_session
 
 
 def _production_indexing_store(session):
@@ -24,10 +26,18 @@ def _production_indexing_store(session):
 
 
 async def run_indexing_v2_production():
-    """Compatibility composition entry point for manual/startup sync callers."""
-    return await _run_indexing_v2_production(
+    """Run indexing and refresh public search from the committed inventory."""
+    result = await _run_indexing_v2_production(
         store_factory=_production_indexing_store,
     )
+    if result.get("status") in {"success", "partial"}:
+        async with state_session() as state, index_session() as index:
+            rebuilt = await rebuild_public_search_index(state, index)
+        result = {
+            **result,
+            "search_indexed": rebuilt.indexed,
+        }
+    return result
 
 
 async def _run_manual_sync_in_background(full: bool, force: bool) -> None:
