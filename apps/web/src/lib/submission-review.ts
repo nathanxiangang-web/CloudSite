@@ -8,10 +8,10 @@ export function canPublishSubmission(status: SubmissionStatus): boolean {
   return status === "approved";
 }
 
-export function defaultReviewAction(status: SubmissionStatus): ReviewAction {
+export function defaultReviewAction(status: SubmissionStatus): ReviewAction | null {
+  if (status === "pending") return "approve";
   if (status === "approved") return "publish";
-  if (status === "rejected") return "reject";
-  return "approve";
+  return null;
 }
 
 export function isPublishReady(action: ReviewAction, resourceId: string): boolean {
