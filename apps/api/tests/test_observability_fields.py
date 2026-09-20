@@ -404,8 +404,11 @@ async def test_v2_summary_to_dict_shape_matches_observability_contract() -> None
     assert payload["writes"] == {
         "added": 2,
         "changed": 1,
+        "renamed": 0,
+        "moved": 0,
         "removed": 1,
         "unchanged": 4,
+        "conflict": 0,
     }
     assert payload["suppressed_removals"] == 3
     assert payload["errors"] == ["cat-x: RuntimeError: boom"]

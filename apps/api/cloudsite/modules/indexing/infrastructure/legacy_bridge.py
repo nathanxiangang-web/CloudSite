@@ -46,8 +46,11 @@ class V2IndexingSummary:
             "writes": {
                 "added": self.writes.added,
                 "changed": self.writes.changed,
+                "renamed": self.writes.renamed,
+                "moved": self.writes.moved,
                 "removed": self.writes.removed,
                 "unchanged": self.writes.unchanged,
+                "conflict": self.writes.conflict,
             },
             "suppressed_removals": self.suppressed_removals,
             "errors": list(self.errors),
@@ -118,8 +121,11 @@ async def run_indexing_v2(
             summary.pages_fetched += scan_result.pages_fetched
             summary.writes.added += reconcile_result.writes.added
             summary.writes.changed += reconcile_result.writes.changed
+            summary.writes.renamed += reconcile_result.writes.renamed
+            summary.writes.moved += reconcile_result.writes.moved
             summary.writes.removed += reconcile_result.writes.removed
             summary.writes.unchanged += reconcile_result.writes.unchanged
+            summary.writes.conflict += reconcile_result.writes.conflict
             summary.suppressed_removals += reconcile_result.suppressed_removals
     except Exception as exc:  # noqa: BLE001 - atomic reconcile boundary
         logger.exception(
@@ -268,13 +274,18 @@ async def run_indexing_v2_production(
                 total_summary.pages_fetched += result.get("pages_fetched", 0)
                 total_summary.writes.added += writes.get("added", 0)
                 total_summary.writes.changed += writes.get("changed", 0)
+                total_summary.writes.renamed += writes.get("renamed", 0)
+                total_summary.writes.moved += writes.get("moved", 0)
                 total_summary.writes.removed += writes.get("removed", 0)
                 total_summary.writes.unchanged += writes.get("unchanged", 0)
+                total_summary.writes.conflict += writes.get("conflict", 0)
                 await _log_operation(
                     "sync", "v2_category_completed",
                     f"Done: {root_label} | "
                     f"added={writes.get('added', 0)} changed={writes.get('changed', 0)} "
-                    f"removed={writes.get('removed', 0)} unchanged={writes.get('unchanged', 0)}",
+                    f"renamed={writes.get('renamed', 0)} moved={writes.get('moved', 0)} "
+                    f"removed={writes.get('removed', 0)} unchanged={writes.get('unchanged', 0)} "
+                    f"conflict={writes.get('conflict', 0)}",
                 )
 
     elapsed = int(time.time() - t0)
