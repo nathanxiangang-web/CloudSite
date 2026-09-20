@@ -34,7 +34,7 @@ async def rebuild_catalog_search_projection():
     """全量重建 catalog 资源级检索投影（D1）。"""
 
     from ...main import IndexSession, StateSession
-    from ...services.catalog_search_projection import (
+    from ...modules.search.contracts.public import (
         rebuild_catalog_search_index,
     )
 
