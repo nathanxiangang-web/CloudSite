@@ -289,6 +289,85 @@ class DurableScanRepository:
         )
         return [_row_to_ns(r, _ENTRY_FIELDS) for r in result]
 
+    async def list_entries(self, run_id: str) -> list[SimpleNamespace]:
+        """Return all staged entries for a scan run in stable insertion order."""
+        result = await self._session.execute(
+            text(
+                "SELECT id, scan_run_id, dir_path, resource_id, name, is_dir, "
+                "modified, metadata_hash FROM index_scan_entries "
+                "WHERE scan_run_id = :rid ORDER BY id"
+            ),
+            {"rid": run_id},
+        )
+        return [_row_to_ns(r, _ENTRY_FIELDS) for r in result]
+
+    async def list_dirs(
+        self,
+        run_id: str,
+        *,
+        status: str | None = None,
+    ) -> list[SimpleNamespace]:
+        """Return durable directory rows without leaking ORM models."""
+        if status is None:
+            result = await self._session.execute(
+                text(
+                    "SELECT id, scan_run_id, path, depth, status, started_at, "
+                    "finished_at, entry_count, error_message "
+                    "FROM index_scan_dirs WHERE scan_run_id = :rid "
+                    "ORDER BY depth, id"
+                ),
+                {"rid": run_id},
+            )
+        else:
+            result = await self._session.execute(
+                text(
+                    "SELECT id, scan_run_id, path, depth, status, started_at, "
+                    "finished_at, entry_count, error_message "
+                    "FROM index_scan_dirs "
+                    "WHERE scan_run_id = :rid AND status = :status "
+                    "ORDER BY depth, id"
+                ),
+                {"rid": run_id, "status": status},
+            )
+        return [_row_to_ns(r, _DIR_FIELDS) for r in result]
+
+    async def fail_dir_by_path(
+        self,
+        run_id: str,
+        path: str,
+        depth: int,
+        error_message: str,
+    ) -> None:
+        """Mark a directory failed, creating its durable row when necessary."""
+        result = await self._session.execute(
+            text(
+                "SELECT id FROM index_scan_dirs "
+                "WHERE scan_run_id = :rid AND path = :path LIMIT 1"
+            ),
+            {"rid": run_id, "path": path},
+        )
+        row = result.first()
+        if row is not None:
+            await self.fail_dir(str(row[0]), error_message)
+            return
+
+        await self._session.execute(
+            text(
+                "INSERT INTO index_scan_dirs("
+                "id, scan_run_id, path, depth, status, finished_at, error_message"
+                ") VALUES (:id, :rid, :path, :depth, 'failed', :finished, :error)"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "rid": run_id,
+                "path": path,
+                "depth": depth,
+                "finished": _utcnow(),
+                "error": error_message,
+            },
+        )
+        await self._session.flush()
+
     async def count_entries(self, run_id: str) -> int:
         result = await self._session.execute(
             text("SELECT COUNT(*) FROM index_scan_entries WHERE scan_run_id = :rid"),
