@@ -1,7 +1,0 @@
-# Add with: docker compose -f docker-compose.dev.yml -f docker-compose.115driver.yml up -d --build
-# Set both host paths before starting; the authenticated config is mounted read-only.
-services:
-  api:
-    volumes:
-      - ${DRIVER115_BINARY_PATH:?set the host 115driver binary path}:/usr/local/bin/115driver:ro
-      - ${DRIVER115_CONFIG_PATH:?set the host 115driver config path}:/root/.115driver/config.toml:ro
