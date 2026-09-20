@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 31
+CURRENT_SCHEMA_VERSION = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -1759,6 +1759,57 @@ async def state_v30_to_v31_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v31_to_v32_upgrade(conn: AsyncConnection) -> None:
+    """Schema v31 -> v32: index_root_states table (V2 doc sections 6-7).
+
+    Adds index_root_states to state.db so that each Content Root owns an
+    independent index lifecycle state row. This PR only introduces the
+    schema and the repository; no scan/reconcile logic reads or writes this
+    table yet.
+
+    index_root_states: one row per root_mapping (PK = root_mapping_id, FK
+      -> content_root_mappings(id) ON DELETE CASCADE so stale state cannot
+      outlive its root). status enumerates the root index lifecycle:
+      bootstrap_required, bootstrapping, ready, verifying, resume_required,
+      degraded, rebuild_required, disabled. generation is a monotonic
+      counter bumped on each rebuild. The remaining timestamp/cursor/error
+      columns record bootstrap, change, verify, audit and reconcile
+      progress plus the last error.
+
+    All statements are idempotent (CREATE TABLE IF NOT EXISTS / CREATE INDEX
+    IF NOT EXISTS) so re-running init_databases is safe.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS index_root_states("
+        "root_mapping_id INTEGER PRIMARY KEY REFERENCES content_root_mappings(id) ON DELETE CASCADE,"
+        "connection_id INTEGER NOT NULL,"
+        "status TEXT NOT NULL DEFAULT 'bootstrap_required',"
+        "generation INTEGER NOT NULL DEFAULT 0,"
+        "bootstrap_completed_at TEXT,"
+        "last_change_at TEXT,"
+        "last_verified_at TEXT,"
+        "last_full_audit_at TEXT,"
+        "last_reconcile_at TEXT,"
+        "change_cursor TEXT,"
+        "provider_revision TEXT,"
+        "scan_fingerprint TEXT,"
+        "last_error_code TEXT,"
+        "last_error_message TEXT,"
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        "updated_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        "CHECK (status IN ('bootstrap_required', 'bootstrapping', 'ready', "
+        "'verifying', 'resume_required', 'degraded', 'rebuild_required', 'disabled')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_root_states_status "
+        "ON index_root_states (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_root_states_connection_id "
+        "ON index_root_states (connection_id)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1790,5 +1841,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v28_to_v29", from_version=28, to_version=29, upgrade=state_v28_to_v29_upgrade),
     Migration(id="state_v29_to_v30", from_version=29, to_version=30, upgrade=state_v29_to_v30_upgrade),
     Migration(id="state_v30_to_v31", from_version=30, to_version=31, upgrade=state_v30_to_v31_upgrade),
+    Migration(id="state_v31_to_v32", from_version=31, to_version=32, upgrade=state_v31_to_v32_upgrade),
 ]
 
