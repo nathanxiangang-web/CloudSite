@@ -54,7 +54,13 @@ export default function AdminSetupPage() {
     }
     const body = await response.json().catch(() => ({}));
     const detail = body.detail;
-    setError(typeof detail === "string" ? detail : typeof detail?.message === "string" ? detail.message : "初始化失败，请检查配置");
+    const message = typeof detail === "string"
+      ? detail
+      : typeof detail?.message === "string"
+        ? detail.message
+        : "初始化失败，请检查配置";
+    const diagnosticCode = typeof detail?.alist_code === "string" ? `（${detail.alist_code}）` : "";
+    setError(`${message}${diagnosticCode}`);
     setLoading(false);
   }
 
@@ -70,7 +76,10 @@ export default function AdminSetupPage() {
         <label>AList 管理员用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
         <label>AList 管理员密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required /></label>
         <label className="checkbox-label"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /> 记住登录凭据</label>
-        <label>一次性初始化令牌<input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" required /></label>
+        <label>一次性初始化令牌
+          <input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" required />
+          <small>填写服务器 .env 中的 CLOUDSITE_SETUP_TOKEN，不是 CLOUDSITE_SECRET_KEY。</small>
+        </label>
         {error && <p className="form-error">{error}</p>}
         <button className="primary login-submit" disabled={loading || !ready || !setupAvailable}><LogIn />{loading ? "正在初始化…" : "完成初始化"}</button>
       </form>

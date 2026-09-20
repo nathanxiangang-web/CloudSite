@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from ...admin_auth import get_setup_completed, verify_setup_token
-from ...alist import AListClient
+from ...alist import AListClient, AListError
 from ...config import settings
 from ...crypto import encrypt_secret
 from ...models import AListConnection, OperationLog, SystemSetting, utcnow
@@ -49,8 +49,24 @@ async def admin_setup_alist(payload: AListInput, request: Request):
         # 5. 使用提交的配置测试 AList 登录
         try:
             result = await AListClient(payload.base_url, payload.username, payload.password).test()
+        except AListError as exc:
+            raise HTTPException(
+                400,
+                {
+                    "code": "ALIST_TEST_FAILED",
+                    "message": f"AList 验证失败：{str(exc)[:200]}",
+                    "alist_code": exc.code,
+                },
+            ) from exc
         except Exception as exc:
-            raise HTTPException(400, {"code": "ALIST_TEST_FAILED", "message": f"AList 验证失败：{str(exc)[:200]}"}) from exc
+            raise HTTPException(
+                400,
+                {
+                    "code": "ALIST_TEST_FAILED",
+                    "message": f"AList 验证失败：{str(exc)[:200]}",
+                    "alist_code": "AL-999",
+                },
+            ) from exc
         # 6. 测试成功后保存 AList 配置 + 写入 setup_completed（同一事务）
         row = await session.get(AListConnection, 1) or AListConnection(id=1)
         row.base_url = payload.base_url.rstrip("/")
