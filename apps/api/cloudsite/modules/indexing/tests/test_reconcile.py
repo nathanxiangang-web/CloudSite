@@ -389,3 +389,47 @@ async def test_reconcile_writes_metadata_only_changes():
     assert result.writes.changed == 1
     assert store.upsert_calls[0][0].metadata["child_folder_count"] == 1
     assert store.upsert_calls[0][0].metadata["resource_count"] == 2
+
+
+async def test_reconcile_ignores_folder_only_metadata_for_resources():
+    metadata = {
+        "is_dir": False,
+        "parent_id": "folder",
+        "content_type": "file",
+        "root_mapping_id": 1,
+        "extension": "zip",
+        "mime_type": "application/zip",
+        "thumbnail": "",
+    }
+    existing = [
+        IndexedEntry(
+            resource_id="resource",
+            category_id="root:1",
+            provider_id="prov",
+            path="/folder/file.zip",
+            name="file.zip",
+            size=10,
+            metadata={**metadata, "depth": 0},
+        )
+    ]
+    store = FakeIndexingStore(existing=existing)
+    service = ReconcileService(store)
+    snapshot = CategorySnapshot(
+        category_id="root:1",
+        provider_id="prov",
+        entries=[
+            SnapshotEntry(
+                resource_id="resource",
+                path="/folder/file.zip",
+                name="file.zip",
+                size=10,
+                metadata={**metadata, "depth": 3},
+            )
+        ],
+        pagination_complete=True,
+    )
+
+    result = await service.reconcile(snapshot)
+
+    assert result.writes.changed == 0
+    assert result.writes.unchanged == 1
