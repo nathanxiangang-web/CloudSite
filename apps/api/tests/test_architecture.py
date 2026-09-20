@@ -708,6 +708,76 @@ class TestSharesVerificationBoundary:
         )
 
 
+class TestSharesTargetScopeBoundary:
+    """Share target/scope orchestration composes owner contracts only."""
+
+    def test_shares_target_scope_has_no_cross_module_orm(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "shares"
+            / "application"
+            / "target_scope.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "modules.resources.infrastructure" not in source
+        assert "modules.collections.infrastructure" not in source
+        assert "resources.contracts.public" in source
+        assert "collections.contracts.public" in source
+
+    def test_resources_publication_owns_resource_orm(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "resources"
+            / "application"
+            / "publication.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "from ..infrastructure.models import Folder, Resource" in source
+        assert "providers.contracts.public" in source
+        assert "modules.shares" not in source
+
+    def test_legacy_share_services_do_not_own_target_scope_orm(self):
+        legacy = (CLOUDSITE / "shares" / "service.py").read_text(
+            encoding="utf-8"
+        )
+        service = (CLOUDSITE / "services" / "shares.py").read_text(
+            encoding="utf-8"
+        )
+
+        for symbol in (
+            "CollectionItem",
+            "ContentRootMapping",
+            "Folder",
+            "Resource",
+        ):
+            assert symbol not in legacy
+        assert "sqlalchemy" not in service
+        assert "cloudsite.models" not in service
+        assert "from ..models" not in service
+
+    def test_share_routers_use_module_target_scope_contract(self):
+        public_router = (CLOUDSITE / "routers" / "shares.py").read_text(
+            encoding="utf-8"
+        )
+        admin_router = (
+            CLOUDSITE / "routers" / "admin" / "shares.py"
+        ).read_text(encoding="utf-8")
+
+        assert "create_share as create_share_row" not in public_router
+        assert "create_share as create_share_row" not in admin_router
+        assert "target_valid_for_share" in public_router
+        assert "target_valid_for_share" in admin_router
+        assert "build_share_target_payload" in public_router
+        assert "resolve_share_download_resource" in public_router
+        assert "modules.shares.contracts.public" in public_router
+        assert "modules.shares.contracts.public" in admin_router
+
+
 class TestModuleStructure:
     """Validate that each module has the required minimum structure."""
 
