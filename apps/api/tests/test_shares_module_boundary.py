@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.database import StateBase
@@ -153,9 +154,15 @@ async def test_verification_attempt_state_runs_behind_public_contract(monkeypatc
     assert await cleanup_share_verify_attempts(now) == 1
 
     async with factory() as state:
-        rows = list((await state.scalars(
-            __import__("sqlalchemy").select(ShareVerifyAttempt)
-        )).all())
+        rows = list(
+            (
+                await state.scalars(
+                    select(ShareVerifyAttempt).order_by(
+                        ShareVerifyAttempt.share_token
+                    )
+                )
+            ).all()
+        )
         assert [row.share_token for row in rows] == ["fresh"]
 
     await engine.dispose()
