@@ -42,7 +42,6 @@ from ..services.shares import (
 )
 from ..shares.code import verify_share_code
 from ..shares.service import (
-    captcha_token_valid,
     challenge_required,
     clear_verify_attempts,
     create_share as create_share_row,
@@ -213,27 +212,33 @@ async def public_share_verify(
             )
         address = get_effective_client_ip(request)
         if await challenge_required(state, token, address):
-            if not await captcha_token_valid(payload.captcha_token):
-                raise HTTPException(
-                    403,
-                    {
-                        "code": "SHARE_CAPTCHA_REQUIRED",
-                        "message": "请先完成验证码验证",
-                    },
-                )
+            raise HTTPException(
+                429,
+                {
+                    "code": "SHARE_VERIFY_COOLDOWN",
+                    "message": "提取码尝试次数过多，请 10 分钟后重试",
+                },
+            )
         if not verify_share_code(row.token, payload.code, row.code_hash):
-            needs_captcha = await verify_attempt_failed(
+            cooldown_started = await verify_attempt_failed(
                 state,
                 token,
                 address,
             )
             await state.commit()
+            if cooldown_started:
+                raise HTTPException(
+                    429,
+                    {
+                        "code": "SHARE_VERIFY_COOLDOWN",
+                        "message": "提取码尝试次数过多，请 10 分钟后重试",
+                    },
+                )
             raise HTTPException(
                 403,
                 {
                     "code": "SHARE_CODE_INVALID",
                     "message": "分享码错误，请重新输入。",
-                    "captcha_required": needs_captcha,
                 },
             )
         await clear_verify_attempts(state, token, address)
