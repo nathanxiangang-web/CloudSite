@@ -47,6 +47,7 @@ def register_public_routers(app: FastAPI) -> APIRouter:
     from ..routers.collections import router as collections_router
     from ..routers.delivery import router as delivery_router
     from ..routers.downloads import router as downloads_router
+    from ..routers.e2e import router as e2e_router
     from ..routers.health import router as health_router
     from ..routers.home import router as home_router
     from ..routers.notifications import router as notifications_router
@@ -71,6 +72,7 @@ def register_public_routers(app: FastAPI) -> APIRouter:
         collections_router,
         shares_router,
         downloads_router,
+        e2e_router,
         submissions_router,
         notifications_router,
         catalog_router,

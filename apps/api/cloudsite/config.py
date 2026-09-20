@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     master_key: str = ""
     setup_token: str = ""
     allow_insecure_dev_key: bool = False
+    e2e_seed_enabled: bool = False
     cors_origins: str = "http://localhost:3000"
     trusted_proxy_cidrs: str = "127.0.0.1/32,::1/128,172.16.0.0/12"
     request_timeout_seconds: float = 20.0
