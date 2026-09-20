@@ -85,33 +85,26 @@ owned here, while resource-facing rate limit events stay in resources.
 
 ## Current Migration Status
 
-Code is currently in `services/delivery.py` and `routers/delivery.py`. These
-move to `modules/delivery/` in Phase 3. The module skeleton with schemas in
-`public/` is in place. The split of `download_events` between resources and
-delivery will be resolved during migration, with delivery owning the delivery
-lifecycle events and resources owning rate limit events.
+Delivery's download-runtime boundary is substantially converged:
 
-## Migration Progress
+- `DownloadEvent` and `DownloadDiagnostic` ORM ownership lives in
+  `modules/delivery/infrastructure/models.py`;
+- persistent download rate limiting is Resources-owned and exposed through
+  public contracts;
+- provider resolution uses the Providers runtime contract;
+- D3 owns admin download diagnostics;
+- D4a makes both the normal download router and share-download path consume
+  Delivery/Resources/Providers public contracts directly. They no longer use
+  `cloudsite.download`, `download_rate_limit`, Resources internal query
+  modules, or Shares compatibility helpers for download runtime behavior.
 
-- D1 ORM ownership: `DownloadEvent` and `DownloadDiagnostic` are owned by
-  `modules/delivery/infrastructure/models.py`.
-- `cloudsite.models` remains a compatibility re-export for legacy callers.
-- Download-event writes now import the Delivery-owned ORM directly.
-- Existing event commit semantics are preserved.
-- D2 rate-limit ownership: persistent download rate limiting now lives in
-  Resources, the declared owner of `download_rate_limits`.
-- Delivery keeps only a compatibility re-export of the Resources rate-limit
-  contract; it no longer imports shared database/model layers for rate limiting.
-- Next: migrate the delivery-package legacy service/router boundary.
+The separate delivery-package feature (`services/delivery.py` plus
+`routers/delivery.py` / `routers/admin/delivery.py`) remains a legacy
+business surface. It still owns `delivery_packages` / `delivery_package_items`
+in the root model layer and reads CatalogAsset directly. Moving that whole
+feature now would be a new ORM + Catalog contract migration rather than a
+small convergence cleanup, so it is intentionally deferred until there is a
+measured product, security, or maintenance reason.
 
-## D3 Admin Diagnostics Boundary
-
-Delivery now owns the admin download-diagnostic workflow in
-`application/diagnostics.py`.
-
-- Resources supplies a persistence-neutral diagnostic resource view;
-- Providers supplies the runtime gateway;
-- Delivery resolves the download entry, records step outcomes, persists
-  `DownloadDiagnostic`, and exposes diagnostic history;
-- `routers/admin/diagnostics.py` is ORM/SQLAlchemy-free and keeps only the
-  historical `download_diagnostic_dict` compatibility symbol.
+Thin top-level download facades remain for compatibility and should be removed
+only after caller-zero verification.
