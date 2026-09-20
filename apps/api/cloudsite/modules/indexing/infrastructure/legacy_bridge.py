@@ -130,8 +130,10 @@ async def run_indexing_v2_production(
     import asyncio
     import time
 
-    from cloudsite.indexer import load_all_connections_and_roots
-    from cloudsite.platform.db import index_session
+    from cloudsite.modules.providers.contracts.public import (
+        enabled_provider_scan_sources,
+    )
+    from cloudsite.platform.db import index_session, state_session
 
     from .alist_adapter import AListProviderAdapter
 
@@ -139,25 +141,26 @@ async def run_indexing_v2_production(
     await _log_operation("sync", "v2_sync_started", "v2 indexing sync started")
     await _update_v2_sync_status("running", 0, 0, 0, "", 0)
 
-    connections = await load_all_connections_and_roots()
-    if not connections:
+    async with state_session() as state:
+        sources = await enabled_provider_scan_sources(state)
+    if not sources:
         await _update_v2_sync_status("skipped", 0, 0, 0, "", 0)
         return {"status": "skipped", "engine": "v2", "reason": "no_connections"}
 
-    all_roots: list = []
-    for _conn, _client, roots in connections:
-        for root in roots:
-            if root not in all_roots:
-                all_roots.append(root)
+    all_roots = [
+        root
+        for source in sources
+        for root in source.roots
+    ]
 
     total_summary = V2IndexingSummary()
     total_categories = len(all_roots)
     categories_done = 0
     entries_scanned = 0
 
-    for _conn, client, roots in connections:
-        adapter = AListProviderAdapter(client, roots)
-        for root in roots:
+    for source in sources:
+        adapter = AListProviderAdapter(source.provider, source.roots)
+        for root in source.roots:
             root_label = f"{root.storage_path}({root.content_type})"
             await _update_v2_sync_status(
                 "running", categories_done, total_categories,
