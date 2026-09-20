@@ -73,7 +73,7 @@ async def consume_catalog_search_outbox(
                     index,
                     entry_id=row.entry_id,
                     revision=row.revision,
-                    updated_at=datetime.now(timezone.utc),
+                    updated_at=consumed_at,
                 )
                 consumed += 1
                 await mark_catalog_search_outbox_consumed(
@@ -109,7 +109,7 @@ async def consume_catalog_search_outbox(
                 index,
                 entry_id=row.entry_id,
                 revision=row.revision,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=consumed_at,
             )
             consumed += 1
             await mark_catalog_search_outbox_consumed(
