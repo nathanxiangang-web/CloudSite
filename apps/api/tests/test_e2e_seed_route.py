@@ -8,8 +8,10 @@ from cloudsite import main
 from cloudsite.config import settings
 from cloudsite.database import IndexBase, StateBase
 from cloudsite.infrastructure.e2e_seed import E2E_RESOURCE_ID, E2E_RESOURCE_NAME
+from cloudsite.models import User, utcnow
 from cloudsite.modules.providers.infrastructure.models import ContentRootMapping
 from cloudsite.modules.resources.infrastructure.models import Resource
+from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
 
 async def _stores(monkeypatch):
@@ -68,6 +70,20 @@ async def test_e2e_seed_is_idempotent_and_visible_to_browse_search_detail(
     monkeypatch.setattr(settings, "allow_insecure_dev_key", True)
     monkeypatch.setattr(settings, "e2e_seed_enabled", True)
 
+    async with state_factory() as state:
+        user = User(
+            username="e2e",
+            username_normalized="e2e",
+            password_hash="not-used",
+            status="active",
+            created_at=utcnow(),
+            updated_at=utcnow(),
+        )
+        state.add(user)
+        await state.flush()
+        _, user_token = await create_user_session(state, user.id, utcnow())
+        await state.commit()
+
     transport = httpx.ASGITransport(app=main.app)
     async with httpx.AsyncClient(
         transport=transport,
@@ -88,7 +104,8 @@ async def test_e2e_seed_is_idempotent_and_visible_to_browse_search_detail(
         assert first.json()["download_provider_seeded"] is False
 
         browse = await client.get(
-            "/api/browse?page=1&page_size=24&sort=name&order=asc"
+            "/api/browse?page=1&page_size=24&sort=name&order=asc",
+            cookies={USER_SESSION_COOKIE: user_token},
         )
         assert browse.status_code == 200, browse.text
         assert E2E_RESOURCE_ID in {
@@ -98,6 +115,7 @@ async def test_e2e_seed_is_idempotent_and_visible_to_browse_search_detail(
         search = await client.get(
             "/api/search",
             params={"q": "cloudsite-e2e-package"},
+            cookies={USER_SESSION_COOKIE: user_token},
         )
         assert search.status_code == 200, search.text
         assert search.json()["total"] >= 1
@@ -107,7 +125,10 @@ async def test_e2e_seed_is_idempotent_and_visible_to_browse_search_detail(
             for item in search.json()["items"]
         )
 
-        detail = await client.get(f"/api/resources/{E2E_RESOURCE_ID}")
+        detail = await client.get(
+            f"/api/resources/{E2E_RESOURCE_ID}",
+            cookies={USER_SESSION_COOKIE: user_token},
+        )
         assert detail.status_code == 200, detail.text
         assert detail.json()["name"] == E2E_RESOURCE_NAME
         assert detail.json()["capabilities"]["can_download"] is True
