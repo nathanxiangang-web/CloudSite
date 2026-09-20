@@ -158,10 +158,10 @@ async def run_indexing_v2_production(
     for _conn, client, roots in connections:
         adapter = AListProviderAdapter(client, roots)
         for root in roots:
-            root_label = f"{root.alist_path}({root.content_type})"
+            root_label = f"{root.storage_path}({root.content_type})"
             await _update_v2_sync_status(
                 "running", categories_done, total_categories,
-                int(time.time() - t0), root.alist_path, entries_scanned,
+                int(time.time() - t0), root.storage_path, entries_scanned,
             )
             await _log_operation(
                 "sync", "v2_category_started",
@@ -178,14 +178,14 @@ async def run_indexing_v2_production(
                     result = await run_indexing_v2(
                         adapter=adapter,
                         store=store,
-                        category_ids=[f"root:{root.id}"],
+                        category_ids=[f"root:{root.root_mapping_id}"],
                         on_progress=_on_progress,
                     )
                     await session.commit()
             except asyncio.CancelledError:
                 await _update_v2_sync_status(
                     "cancelled", categories_done, total_categories,
-                    int(time.time() - t0), root.alist_path, entries_scanned,
+                    int(time.time() - t0), root.storage_path, entries_scanned,
                 )
                 raise
             categories_done += 1
