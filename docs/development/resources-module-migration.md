@@ -1,5 +1,8 @@
 # Resources Module Migration
 
+> **Historical execution record.** This document preserves the slice-by-slice migration plan and invariants at the time it was written. It is not the current backlog. Before acting on any `Next`, `Then`, or `Later` item here, check `module.yaml`, the module `README.md`, [modularization-status.md](./modularization-status.md), and issue #157 against current `main`.
+
+
 Resources is a core CloudSite 2.0 boundary because Catalog, Search, Delivery,
 Shares, and Indexing all reference Folder/Resource state.
 

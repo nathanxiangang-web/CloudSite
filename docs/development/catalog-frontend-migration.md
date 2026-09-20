@@ -1,5 +1,8 @@
 # Catalog Frontend Migration
 
+> **Historical execution record.** This document preserves the slice-by-slice migration plan and invariants at the time it was written. It is not the current backlog. Before acting on any `Next`, `Then`, or `Later` item here, check `module.yaml`, the module `README.md`, [modularization-status.md](./modularization-status.md), and issue #157 against current `main`.
+
+
 ## M6a — Public list ownership
 
 The main branch already moved the /catalog route into features/catalog. This
