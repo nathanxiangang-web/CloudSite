@@ -7,7 +7,7 @@ import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { RESOURCE_TYPE_OPTIONS } from "@/lib/submission";
+import { isOptionalHttpUrl, RESOURCE_TYPE_OPTIONS } from "@/lib/submission";
 
 type FormState = {
   resourceName: string;
@@ -28,11 +28,6 @@ const initialForm: FormState = {
   copyrightNote: "",
   note: "",
 };
-
-function isOptionalHttpUrl(value: string) {
-  if (!value.trim()) return true;
-  return /^https?:\/\//i.test(value.trim());
-}
 
 export default function SubmitPage() {
   const auth = useAuth();
