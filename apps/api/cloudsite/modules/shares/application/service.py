@@ -8,16 +8,19 @@ migration step.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import desc, select, text
+from sqlalchemy import delete, desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....platform.db import state_session
 from ....platform.observability import write_operation_log
 from ..domain.code import generate_share_code, hash_share_code
 from ..domain.views import ShareStatus, ShareView
-from ..infrastructure.models import Share, utcnow
+from ..infrastructure.models import Share, ShareVerifyAttempt, utcnow
 
 
 MAX_SHARE_DOWNLOADS = 404
@@ -436,6 +439,111 @@ async def reserve_share_download(
     return int(count or 0)
 
 
+def _verification_ip_hash(
+    address: str,
+    *,
+    secret_key: str,
+) -> str:
+    return hmac.new(
+        secret_key.encode(),
+        f"share-ip:{address}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+async def verify_attempt_failed(
+    state: AsyncSession,
+    share_token: str,
+    address: str,
+    *,
+    secret_key: str,
+) -> bool:
+    key = _verification_ip_hash(address, secret_key=secret_key)
+    now = utcnow()
+    window_started = now - timedelta(minutes=10)
+    row = await state.scalar(
+        select(ShareVerifyAttempt).where(
+            ShareVerifyAttempt.share_token == share_token,
+            ShareVerifyAttempt.ip_hash == key,
+        )
+    )
+    if row is None:
+        state.add(
+            ShareVerifyAttempt(
+                share_token=share_token,
+                ip_hash=key,
+                fail_count=1,
+                window_started_at=now,
+                updated_at=now,
+            )
+        )
+        return False
+    if aware_utc(row.window_started_at) <= window_started:
+        row.fail_count = 1
+        row.window_started_at = now
+        row.challenge_required_until = None
+        row.updated_at = now
+        return False
+
+    row.fail_count += 1
+    row.updated_at = now
+    if row.fail_count >= 5:
+        row.challenge_required_until = now + timedelta(minutes=10)
+        return True
+    return False
+
+
+async def challenge_required(
+    state: AsyncSession,
+    share_token: str,
+    address: str,
+    *,
+    secret_key: str,
+) -> bool:
+    row = await state.scalar(
+        select(ShareVerifyAttempt).where(
+            ShareVerifyAttempt.share_token == share_token,
+            ShareVerifyAttempt.ip_hash
+            == _verification_ip_hash(address, secret_key=secret_key),
+        )
+    )
+    return bool(
+        row
+        and row.challenge_required_until
+        and aware_utc(row.challenge_required_until) > utcnow()
+    )
+
+
+async def clear_verify_attempts(
+    state: AsyncSession,
+    share_token: str,
+    address: str,
+    *,
+    secret_key: str,
+) -> None:
+    await state.execute(
+        delete(ShareVerifyAttempt).where(
+            ShareVerifyAttempt.share_token == share_token,
+            ShareVerifyAttempt.ip_hash
+            == _verification_ip_hash(address, secret_key=secret_key),
+        )
+    )
+
+
+async def cleanup_share_verify_attempts(
+    now: datetime | None = None,
+) -> int:
+    threshold = (now or utcnow()) - timedelta(hours=1)
+    async with state_session() as state:
+        result = await state.execute(
+            delete(ShareVerifyAttempt).where(
+                ShareVerifyAttempt.updated_at < threshold
+            )
+        )
+        await state.commit()
+        return int(result.rowcount or 0)
+
+
 def generate_share_token(length: int = 12) -> str:
     return "".join(
         secrets.choice(SHARE_TOKEN_ALPHABET)
@@ -453,6 +561,9 @@ __all__ = [
     "ShareView",
     "aware_utc",
     "cancel_share",
+    "challenge_required",
+    "cleanup_share_verify_attempts",
+    "clear_verify_attempts",
     "delete_share",
     "generate_share_token",
     "get_owned_share",
@@ -468,4 +579,5 @@ __all__ = [
     "share_status",
     "share_view",
     "update_share_duration",
+    "verify_attempt_failed",
 ]

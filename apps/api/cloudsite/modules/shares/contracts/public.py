@@ -6,6 +6,9 @@ from ..application.service import (
     ShareNotFound,
     ShareValidationError,
     cancel_share,
+    challenge_required,
+    cleanup_share_verify_attempts,
+    clear_verify_attempts,
     delete_share,
     get_owned_share,
     get_share,
@@ -19,6 +22,7 @@ from ..application.service import (
     share_payload,
     share_status,
     update_share_duration,
+    verify_attempt_failed,
 )
 from ..domain.views import ShareStatus, ShareView
 
@@ -30,6 +34,9 @@ __all__ = [
     "ShareValidationError",
     "ShareView",
     "cancel_share",
+    "challenge_required",
+    "cleanup_share_verify_attempts",
+    "clear_verify_attempts",
     "delete_share",
     "get_owned_share",
     "get_share",
@@ -43,4 +50,5 @@ __all__ = [
     "share_payload",
     "share_status",
     "update_share_duration",
+    "verify_attempt_failed",
 ]

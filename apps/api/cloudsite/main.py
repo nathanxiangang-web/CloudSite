@@ -25,7 +25,8 @@ from .infrastructure.security import (
 )
 from .search import recover_search_index_if_dirty
 from .sessions import SESSION_CLEANUP_SECONDS, cleanup_expired_user_sessions
-from .shares.service import cleanup_share_verify_attempts, cleanup_terminal_shares
+from .modules.shares.contracts.public import cleanup_share_verify_attempts
+from .shares.service import cleanup_terminal_shares
 from .tasks.scheduler import SYNC_INTERVAL_OPTIONS, _run_cleanup_job, get_system_values, scheduler_loop
 from .tasks.sync import _run_manual_sync_in_background, _safe_startup_sync
 from .infrastructure.lifespan import lifespan

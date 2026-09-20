@@ -14,6 +14,8 @@ from ..modules.shares.contracts.public import (
     ShareNotFound,
     ShareValidationError,
     cancel_share as cancel_share_record,
+    challenge_required,
+    clear_verify_attempts,
     delete_share as delete_share_record,
     get_owned_share,
     get_share,
@@ -25,6 +27,7 @@ from ..modules.shares.contracts.public import (
     share_payload,
     share_status as module_share_status,
     update_share_duration as update_share_duration_record,
+    verify_attempt_failed,
 )
 from ..platform.observability import write_operation_log
 from ..download_rate_limit import (
@@ -43,12 +46,9 @@ from ..services.shares import (
 from ..shares.code import verify_share_code
 from ..shares.service import (
     captcha_token_valid,
-    challenge_required,
-    clear_verify_attempts,
     create_share as create_share_row,
     ensure_share_active,
     target_valid_for_share,
-    verify_attempt_failed,
 )
 from ..shares.ticket import create_share_ticket, share_cookie_name, validate_share_ticket
 from ..modules.site.contracts.public import (
@@ -212,7 +212,12 @@ async def public_share_verify(
                 },
             )
         address = get_effective_client_ip(request)
-        if await challenge_required(state, token, address):
+        if await challenge_required(
+            state,
+            token,
+            address,
+            secret_key=settings.secret_key,
+        ):
             if not await captcha_token_valid(payload.captcha_token):
                 raise HTTPException(
                     403,
@@ -226,6 +231,7 @@ async def public_share_verify(
                 state,
                 token,
                 address,
+                secret_key=settings.secret_key,
             )
             await state.commit()
             raise HTTPException(
@@ -236,7 +242,12 @@ async def public_share_verify(
                     "captcha_required": needs_captcha,
                 },
             )
-        await clear_verify_attempts(state, token, address)
+        await clear_verify_attempts(
+            state,
+            token,
+            address,
+            secret_key=settings.secret_key,
+        )
         row = await record_share_access(
             state,
             token,

@@ -8,11 +8,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudsite.config import settings
-from cloudsite.models import Collection, CollectionItem, ContentRootMapping, Folder, OperationLog, Resource, Share, ShareVerifyAttempt, utcnow
+from cloudsite.modules.shares.contracts.public import (
+    challenge_required as _module_challenge_required,
+    cleanup_share_verify_attempts as _module_cleanup_share_verify_attempts,
+    clear_verify_attempts as _module_clear_verify_attempts,
+    verify_attempt_failed as _module_verify_attempt_failed,
+)
+from cloudsite.models import Collection, CollectionItem, ContentRootMapping, Folder, OperationLog, Resource, Share, utcnow
 
 from .code import generate_share_code, hash_share_code, verify_share_code
 
@@ -253,50 +259,49 @@ def ip_hash(address: str) -> str:
     return hmac.new(settings.secret_key.encode(), f"share-ip:{address}".encode(), hashlib.sha256).hexdigest()
 
 
-async def verify_attempt_failed(session: AsyncSession, share_token: str, address: str) -> bool:
-    key = ip_hash(address)
-    now = utcnow()
-    window_started = now - timedelta(minutes=10)
-    row = await session.scalar(
-        select(ShareVerifyAttempt).where(ShareVerifyAttempt.share_token == share_token, ShareVerifyAttempt.ip_hash == key)
-    )
-    if not row or aware_utc(row.window_started_at) <= window_started:
-        row = ShareVerifyAttempt(share_token=share_token, ip_hash=key, fail_count=1, window_started_at=now, updated_at=now)
-        session.add(row)
-        return False
-    row.fail_count += 1
-    row.updated_at = now
-    if row.fail_count >= 5:
-        row.challenge_required_until = now + timedelta(minutes=10)
-        return True
-    return False
-
-
-async def challenge_required(session: AsyncSession, share_token: str, address: str) -> bool:
-    row = await session.scalar(
-        select(ShareVerifyAttempt).where(ShareVerifyAttempt.share_token == share_token, ShareVerifyAttempt.ip_hash == ip_hash(address))
-    )
-    return bool(row and row.challenge_required_until and aware_utc(row.challenge_required_until) > utcnow())
-
-
-async def clear_verify_attempts(session: AsyncSession, share_token: str, address: str) -> None:
-    await session.execute(
-        delete(ShareVerifyAttempt).where(
-            ShareVerifyAttempt.share_token == share_token,
-            ShareVerifyAttempt.ip_hash == ip_hash(address),
-        )
+async def verify_attempt_failed(
+    session: AsyncSession,
+    share_token: str,
+    address: str,
+) -> bool:
+    return await _module_verify_attempt_failed(
+        session,
+        share_token,
+        address,
+        secret_key=settings.secret_key,
     )
 
 
-async def cleanup_share_verify_attempts(now: datetime | None = None) -> int:
-    current = now or utcnow()
-    threshold = current - timedelta(hours=1)
-    from cloudsite.database import StateSession
+async def challenge_required(
+    session: AsyncSession,
+    share_token: str,
+    address: str,
+) -> bool:
+    return await _module_challenge_required(
+        session,
+        share_token,
+        address,
+        secret_key=settings.secret_key,
+    )
 
-    async with StateSession() as session:
-        result = await session.execute(delete(ShareVerifyAttempt).where(ShareVerifyAttempt.updated_at < threshold))
-        await session.commit()
-        return int(result.rowcount or 0)
+
+async def clear_verify_attempts(
+    session: AsyncSession,
+    share_token: str,
+    address: str,
+) -> None:
+    await _module_clear_verify_attempts(
+        session,
+        share_token,
+        address,
+        secret_key=settings.secret_key,
+    )
+
+
+async def cleanup_share_verify_attempts(
+    now: datetime | None = None,
+) -> int:
+    return await _module_cleanup_share_verify_attempts(now)
 
 
 async def cleanup_terminal_shares(now: datetime | None = None) -> int:

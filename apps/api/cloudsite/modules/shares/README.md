@@ -92,9 +92,14 @@ models under `infrastructure/models.py`, exposes persistence-neutral
 public/user/admin share routers no longer import SQLAlchemy or shared ORM
 models directly.
 
-The legacy `cloudsite/shares/` package remains as a compatibility edge for
-ticket validation, brute-force challenge handling, target-scope validation,
-and a few existing tests. New Share persistence/lifecycle work must go through
-this module. The next migration step is to move target/scope resolution and
-verification-attempt persistence behind this contract, then replace the legacy
-compatibility package.
+P2a moves brute-force verification-attempt persistence behind the Shares
+public contract. The public verify route now records/checks/clears attempt
+state through module-owned application code, scheduled verification cleanup
+also uses the module contract, and the legacy service keeps only thin
+configuration-aware wrappers for compatibility.
+
+The remaining production compatibility edge is target/scope resolution
+(resource/folder/collection publication checks plus share target/download
+assembly). That work is intentionally separate because it must compose the
+Resources, Collections and Providers owner contracts rather than moving their
+ORM into Shares.
