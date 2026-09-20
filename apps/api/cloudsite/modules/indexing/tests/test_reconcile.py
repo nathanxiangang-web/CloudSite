@@ -272,6 +272,7 @@ async def test_reconcile_remaps_new_child_parent_to_existing_folder_id():
             path="/same",
             name="same",
             metadata={
+                "is_dir": True,
                 "parent_id": None,
                 "content_type": "file",
                 "root_mapping_id": 1,
@@ -295,6 +296,7 @@ async def test_reconcile_remaps_new_child_parent_to_existing_folder_id():
                 path="/same",
                 name="same",
                 metadata={
+                    "is_dir": True,
                     "parent_id": None,
                     "content_type": "file",
                     "root_mapping_id": 1,
@@ -346,6 +348,7 @@ async def test_reconcile_writes_metadata_only_changes():
             path="/folder",
             name="folder",
             metadata={
+                "is_dir": True,
                 "parent_id": None,
                 "content_type": "file",
                 "root_mapping_id": 1,
@@ -369,6 +372,7 @@ async def test_reconcile_writes_metadata_only_changes():
                 path="/folder",
                 name="folder",
                 metadata={
+                    "is_dir": True,
                     "parent_id": None,
                     "content_type": "file",
                     "root_mapping_id": 1,
