@@ -1,5 +1,8 @@
 # Catalog Module Migration
 
+> **Historical execution record.** This document preserves the slice-by-slice migration plan and invariants at the time it was written. It is not the current backlog. Before acting on any `Next`, `Then`, or `Later` item here, check `module.yaml`, the module `README.md`, [modularization-status.md](./modularization-status.md), and issue #157 against current `main`.
+
+
 Catalog is the editorial layer over Resources. It owns catalog entry/release/
 asset/location metadata, revision history, user follows/subscriptions, release
 notification dedup state, and the search projection **outbox**.
