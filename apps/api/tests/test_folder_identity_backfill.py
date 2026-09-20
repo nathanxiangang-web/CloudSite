@@ -21,7 +21,7 @@ from cloudsite.modules.identity.infrastructure.models import (
 from cloudsite.modules.identity.infrastructure.resource_repository import (
     SqlAlchemyResourceIdentityRepository,
 )
-from cloudsite.modules.providers.application.root_mappings import delete_root_mapping
+from cloudsite.app.root_mapping_lifecycle import delete_root_mapping_with_identity_cleanup
 from cloudsite.modules.providers.infrastructure.models import ContentRootMapping
 
 NOW = datetime(2026, 9, 20, tzinfo=timezone.utc)
@@ -157,7 +157,7 @@ async def test_cascade_delete_root():
         )
         await session.commit()
 
-        result = await delete_root_mapping(session, 1)
+        result = await delete_root_mapping_with_identity_cleanup(session, 1)
 
         assert result["folders"] == 2
         assert result["resources"] == 2
@@ -248,7 +248,7 @@ async def test_no_orphaned_identity():
         )
         await session.commit()
 
-        await delete_root_mapping(session, 7)
+        await delete_root_mapping_with_identity_cleanup(session, 7)
 
         from cloudsite.modules.identity.infrastructure.models import (
             FolderIdentityHistory,
