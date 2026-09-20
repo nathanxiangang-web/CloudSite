@@ -21,8 +21,8 @@ test("canPublishSubmission is true only for the approved state", () => {
 test("defaultReviewAction maps each status to a permitted next action", () => {
   assert.equal(defaultReviewAction("pending"), "approve");
   assert.equal(defaultReviewAction("approved"), "publish");
-  assert.equal(defaultReviewAction("rejected"), "reject");
-  assert.equal(defaultReviewAction("published"), "approve");
+  assert.equal(defaultReviewAction("rejected"), null);
+  assert.equal(defaultReviewAction("published"), null);
 });
 
 
