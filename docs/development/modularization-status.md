@@ -34,11 +34,11 @@ A module being `partial` does not by itself justify more refactoring.
 | Module | Manifest | Current convergence note |
 | --- | --- | --- |
 | Indexing | `active` | Production v2 scan/reconcile is the active path. I2a moves operation logging to platform observability; I2b moves provider loading behind the Providers scan-source contract. |
-| Search | `partial` | Public query/rebuild boundary exists. S2a moves dirty recovery into Search; S2b removes the caller-zero legacy row-level delta path. Remaining work: Catalog projection ownership and task-driven rebuild. |
+| Search | `partial` | S2a owns dirty recovery; S2b deletes caller-zero row delta; S2c owns Catalog FTS/watermark/consume/rebuild behind Catalog source DTOs. Remaining Search S2 work is task-driven rebuild. |
 | Resources | `partial` | Authoritative Folder/Resource persistence and public query/preview/download boundaries are module-owned. Remaining work is compatibility-facade/caller cleanup, not another persistence rewrite. |
 | Providers | `partial` | Connection/root administration, download/preview runtime, and inventory scan-source composition are module-owned. Low-level AList transport compatibility still remains internal to Providers. |
 | Identity | `partial` | Resource/folder identity persistence, matching, descendant path mutation boundary, and admin query boundary are module-owned. Remaining work is compatibility/migration orchestration cleanup only where callers still exist. |
-| Catalog | `partial` | Core ORM/write side, public/admin query boundaries and publication scope are module-owned. Remaining work is legacy service/caller cleanup and Search projection convergence. |
+| Catalog | `partial` | Core ORM/write/public/admin/publication boundaries are module-owned. Catalog also owns the search outbox/source DTO side; Search owns projection persistence. Remaining work is verified legacy service/caller cleanup only. |
 | Automation | `partial` | Parser and suggestion cores are module-owned and tracked module legacy-import debt is zero. Compatibility facades may remain while callers migrate. |
 | Delivery | `partial` | Download events, diagnostics and rate-limit ownership split are established. Continue only against verified legacy delivery-package callers. |
 | Notifications | `partial` | ORM, user/admin query/command paths are module-owned. Remaining work is producer/event convergence where direct legacy producers still exist. |

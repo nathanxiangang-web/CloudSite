@@ -157,3 +157,21 @@ SQLAlchemy and acts only as an HTTP boundary.
 Legacy `services/catalog.py` remains a compatibility shim for older call
 sites, but new admin code must use the Catalog public contract.
 
+
+## Search Projection Source Ownership
+
+Catalog owns only the authoritative/source side of its Search projection:
+
+- `catalog_search_outbox` remains Catalog-owned write-side state;
+- `application/search_projection.py` exposes persistence-neutral outbox items,
+  projection documents, and rebuild preparation through the Catalog public
+  contract;
+- Catalog does not write `catalog_search_fts` or
+  `catalog_search_projection_state`;
+- Search consumes these DTOs and owns FTS persistence and projection
+  watermarks;
+- legacy metadata callers now enqueue through the Catalog public contract.
+
+This keeps Catalog independent of Search while preserving the existing outbox
+transaction and replay semantics.
+

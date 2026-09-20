@@ -23,7 +23,7 @@ from ..models import (
     CatalogTag,
     CatalogTagAssignment,
 )
-from .catalog_search_projection import enqueue_catalog_search_outbox
+from ..modules.catalog.contracts.public import enqueue_catalog_search_outbox
 
 TAG_ID_PREFIX = "ct_"
 RELATION_ID_PREFIX = "cx_"

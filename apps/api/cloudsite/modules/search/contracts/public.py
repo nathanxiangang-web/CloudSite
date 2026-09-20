@@ -1,5 +1,10 @@
 """Stable public contract for the Search module."""
 
+from ..application.catalog_projection import (
+    catalog_search_fts_match,
+    consume_catalog_search_outbox,
+    rebuild_catalog_search_index,
+)
 from ..application.service import (
     SearchRebuildResult,
     rebuild_public_search_index,
@@ -15,6 +20,9 @@ from ..domain.query import (
 )
 
 __all__ = [
+    "catalog_search_fts_match",
+    "consume_catalog_search_outbox",
+    "rebuild_catalog_search_index",
     "SEARCH_TYPES",
     "SEARCH_OBJECT_TYPES",
     "SEARCH_SORTS",

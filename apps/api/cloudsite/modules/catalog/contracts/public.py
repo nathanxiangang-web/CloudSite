@@ -96,6 +96,16 @@ from ..application.publication_scope import (
     sitemap_entry_url,
     update_publication_scope,
 )
+from ..application.outbox import enqueue_catalog_search_outbox
+from ..application.search_projection import (
+    CatalogSearchDocument,
+    CatalogSearchOutboxItem,
+    CatalogSearchProjectionSource,
+    catalog_search_projection_source,
+    mark_catalog_search_outbox_consumed,
+    pending_catalog_search_outbox,
+    prepare_catalog_search_rebuild,
+)
 from ..application.public_queries import (
     CatalogViewNotFound,
     catalog_asset_view,
@@ -108,6 +118,14 @@ from ..application.public_queries import (
 )
 
 __all__ = [
+    "enqueue_catalog_search_outbox",
+    "CatalogSearchDocument",
+    "CatalogSearchOutboxItem",
+    "CatalogSearchProjectionSource",
+    "catalog_search_projection_source",
+    "mark_catalog_search_outbox_consumed",
+    "pending_catalog_search_outbox",
+    "prepare_catalog_search_rebuild",
     "admin_location_view_for_asset",
     "admin_attach_entry_location",
     "admin_location_views",

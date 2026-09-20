@@ -334,6 +334,81 @@ class TestCatalogModuleCoreBoundary:
         assert "platform.db" in source
 
 
+class TestCatalogSearchProjectionBoundary:
+    """Catalog owns projection source data; Search owns projection persistence."""
+
+    def test_catalog_projection_source_uses_catalog_owned_models_only(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "catalog"
+            / "application"
+            / "search_projection.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "cloudsite.services" not in source
+        assert "modules.search" not in source
+        assert "from ..infrastructure.models import" in source
+
+    def test_search_projection_uses_catalog_public_contract_only(self):
+        paths = [
+            CLOUDSITE
+            / "modules"
+            / "search"
+            / "application"
+            / "catalog_projection.py",
+            CLOUDSITE
+            / "modules"
+            / "search"
+            / "infrastructure"
+            / "fts_repository.py",
+        ]
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            assert "cloudsite.models" not in source
+            assert "modules.catalog.infrastructure" not in source
+            assert "modules.catalog.application" not in source
+            assert "catalog.contracts.public" in source
+
+    def test_legacy_catalog_projection_is_thin_facade(self):
+        path = CLOUDSITE / "services" / "catalog_search_projection.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        assert "modules.catalog.contracts.public" in source
+        assert "modules.search.contracts.public" in source
+        implementations = [
+            node
+            for node in tree.body
+            if isinstance(
+                node,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+            )
+        ]
+        assert implementations == []
+
+    def test_production_projection_callers_use_module_contracts(self):
+        catalog_search = (
+            CLOUDSITE / "services" / "catalog_search.py"
+        ).read_text(encoding="utf-8")
+        catalog_metadata = (
+            CLOUDSITE / "services" / "catalog_metadata.py"
+        ).read_text(encoding="utf-8")
+        admin_search = (
+            CLOUDSITE / "routers" / "admin" / "search.py"
+        ).read_text(encoding="utf-8")
+
+        assert "services.catalog_search_projection" not in catalog_search
+        assert "from .catalog_search_projection" not in catalog_search
+        assert "modules.search.contracts.public" in catalog_search
+        assert "from .catalog_search_projection" not in catalog_metadata
+        assert "modules.catalog.contracts.public" in catalog_metadata
+        assert "services.catalog_search_projection" not in admin_search
+        assert "modules.search.contracts.public" in admin_search
+
+
 class TestNotificationsModuleBoundary:
     """Notifications owns notification persistence and router ORM work."""
 
