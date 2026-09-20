@@ -3,6 +3,7 @@
 from ..application.service import (
     SearchRebuildResult,
     rebuild_public_search_index,
+    recover_search_index_if_dirty,
     search_public_resources,
 )
 from ..domain.query import (
@@ -22,4 +23,5 @@ __all__ = [
     "classify_match",
     "search_public_resources",
     "rebuild_public_search_index",
+    "recover_search_index_if_dirty",
 ]
