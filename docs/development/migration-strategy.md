@@ -1,5 +1,9 @@
 # Migration Strategy
 
+## Current status
+
+The phase descriptions below are the original Strangler-migration roadmap, not a live phase tracker. CloudSite is now in modularization convergence/cleanup: the architecture-debt baseline is `module_legacy_import=0` and `router_orm_import=0`, and Indexing is already `active` in its manifest. Use [modularization-status.md](./modularization-status.md) and issue #157 for the active order of work.
+
 ## Approach: Strangler Migration
 
 Old code continues to run. New modules absorb new paths. Legacy is frozen. Eventually legacy is deleted.
@@ -18,7 +22,7 @@ Legacy Freeze (no new code)
 Legacy Delete
 ```
 
-## Phase 1: Define boundaries (B1 — current)
+## Phase 1: Define boundaries (historical B1)
 
 - Create `modules/`, `platform/`, `app/` directory structure
 - Write architecture docs and dependency rules
