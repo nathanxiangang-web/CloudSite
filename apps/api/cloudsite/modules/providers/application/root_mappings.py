@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....alist import AListClient
 from ....crypto import decrypt_secret
-from ...identity.contracts.public import cascade_delete_root_identities
 from .connection_admin import ProviderAdminError, _mapped_error
 from ..infrastructure.models import AListConnection, ContentRootMapping
 
@@ -175,22 +174,15 @@ async def update_root_mapping_preferences(
 async def delete_root_mapping(
     state: AsyncSession,
     mapping_id: int,
-) -> dict[str, int]:
-    """Delete a root mapping and cascade-delete all owned identity rows.
-
-    Returns a dict with ``folders`` and ``resources`` counts of identity
-    rows removed so callers (admin route, tests) can audit the cascade.
-    """
+) -> None:
     row = await state.get(ContentRootMapping, mapping_id)
     if row is None:
         raise ProviderAdminError(
             "映射不存在",
             status_code=404,
         )
-    deleted = await cascade_delete_root_identities(state, mapping_id)
     await state.delete(row)
     await state.commit()
-    return deleted
 
 
 __all__ = [
