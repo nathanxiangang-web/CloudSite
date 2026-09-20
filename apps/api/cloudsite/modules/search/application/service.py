@@ -9,6 +9,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cloudsite.platform.db import index_session, state_session
+
 from ...resources.contracts.public import (
     SearchFolderView,
     SearchResourceView,
@@ -21,6 +23,7 @@ from ..domain.query import (
 from ..infrastructure.fts_repository import (
     rebuild_search_index,
     search_candidates,
+    search_index_is_dirty,
     set_search_index_dirty,
 )
 
@@ -248,8 +251,24 @@ async def rebuild_public_search_index(
     )
 
 
+async def recover_search_index_if_dirty() -> int:
+    """Rebuild resource search from authoritative inventory when marked dirty.
+
+    Startup callers keep the historical zero-argument API, while Search owns
+    dirty-state inspection and rebuild orchestration through platform DB and
+    Resources contracts. A failed rebuild leaves the dirty marker set.
+    """
+    async with state_session() as state:
+        if not await search_index_is_dirty(state):
+            return 0
+        async with index_session() as index:
+            result = await rebuild_public_search_index(state, index)
+            return result.indexed
+
+
 __all__ = [
     "SearchRebuildResult",
     "search_public_resources",
     "rebuild_public_search_index",
+    "recover_search_index_if_dirty",
 ]

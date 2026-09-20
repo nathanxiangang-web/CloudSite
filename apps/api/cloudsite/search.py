@@ -2,10 +2,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from sqlalchemy import bindparam, select, text
+from sqlalchemy import bindparam, text
 
-from .database import IndexSession, StateSession
-from .models import Folder, Resource, SystemSetting
+from .database import StateSession
+from .models import SystemSetting
+
+from .modules.search.contracts.public import recover_search_index_if_dirty
 
 from .modules.search.domain.query import (
     SEARCH_OBJECT_TYPES,
@@ -69,20 +71,6 @@ async def set_search_index_dirty(dirty: bool) -> None:
             row.value = value
             row.value_type = "boolean"
         await session.commit()
-
-
-async def recover_search_index_if_dirty() -> int:
-    async with StateSession() as state:
-        row = await state.get(SystemSetting, SEARCH_INDEX_DIRTY_KEY)
-        if row is None or row.value != "true":
-            return 0
-    async with IndexSession() as session:
-        folders = list((await session.scalars(select(Folder).where(Folder.status == "active"))).all())
-        resources = list((await session.scalars(select(Resource).where(Resource.status == "active"))).all())
-        count = await rebuild_search_index(session, folders, resources)
-        await session.commit()
-    await set_search_index_dirty(False)
-    return count
 
 
 async def search_index(

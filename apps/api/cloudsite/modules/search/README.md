@@ -103,14 +103,20 @@ S1 establishes the real public query/rebuild boundary:
 - the legacy `cloudsite.search` module reuses the Search domain query policy
   so normalization/classification rules cannot drift.
 
-Still transitional after S1:
+S2a moves startup dirty-index recovery into the Search module. Dirty-state
+inspection now uses Search-owned SQL, recovery composes platform DB sessions
+with the Resources-backed rebuild path, and `cloudsite.search` keeps only a
+compatibility export for the recovery symbol. Failed rebuilds still leave the
+dirty marker set.
 
-- row-level FTS delta application and dirty-index recovery remain in
-  `cloudsite.search`;
+Still transitional after S2a:
+
+- row-level FTS delta application remains in `cloudsite.search`;
 - the Catalog search projection still lives behind the existing
   `services/catalog_search_projection.py` compatibility surface;
 - rebuild remains synchronous for compatibility even though the target design
   is task-driven.
 
-A later Search slice should migrate delta/recovery and Catalog projection
-ownership before deleting the legacy facade.
+The next Search slice should verify whether row-level delta still has a live
+production caller before migrating it; dead compatibility code should be
+deleted rather than mechanically moved.
