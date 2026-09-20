@@ -37,6 +37,9 @@ async def test_resource_inventory_repository_owns_upsert_list_touch_and_remove()
                     is_dir=True,
                     content_type="software",
                     root_mapping_id=1,
+                    depth=2,
+                    child_folder_count=3,
+                    resource_count=4,
                     indexed_at=now,
                 ),
                 ResourceInventoryRecord(
@@ -65,6 +68,14 @@ async def test_resource_inventory_repository_owns_upsert_list_touch_and_remove()
         by_id = {record.resource_id: record for record in records}
         assert set(by_id) == {"f_root", "r_app"}
         assert by_id["f_root"].is_dir is True
+        assert by_id["f_root"].depth == 2
+        assert by_id["f_root"].child_folder_count == 3
+        assert by_id["f_root"].resource_count == 4
+        folder = await session.get(Folder, "f_root")
+        assert folder is not None
+        assert folder.depth == 2
+        assert folder.child_folder_count == 3
+        assert folder.resource_count == 4
         assert by_id["r_app"].parent_id == "f_root"
         assert by_id["r_app"].extension == "zip"
 

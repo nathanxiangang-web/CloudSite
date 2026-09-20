@@ -241,3 +241,41 @@ async def test_alist_adapter_keeps_same_type_roots_distinct() -> None:
     assert second[0].path == "/apps-b"
     assert second[0].metadata["root_mapping_id"] == 12
     assert second[1].path == "/apps-b/package.zip"
+
+
+async def test_alist_adapter_calculates_folder_depth_and_direct_counts() -> None:
+    class HierarchyAListClient:
+        async def list_path(self, path: str):
+            if path == "/library":
+                return [
+                    {"name": "nested", "is_dir": True},
+                    {"name": "root.zip", "is_dir": False, "size": 10},
+                ]
+            if path == "/library/nested":
+                return [
+                    {"name": "child.zip", "is_dir": False, "size": 20},
+                ]
+            return []
+
+        async def get_file_info(self, path: str):
+            return {"name": path.rsplit("/", 1)[-1]}
+
+    root = SimpleNamespace(
+        id=21,
+        content_type="software",
+        alist_path="/library",
+        display_name="Library",
+    )
+    adapter = AListProviderAdapter(HierarchyAListClient(), [root])
+
+    entries, _, complete = await adapter.scan_category("root:21")
+    by_path = {entry.path: entry for entry in entries}
+
+    assert complete is True
+    assert by_path["/library"].metadata["depth"] == 0
+    assert by_path["/library"].metadata["child_folder_count"] == 1
+    assert by_path["/library"].metadata["resource_count"] == 1
+    assert by_path["/library/nested"].metadata["depth"] == 1
+    assert by_path["/library/nested"].metadata["child_folder_count"] == 0
+    assert by_path["/library/nested"].metadata["resource_count"] == 1
+    assert by_path["/library/nested/child.zip"].metadata["depth"] == 2

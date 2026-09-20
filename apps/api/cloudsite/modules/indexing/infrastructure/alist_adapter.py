@@ -101,7 +101,7 @@ class AListProviderAdapter:
         entries: list[SnapshotEntry] = []
         root_path = _normalize_path(root.alist_path)
         root_id = _stable_id("folder", root_path)
-        entries.append(self._make_entry(
+        root_entry = self._make_entry(
             resource_id=root_id,
             path=root_path,
             name=PurePosixPath(root_path).name or root.display_name,
@@ -109,11 +109,17 @@ class AListProviderAdapter:
             modified=None,
             root=root,
             parent_path=None,
-        ))
+            depth=0,
+        )
+        entries.append(root_entry)
+        folders_by_path: dict[str, SnapshotEntry] = {
+            root_path: root_entry,
+        }
 
-        queue: list[str] = [root_path]
+        queue: list[tuple[str, int]] = [(root_path, 0)]
         while queue:
-            current_path = queue.pop(0)
+            current_path, current_depth = queue.pop(0)
+            parent_entry = folders_by_path[current_path]
             items = await self._client.list_path(current_path)
             if on_progress:
                 await on_progress(current_path, len(entries))
@@ -125,8 +131,13 @@ class AListProviderAdapter:
                 if _should_ignore(item_path):
                     continue
                 is_dir = bool(item.get("is_dir"))
+                if is_dir:
+                    parent_entry.metadata["child_folder_count"] += 1
+                else:
+                    parent_entry.metadata["resource_count"] += 1
                 modified = _parse_time(item.get("modified") or item.get("updated_at"))
                 kind = "folder" if is_dir else "resource"
+                item_depth = current_depth + 1
                 entry = self._make_entry(
                     resource_id=_stable_id(kind, item_path),
                     path=item_path,
@@ -135,11 +146,13 @@ class AListProviderAdapter:
                     modified=modified,
                     root=root,
                     parent_path=current_path,
+                    depth=item_depth,
                     item=item,
                 )
                 entries.append(entry)
                 if is_dir:
-                    queue.append(item_path)
+                    folders_by_path[item_path] = entry
+                    queue.append((item_path, item_depth))
 
         return entries, None, True
 
@@ -164,6 +177,7 @@ class AListProviderAdapter:
         modified: datetime | None,
         root: ContentRootView,
         parent_path: str | None,
+        depth: int,
         item: dict[str, Any] | None = None,
     ) -> SnapshotEntry:
         item = item or {}
@@ -182,6 +196,9 @@ class AListProviderAdapter:
                 "is_dir": is_dir,
                 "content_type": root.content_type,
                 "root_mapping_id": root.id,
+                "depth": depth,
+                "child_folder_count": 0,
+                "resource_count": 0,
                 "parent_path": parent_path,
                 "parent_id": _stable_id("folder", parent_path) if parent_path else None,
                 "extension": ext,
