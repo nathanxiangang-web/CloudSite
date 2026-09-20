@@ -42,7 +42,7 @@ A module being `partial` does not by itself justify more refactoring.
 | Automation | `partial` | Parser and suggestion cores are module-owned and tracked module legacy-import debt is zero. Compatibility facades may remain while callers migrate. |
 | Delivery | `partial` | Download events, diagnostics and rate-limit ownership split are established. Continue only against verified legacy delivery-package callers. |
 | Notifications | `partial` | ORM, user/admin query/command paths are module-owned. Remaining work is producer/event convergence where direct legacy producers still exist. |
-| Shares | `partial` | CRUD/router persistence boundary is module-owned. Target/scope resolution and verification-attempt compatibility remain candidates for convergence. |
+| Shares | `partial` | CRUD plus verification-attempt persistence/cleanup are module-owned. Real production target/scope resolution remains the next verified compatibility edge. |
 | Users | `partial` | Account/auth/session/user-data/role ownership is substantially module-owned. Admin-session ownership is the main documented follow-up. |
 | Collections | `partial` | CRUD and reference resolution are module-owned. Topic/seed compatibility helpers remain follow-up only if still called. |
 | Submissions | `partial` | User-to-review-to-publish workflow is module-owned; only narrow compatibility surfaces should remain. |
