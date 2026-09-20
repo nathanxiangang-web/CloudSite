@@ -8,6 +8,7 @@
 4. admin root-mapping 写操作（update/delete）触发 invalidate_home_cache。
 """
 import httpx
+import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -25,6 +26,11 @@ from cloudsite.models import (
     utcnow,
 )
 from cloudsite.routers import home as home_router
+from cloudsite.modules.shares.contracts.public import (
+    ShareValidationError,
+    get_share,
+    resolve_share_download_resource,
+)
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
 
@@ -95,6 +101,94 @@ async def test_legacy_share_folder_children_scoped_to_folder_root(monkeypatch):
     resource_ids = {r["id"] for r in payload["resources"]}
     assert resource_ids == {"a_in"}, resource_ids
     assert "b_dirty" not in resource_ids
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+async def test_folder_share_download_rejects_cross_root_same_parent(monkeypatch):
+    """Folder share download scope must stay inside the folder's own root."""
+    state_engine, index_engine, state_factory, index_factory, _ = await _store(
+        monkeypatch,
+        second_root_enabled=True,
+    )
+    async with index_factory() as index:
+        index.add(
+            Folder(
+                id="f_scope",
+                name="folder-a",
+                path="/root-a/folder-a",
+                parent_id=None,
+                content_type="software",
+                root_mapping_id=1,
+                status="active",
+            )
+        )
+        index.add_all(
+            [
+                Resource(
+                    id="a_allowed",
+                    name="allowed.zip",
+                    path="/root-a/folder-a/allowed.zip",
+                    parent_id="f_scope",
+                    content_type="software",
+                    root_mapping_id=1,
+                    extension="zip",
+                    mime_type="application/zip",
+                    size=100,
+                    thumbnail="",
+                    status="active",
+                ),
+                Resource(
+                    id="b_cross_root",
+                    name="cross.zip",
+                    path="/root-b/folder-a/cross.zip",
+                    parent_id="f_scope",
+                    content_type="software",
+                    root_mapping_id=2,
+                    extension="zip",
+                    mime_type="application/zip",
+                    size=100,
+                    thumbnail="",
+                    status="active",
+                ),
+            ]
+        )
+        await index.commit()
+    async with state_factory() as state:
+        state.add(
+            Share(
+                token="share_scope",
+                object_type="folder",
+                object_id="f_scope",
+                enabled=True,
+                access_mode="code",
+                code_hash="x",
+                code_version=1,
+            )
+        )
+        await state.commit()
+
+    async with state_factory() as state, index_factory() as index:
+        share = await get_share(state, "share_scope")
+        assert share is not None
+        allowed = await resolve_share_download_resource(
+            state,
+            index,
+            share,
+            "a_allowed",
+        )
+        assert allowed.id == "a_allowed"
+
+        with pytest.raises(ShareValidationError) as exc_info:
+            await resolve_share_download_resource(
+                state,
+                index,
+                share,
+                "b_cross_root",
+            )
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.code == "SHARE_RESOURCE_NOT_ALLOWED"
+
     await state_engine.dispose()
     await index_engine.dispose()
 
