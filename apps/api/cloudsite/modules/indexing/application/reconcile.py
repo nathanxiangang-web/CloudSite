@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -34,6 +34,13 @@ class ReconcileResult:
 
 
 _ENTRY_FIELDS: tuple[str, ...] = ('path', 'name', 'size', 'modified_at', 'content_hash')
+_COMMON_METADATA_FIELDS: tuple[str, ...] = (
+    'parent_id', 'content_type', 'root_mapping_id',
+    'extension', 'mime_type', 'thumbnail',
+)
+_FOLDER_METADATA_FIELDS: tuple[str, ...] = (
+    'depth', 'child_folder_count', 'resource_count',
+)
 
 
 def _entry_dict(entry: IndexedEntry) -> dict[str, Any]:
@@ -42,6 +49,42 @@ def _entry_dict(entry: IndexedEntry) -> dict[str, Any]:
 
 def _snapshot_dict(entry: Any) -> dict[str, Any]:
     return {f: getattr(entry, f) for f in _ENTRY_FIELDS}
+
+
+def _canonicalize_entries(
+    existing: list[IndexedEntry],
+    snapshot: CategorySnapshot,
+) -> list[Any]:
+    """Keep existing IDs for unchanged paths while allowing new scoped IDs."""
+    existing_id_by_key = {
+        (bool((entry.metadata or {}).get("is_dir")), entry.path): entry.resource_id
+        for entry in existing
+    }
+    canonical_id_by_key = {
+        (bool((entry.metadata or {}).get("is_dir")), entry.path): existing_id_by_key.get(
+            (bool((entry.metadata or {}).get("is_dir")), entry.path),
+            entry.resource_id,
+        )
+        for entry in snapshot.entries
+    }
+    result = []
+    for entry in snapshot.entries:
+        metadata = dict(entry.metadata or {})
+        entry_key = (bool(metadata.get("is_dir")), entry.path)
+        parent_path = metadata.get("parent_path")
+        if parent_path:
+            metadata["parent_id"] = canonical_id_by_key.get(
+                (True, str(parent_path)),
+                metadata.get("parent_id"),
+            )
+        result.append(
+            replace(
+                entry,
+                resource_id=canonical_id_by_key[entry_key],
+                metadata=metadata,
+            )
+        )
+    return result
 
 
 class ReconcileService:
@@ -65,7 +108,8 @@ class ReconcileService:
             provider_id=snapshot.provider_id,
         )
         existing_by_id = {e.resource_id: e for e in existing}
-        incoming_by_id = {e.resource_id: e for e in snapshot.entries}
+        canonical_entries = _canonicalize_entries(existing, snapshot)
+        incoming_by_id = {e.resource_id: e for e in canonical_entries}
 
         changes: list[ChangeRecord] = []
         added_entries: list[IndexedEntry] = []
@@ -152,6 +196,17 @@ class ReconcileService:
         for f in _ENTRY_FIELDS:
             if getattr(current, f) != getattr(incoming, f):
                 return True
+        current_meta = current.metadata or {}
+        incoming_meta = incoming.metadata or {}
+        if bool(current_meta.get("is_dir")) != bool(incoming_meta.get("is_dir")):
+            return True
+        for field_name in _COMMON_METADATA_FIELDS:
+            if current_meta.get(field_name) != incoming_meta.get(field_name):
+                return True
+        if bool(incoming_meta.get("is_dir")):
+            for field_name in _FOLDER_METADATA_FIELDS:
+                if current_meta.get(field_name) != incoming_meta.get(field_name):
+                    return True
         return False
 
 
