@@ -125,7 +125,13 @@ S2c moves Catalog projection ownership behind module contracts:
 - `services/catalog_search_projection.py` is now a compatibility re-export
   with no projection implementation.
 
-Still transitional after S2c:
+S2d verifies the remaining legacy `cloudsite.search` query/rebuild functions
+have no production caller and removes them. The top-level module is now an
+implementation-free compatibility facade for query-policy symbols and startup
+recovery only.
 
-- rebuild remains synchronous for compatibility even though the target design
-  is task-driven.
+The remaining synchronous rebuild behavior is intentional for now: v2 sync
+currently guarantees Search is aligned before the sync call returns. Moving
+that path to a worker would change consistency/API behavior and add core task
+registration/UI status work. Revisit task-driven rebuild only when measured
+rebuild latency or scale justifies that product-level change.
