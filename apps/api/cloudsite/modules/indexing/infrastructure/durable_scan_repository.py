@@ -156,7 +156,7 @@ class DurableScanRepository:
             "WHERE id = ("
             "  SELECT id FROM index_scan_dirs "
             "  WHERE scan_run_id = :run AND status = 'pending' "
-            "  ORDER BY id LIMIT 1"
+            "  ORDER BY depth, id LIMIT 1"
             ") "
             "RETURNING id, scan_run_id, path, depth, status, "
             "started_at, finished_at, entry_count, error_message"
