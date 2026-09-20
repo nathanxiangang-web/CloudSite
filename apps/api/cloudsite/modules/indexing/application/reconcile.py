@@ -40,16 +40,18 @@ _ENTRY_FIELDS: tuple[str, ...] = (
     "modified_at",
     "content_hash",
 )
-_METADATA_FIELDS: tuple[str, ...] = (
+_COMMON_METADATA_FIELDS: tuple[str, ...] = (
     "parent_id",
     "content_type",
     "root_mapping_id",
-    "depth",
-    "child_folder_count",
-    "resource_count",
     "extension",
     "mime_type",
     "thumbnail",
+)
+_FOLDER_METADATA_FIELDS: tuple[str, ...] = (
+    "depth",
+    "child_folder_count",
+    "resource_count",
 )
 
 
@@ -259,11 +261,21 @@ class ReconcileService:
 
         current_metadata = current.metadata or {}
         incoming_metadata = incoming.metadata or {}
-        for field_name in _METADATA_FIELDS:
+        if bool(current_metadata.get("is_dir")) != bool(
+            incoming_metadata.get("is_dir")
+        ):
+            return True
+        for field_name in _COMMON_METADATA_FIELDS:
             if current_metadata.get(
                 field_name
             ) != incoming_metadata.get(field_name):
                 return True
+        if bool(incoming_metadata.get("is_dir")):
+            for field_name in _FOLDER_METADATA_FIELDS:
+                if current_metadata.get(
+                    field_name
+                ) != incoming_metadata.get(field_name):
+                    return True
         return False
 
 
