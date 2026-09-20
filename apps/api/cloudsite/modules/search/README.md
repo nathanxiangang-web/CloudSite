@@ -115,9 +115,17 @@ and path mutation does not consume the delta helper. The orphaned
 `FtsDeltaOp` / `apply_search_fts_delta` implementation and delta-only tests
 are deleted instead of being mechanically moved into the module.
 
-Still transitional after S2b:
+S2c moves Catalog projection ownership behind module contracts:
 
-- the Catalog search projection still lives behind the existing
-  `services/catalog_search_projection.py` compatibility surface;
+- Catalog owns outbox rows and projection-source DTO construction;
+- Search owns `catalog_search_fts`, projection watermarks, outbox consumption,
+  FTS matching, and rebuild orchestration;
+- production Catalog search and admin rebuild callers use module contracts
+  directly;
+- `services/catalog_search_projection.py` is now a compatibility re-export
+  with no projection implementation.
+
+Still transitional after S2c:
+
 - rebuild remains synchronous for compatibility even though the target design
   is task-driven.
