@@ -319,18 +319,26 @@ async def _setup_retry_db(tmp_path) -> tuple[Any, Any]:
             await session.execute(
                 text(
                     "INSERT INTO index_scan_entries "
-                    "(id, scan_run_id, dir_path, resource_id, name, is_dir, "
-                    "modified, metadata_hash) "
-                    "VALUES (:id, :rid, :dp, :resid, :name, 0, :mod, :hash)"
+                    "(id, scan_run_id, dir_path, path, parent_path, resource_id, "
+                    "name, is_dir, size, modified, content_hash, metadata_json, "
+                    "metadata_hash) "
+                    "VALUES (:id, :rid, '/cat', :path, '/cat', :resid, :name, "
+                    "0, :size, :mod, :hash, :metadata_json, :hash)"
                 ),
                 {
                     "id": str(uuid.uuid4()),
                     "rid": "run-retry-1",
-                    "dp": f"/cat/file-{i}.zip",
+                    "path": f"/cat/file-{i}.zip",
                     "resid": f"staged-res-{i}",
                     "name": f"file-{i}.zip",
+                    "size": 100 + i,
                     "mod": _NOW,
                     "hash": f"hash-{i}",
+                    "metadata_json": (
+                        '{"is_dir": false, "root_mapping_id": 1, '
+                        f'"custom": "value-{i}"'
+                        "}"
+                    ),
                 },
             )
         await session.commit()
@@ -361,6 +369,19 @@ async def test_retry_reconcile_from_staging(tmp_path) -> None:
             )
             assert {e.resource_id for e in production} == {
                 "staged-res-0", "staged-res-1", "staged-res-2",
+            }
+            assert {e.path for e in production} == {
+                "/cat/file-0.zip",
+                "/cat/file-1.zip",
+                "/cat/file-2.zip",
+            }
+            assert {e.size for e in production} == {100, 101, 102}
+            assert {e.content_hash for e in production} == {
+                "hash-0", "hash-1", "hash-2",
+            }
+            assert all(e.metadata.get("parent_path") == "/cat" for e in production)
+            assert {e.metadata.get("custom") for e in production} == {
+                "value-0", "value-1", "value-2",
             }
     finally:
         await engine.dispose()
