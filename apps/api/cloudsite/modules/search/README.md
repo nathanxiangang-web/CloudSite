@@ -109,14 +109,15 @@ with the Resources-backed rebuild path, and `cloudsite.search` keeps only a
 compatibility export for the recovery symbol. Failed rebuilds still leave the
 dirty marker set.
 
-Still transitional after S2a:
+S2b verifies that the legacy row-level FTS delta path has no production caller:
+v2 indexing refreshes public search through the module-owned rebuild contract,
+and path mutation does not consume the delta helper. The orphaned
+`FtsDeltaOp` / `apply_search_fts_delta` implementation and delta-only tests
+are deleted instead of being mechanically moved into the module.
 
-- row-level FTS delta application remains in `cloudsite.search`;
+Still transitional after S2b:
+
 - the Catalog search projection still lives behind the existing
   `services/catalog_search_projection.py` compatibility surface;
 - rebuild remains synchronous for compatibility even though the target design
   is task-driven.
-
-The next Search slice should verify whether row-level delta still has a live
-production caller before migrating it; dead compatibility code should be
-deleted rather than mechanically moved.
