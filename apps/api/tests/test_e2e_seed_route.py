@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from cloudsite import main
 from cloudsite.config import settings
 from cloudsite.database import IndexBase, StateBase
-from cloudsite.e2e_seed import E2E_RESOURCE_ID, E2E_RESOURCE_NAME
+from cloudsite.infrastructure.e2e_seed import E2E_RESOURCE_ID, E2E_RESOURCE_NAME
 from cloudsite.modules.providers.infrastructure.models import ContentRootMapping
 from cloudsite.modules.resources.infrastructure.models import Resource
 
