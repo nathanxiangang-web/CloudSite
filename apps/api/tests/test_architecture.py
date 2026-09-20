@@ -586,6 +586,28 @@ class TestDownloadRuntimeBoundary:
         assert "resource_in_publication_scope" not in source
         assert "resource_queries(" in source
         assert "provider_runtime(" in source
+        assert "from ..download import" not in source
+        assert "from ..download_rate_limit import" not in source
+        assert "modules.resources.api" not in source
+        assert "modules.resources.domain" not in source
+        assert "from ..shares.service import enabled_root_ids" not in source
+        assert "modules.delivery.contracts.public" in source
+        assert "modules.resources.contracts.public" in source
+        assert "modules.providers.contracts.public" in source
+
+    def test_share_download_path_uses_public_delivery_contracts(self):
+        router_file = CLOUDSITE / "routers" / "shares.py"
+        source = router_file.read_text(encoding="utf-8")
+
+        assert "from ..download import" not in source
+        assert "from ..download_rate_limit import" not in source
+        assert (
+            "from ..main import StateSession, IndexSession, _download_event"
+            not in source
+        )
+        assert "modules.delivery.contracts.public" in source
+        assert "modules.resources.contracts.public" in source
+        assert "modules.providers.contracts.public" in source
 
     def test_delivery_download_uses_providers_contract_only(self):
         domain_file = (

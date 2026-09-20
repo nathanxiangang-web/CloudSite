@@ -6,21 +6,25 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from ..download import DownloadError, resolve_download_entry, validate_resource_id
-from ..download_rate_limit import (
-    check_download_rate,
-    get_effective_client_ip,
-    rate_limit_payload,
+from ..modules.delivery.contracts.public import (
+    DownloadError,
+    _download_event,
+    resolve_download_entry,
+    validate_resource_id,
 )
-from ..modules.providers.contracts.public import provider_runtime
-from ..modules.resources.api.queries import resource_queries
-from ..modules.resources.domain.errors import (
+from ..modules.providers.contracts.public import (
+    enabled_root_ids,
+    provider_runtime,
+)
+from ..modules.resources.contracts.public import (
     ResourceInactiveError,
     ResourceNotAvailableError,
     ResourceNotFoundError,
+    check_download_rate,
+    get_effective_client_ip,
+    rate_limit_payload,
+    resource_queries,
 )
-from ..modules.delivery.contracts.public import _download_event
-from ..shares.service import enabled_root_ids
 
 router = APIRouter()
 
