@@ -18,7 +18,7 @@ Core duties:
 
 - `ProviderRegistry` - list and look up configured providers.
 - `ProviderCapability` - query supported operations for a provider.
-- `AListClient` - low-level gateway (list, detail, download entry).
+- Low-level AList transport is an internal/compatibility detail, not a cross-module public contract; consumers use Providers runtime/scan contracts.
 - `resolve_content_root(mapping)` - translate a content root to provider path.
 - `get_download_entry(resource_id)` - build the AList 302 redirect target.
 
@@ -93,8 +93,8 @@ exact compatibility re-export. The module's provider-info service now uses the
 module-owned connection ORM and no longer imports `cloudsite.models`.
 
 Low-level AList transport still lives in the legacy `cloudsite.alist` surface
-as a transitional transport adapter, but all admin connection lifecycle work now
-stays inside Providers:
+as an intentional internal/compatibility adapter at the current stop point; all
+admin connection lifecycle work stays inside Providers:
 
 - connection settings are exposed as persistence-neutral dictionaries;
 - credential decryption/encryption happens inside the Providers boundary;
@@ -110,3 +110,8 @@ download/preview resolution and production scan-source composition. The scan
 source keeps connection ORM, credential decryption, and AListClient construction
 inside Providers; Indexing receives only `ProviderScanPort` plus
 `ProviderScanRoot` DTOs.
+
+Do not physically move the low-level transport merely for folder purity. Revisit
+only when a real cross-module caller bypasses Providers, another storage backend
+must be supported/replaced, or transport-specific maintenance pain gives the
+move a measurable benefit.

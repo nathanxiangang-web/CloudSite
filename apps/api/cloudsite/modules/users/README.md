@@ -4,14 +4,14 @@
 
 User accounts, authentication, session management, and admin authentication.
 This module owns the user lifecycle: registration, login, logout, role
-assignment, and session validity. It also handles admin-only sessions that
-have separate expiry and scope from user sessions.
+assignment, and session validity. Administrator authentication currently uses
+a separate signed-cookie runtime mechanism rather than an AdminSession ORM.
 
 Core duties:
 - User CRUD and profile management.
 - Password hashing and verification.
 - User session creation, validation, and revocation.
-- Admin session creation with elevated scope and shorter TTL.
+- Keep administrator authentication separate from server-side user sessions; the current administrator token is a 7-day HMAC-signed cookie with no admin-session table.
 - Role and permission checks consumed by other modules' routers.
 
 ## Public API
@@ -20,7 +20,6 @@ Core duties:
 - `authenticate(email, password)` - verify credentials, return session.
 - `validate_session(token)` - check session validity and load user.
 - `revoke_session(token)` - logout / invalidate.
-- `create_admin_session(credentials)` - elevated session for admin routes.
 - `has_permission(user, scope, action)` - permission gate.
 
 Exports live in `contracts/public.py`.
@@ -29,7 +28,6 @@ Exports live in `contracts/public.py`.
 
 - User (id, email, password_hash, role, status, created_at)
 - UserSession (id, user_id, token, expires_at, ip, user_agent)
-- AdminSession (id, admin_id, token, expires_at, scope)
 - Role (id, name, permissions)
 - UserFavorite (user_id, resource_id) - cross-module link via identity.
 - UserPlaybackProgress (user_id, resource_id, position, updated_at)
@@ -38,7 +36,6 @@ Exports live in `contracts/public.py`.
 
 - `users` - account records.
 - `user_sessions` - active user sessions.
-- `admin_sessions` - admin-only sessions.
 - `user_favorites` - bookmarked resources.
 - `user_resource_history` - recently viewed.
 - `user_playback_progress` - media resume positions.
@@ -60,7 +57,7 @@ Exports live in `contracts/public.py`.
 
 - Passwords hashed with platform/security (argon2 or bcrypt, never plaintext).
 - Session tokens are opaque random values, not JWTs with payload.
-- Admin sessions have shorter TTL and separate storage from user sessions.
+- Administrator authentication currently uses a 7-day HMAC-SHA256 signed token (`infrastructure/security.py`) and has no server-side AdminSession row.
 - Rate limiting on login is enforced in platform/http middleware.
 - Never log session tokens or password hashes.
 
@@ -69,7 +66,7 @@ Exports live in `contracts/public.py`.
 - Session store unavailable: validation fails closed (deny request).
 - Password hash migration: old hashes rehashed on successful login.
 - Concurrent login: multiple sessions allowed per user; revocation is per-token.
-- Admin session expiry mid-operation: router returns 401, client re-auths.
+- Administrator signed-token expiry mid-operation: router returns 401, client re-auths.
 
 ## Tests
 
@@ -80,7 +77,7 @@ Exports live in `contracts/public.py`.
 ## Do Not
 
 - Do not store sessions in JWT payload; use opaque server-side sessions.
-- Do not mix admin and user session tables.
+- Do not invent an `admin_sessions` table solely to match historical design text; add administrator session persistence only for a concrete security/product requirement such as revocation or session inventory.
 - Do not depend on modules/catalog or modules/shares.
 - Do not expose password_hash in any API response or log.
 
@@ -105,7 +102,7 @@ Users is now **partial** rather than a skeleton.
 - Favorites, resource history, and playback-progress ORM + persistence now
   live in `application/user_data.py`; root `cloudsite.userdata` composes
   visible resources through Resources/Providers contracts.
-- Admin sessions remain follow-up work.
+- Administrator session persistence is **not** an automatic follow-up: current admin auth uses a separate 7-day HMAC-signed cookie with no `AdminSession` ORM/`admin_sessions` table. Revisit only for a concrete revocation, session-inventory, audit, or related security/product requirement.
 
 ## Role Policy Ownership
 
