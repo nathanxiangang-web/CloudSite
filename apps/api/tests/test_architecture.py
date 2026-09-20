@@ -694,6 +694,19 @@ class TestSharesVerificationBoundary:
         assert "clear_verify_attempts" not in legacy_import
         assert "modules.shares.contracts.public" in source
 
+    def test_scheduler_cleanup_entry_uses_shares_contract(self):
+        main_file = CLOUDSITE / "main.py"
+        source = main_file.read_text(encoding="utf-8")
+
+        assert (
+            "from .modules.shares.contracts.public "
+            "import cleanup_share_verify_attempts"
+        ) in source
+        assert (
+            "from .shares.service import cleanup_share_verify_attempts"
+            not in source
+        )
+
 
 class TestModuleStructure:
     """Validate that each module has the required minimum structure."""
