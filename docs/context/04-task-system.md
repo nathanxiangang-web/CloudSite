@@ -1,8 +1,9 @@
 # AI Context Pack: Task System
 
 Purpose: explain the task queue so an AI agent can add or modify background
-work correctly. All background work in CloudSite goes through platform/tasks,
-never inline in request handlers.
+work correctly. `platform/tasks` is the durable queue for work that has a guaranteed
+worker consumer. Do not convert an existing synchronous compatibility path to
+enqueue-only behavior unless deployment guarantees that consumer.
 
 ## Why a Task System
 
@@ -53,8 +54,8 @@ enqueued -> claimed (lease acquired) -> running -> completed
 | scan_category | indexing | walk a content root category, emit skeletons |
 | inspect_resource | indexing | fetch full detail for one resource |
 | reconcile_snapshot | indexing | commit snapshot to DB atomically |
-| rebuild_index | search | full FTS rebuild from state.db |
-| recover_index | search | detect and repair FTS corruption |
+| rebuild_index | search | target task kind for full FTS rebuild; current admin compatibility endpoint is still synchronous |
+| recover_index | search | target task kind for recovery; startup dirty recovery is currently synchronous |
 | generate_suggestions | automation | AI/rule metadata suggestions |
 | evaluate_parser | automation | score parser candidate against corpus |
 | run_batch | automation | process a batch of candidates/suggestions |
@@ -79,8 +80,9 @@ enqueued -> claimed (lease acquired) -> running -> completed
 4. Handlers must be idempotent: a retry after a lease expiry must not double-
    commit. Use idempotency keys.
 5. Per-task timeouts prevent a runaway task from starving the worker.
-6. The worker runtime is in-process by default (shares the FastAPI process).
-   For heavy jobs, a dedicated worker mode is available.
+6. The current production worker runtime is a dedicated process (`python -m cloudsite.worker_main`).
+   The base `docker-compose.yml` does not start it; `docker-compose.worker.yml` is an optional overlay.
+   The FastAPI lifespan does not currently start an in-process `Worker`.
 
 ## Lease Semantics
 
