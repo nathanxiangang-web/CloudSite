@@ -33,8 +33,15 @@ export const test = base.extend<E2EFixtures>({
 
   apiAuth: async ({ apiHealth }, use) => {
     const ctx = await loginViaApi(apiHealth);
-    test.skip(ctx === null, 'Unable to authenticate via API for fixture');
-    await use(ctx as APIRequestContext);
+    if (ctx === null) {
+      test.skip(true, 'Unable to authenticate via API for fixture');
+      return;
+    }
+    try {
+      await use(ctx);
+    } finally {
+      await ctx.dispose();
+    }
   },
 
   freshPage: async ({ browser }, use) => {
@@ -53,12 +60,12 @@ export const test = base.extend<E2EFixtures>({
     await context.close();
   },
 
-  loggedInPage: async ({ page, webReady, apiHealth }, use) => {
+  loggedInPage: async ({ page, webReady, apiHealth, apiAuth }, use) => {
     test.skip(!webReady || !apiHealth.ok, 'web or API not ready');
-    await loginViaUi(page, {
-      username: process.env.E2E_USER ?? 'nathan',
-      password: process.env.E2E_PASS ?? '647lsxasd',
-    });
+    // Resolving apiAuth first guarantees the shared E2E_USER/E2E_PASS account
+    // exists (or cleanly skips when the environment cannot provision it).
+    void apiAuth;
+    await loginViaUi(page);
     await use(page);
   },
 });
