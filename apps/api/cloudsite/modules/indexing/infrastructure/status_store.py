@@ -86,6 +86,33 @@ async def v2_sync_due(
     )
 
 
+async def recover_interrupted_v2_sync(
+    state: AsyncSession,
+) -> bool:
+    """Mark a v2_sync_progress row left "running" by a crashed process as failed.
+
+    A row whose status is "running" at process start can never be completed by
+    the dead worker, so every sync path treats the run as forever-active and
+    blocks scheduling. This folds such rows to "failed" with an explicit
+    error_message and commits the change.
+
+    Returns True when a stale running row was recovered, False otherwise.
+    """
+    from cloudsite.models import SystemSetting
+
+    row = await state.get(SystemSetting, "v2_sync_progress")
+    if row is None:
+        return False
+    progress = _progress_payload(row.value)
+    if progress.get("status") != "running":
+        return False
+    progress["status"] = "failed"
+    progress["error_message"] = "interrupted by process restart"
+    row.value = json.dumps(progress)
+    await state.commit()
+    return True
+
+
 async def toggle_automatic_sync(
     state: AsyncSession,
 ) -> bool:
@@ -137,6 +164,7 @@ async def toggle_automatic_sync(
 
 __all__ = [
     "read_v2_sync_progress",
+    "recover_interrupted_v2_sync",
     "v2_sync_due",
     "toggle_automatic_sync",
 ]

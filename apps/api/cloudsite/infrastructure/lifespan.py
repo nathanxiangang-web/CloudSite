@@ -11,6 +11,9 @@ from fastapi import FastAPI
 from ..config import settings
 from ..models import SiteSettings
 from ..admin_auth import ensure_setup_compatible, get_setup_completed
+from ..modules.indexing.infrastructure.status_store import (
+    recover_interrupted_v2_sync,
+)
 from .security import validate_production_secrets
 
 
@@ -29,6 +32,17 @@ async def lifespan(_: FastAPI):
             await seed_default_collections(_seed_session)
     await main.recover_search_index_if_dirty()
     await main.recover_interrupted_sync_runs()
+    async with main.StateSession() as _v2_recovery_session:
+        _v2_stale_recovered = await recover_interrupted_v2_sync(
+            _v2_recovery_session
+        )
+    if _v2_stale_recovered:
+        await main.log_operation(
+            "sync",
+            "v2_stale_running_recovery",
+            "v2_sync_progress was stale running; marked failed on startup",
+            level="WARNING",
+        )
     await main.migrate_stable_resource_ids()
 
     async with main.StateSession() as session:
