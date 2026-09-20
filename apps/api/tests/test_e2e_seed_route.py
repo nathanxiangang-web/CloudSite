@@ -57,6 +57,13 @@ async def test_e2e_seed_route_is_hidden_without_explicit_opt_in(monkeypatch):
         missing_header = await client.post("/api/_e2e/seed")
         assert missing_header.status_code == 404
 
+        monkeypatch.setattr(settings, "allow_insecure_dev_key", False)
+        production_mode = await client.post(
+            "/api/_e2e/seed",
+            headers={"X-E2E-Run": "1"},
+        )
+        assert production_mode.status_code == 404
+
     await state_engine.dispose()
     await index_engine.dispose()
 
