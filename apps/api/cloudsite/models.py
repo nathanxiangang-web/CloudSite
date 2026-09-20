@@ -639,15 +639,25 @@ class IndexScanEntry(StateBase):
         ForeignKey("index_scan_runs.id", ondelete="CASCADE"), index=True
     )
     dir_path: Mapped[str] = mapped_column(Text)
+    path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     resource_id: Mapped[str] = mapped_column(Text, index=True)
     name: Mapped[str] = mapped_column(Text)
     is_dir: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     metadata_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     staged_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=text("CURRENT_TIMESTAMP")
     )
     __table_args__ = (
+        UniqueConstraint(
+            "scan_run_id",
+            "resource_id",
+            name="uq_index_scan_entries_run_resource",
+        ),
         Index("ix_index_scan_entries_scan_run_dir_path", "scan_run_id", "dir_path"),
     )
 
