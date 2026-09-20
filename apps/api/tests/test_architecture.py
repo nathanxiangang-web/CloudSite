@@ -372,7 +372,7 @@ class TestNotificationsModuleBoundary:
 class TestIndexingSharedCoreBoundary:
     """Indexing runtime code may not depend on shared ORM/session modules."""
 
-    def test_alist_adapter_uses_structural_root_type(self):
+    def test_scan_adapter_uses_providers_public_contract(self):
         path = (
             CLOUDSITE
             / "modules"
@@ -383,7 +383,10 @@ class TestIndexingSharedCoreBoundary:
         source = path.read_text(encoding="utf-8")
 
         assert "cloudsite.models" not in source
-        assert "ContentRootView(Protocol)" in source
+        assert "cloudsite.alist" not in source
+        assert "providers.contracts.public" in source
+        assert "ProviderScanPort" in source
+        assert "ProviderScanRoot" in source
 
     def test_legacy_bridge_uses_platform_db_not_shared_database_or_models(self):
         path = (
@@ -397,7 +400,9 @@ class TestIndexingSharedCoreBoundary:
 
         assert "cloudsite.database" not in source
         assert "cloudsite.models" not in source
+        assert "cloudsite.indexer" not in source
         assert "cloudsite.platform.db" in source
+        assert "providers.contracts.public" in source
 
     def test_startup_sync_uses_zero_argument_compatibility_entry(self):
         path = CLOUDSITE / "tasks" / "sync.py"
