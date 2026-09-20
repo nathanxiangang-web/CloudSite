@@ -33,8 +33,8 @@ A module being `partial` does not by itself justify more refactoring.
 
 | Module | Manifest | Current convergence note |
 | --- | --- | --- |
-| Indexing | `active` | Production v2 scan/reconcile is the active path. I2a moves operation logging to platform observability; I2b moves provider loading behind the Providers scan-source contract. |
-| Search | `partial` | S2a owns dirty recovery; S2b removes dead row delta; S2c owns Catalog projection; S2d reduces `cloudsite.search` to a pure facade. Synchronous rebuild is intentionally retained until scale/UX justify task-driven behavior. |
+| Indexing | `active` | Production v2 scan/reconcile is the active path. I2a operation logging now uses platform observability; I2b consumes Providers-owned scan sources. Remaining legacy helpers are compatibility-only and should be removed only after caller-zero verification. |
+| Search | `partial` | S2a-d structural convergence is complete: dirty recovery, dead row-delta removal, Catalog projection ownership, and a pure `cloudsite.search` facade. Synchronous rebuild is intentionally retained until worker deployment becomes invariant or scale/UX provides evidence for task-driven behavior. |
 | Resources | `partial` | Authoritative Folder/Resource persistence and public query/preview/download boundaries are module-owned. Remaining work is compatibility-facade/caller cleanup, not another persistence rewrite. |
 | Providers | `partial` | Connection/root administration, download/preview runtime, and inventory scan-source composition are module-owned. Low-level AList transport compatibility still remains internal to Providers. |
 | Identity | `partial` | Resource/folder identity persistence, matching, descendant path mutation boundary, and admin query boundary are module-owned. Remaining work is compatibility/migration orchestration cleanup only where callers still exist. |
@@ -52,13 +52,17 @@ A module being `partial` does not by itself justify more refactoring.
 
 ## Active convergence order
 
-The current backlog is tracked in issue #157. The intended order is:
+The current backlog is tracked in issue #157. Indexing I2 and Search S2 have reached their current stop points, so they are no longer the default next refactor targets.
+
+The intended order is now:
 
 1. keep documentation/current-state metadata reconciled;
-2. narrow Indexing production-loader/logging compatibility;
-3. prioritize Search S2 consistency/recovery work;
-4. converge other `partial` modules only where a real production caller still crosses a legacy edge;
+2. finish Shares only against verified production callers: P2a verification-attempt ownership first, then target/scope resolution as a separate slice;
+3. inspect Users admin-session ownership and other `partial` modules only where a real production caller still crosses a legacy edge;
+4. preserve thin caller-zero compatibility facades when deleting them would not materially reduce risk;
 5. shift effort toward product/UI/E2E once the stop conditions are met.
+
+Do not reopen completed Indexing/Search work merely because their manifests or historical migration documents still contain `partial` language.
 
 ## Stop conditions
 
