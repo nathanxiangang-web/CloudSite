@@ -1,9 +1,12 @@
+from datetime import timedelta
+
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import auth, main
 from cloudsite.database import IndexBase, StateBase
-from cloudsite.models import ContentRootMapping, Resource, Share, User, utcnow
+from cloudsite.models import ContentRootMapping, Resource, Share, ShareVerifyAttempt, User, utcnow
 from cloudsite.sessions import USER_SESSION_COOKIE, create_user_session
 
 
@@ -97,5 +100,72 @@ async def test_user_share_endpoint_rejects_non_resource_targets(monkeypatch):
         )
         assert response.status_code == 400
         assert response.json()["detail"]["code"] == "USER_SHARE_RESOURCE_ONLY"
+    await state_engine.dispose()
+    await index_engine.dispose()
+
+
+async def test_share_code_failures_start_non_bypassable_cooldown(monkeypatch):
+    state_engine, index_engine, state_factory, _, owner_token, _ = await user_share_store(monkeypatch)
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
+        created = await client.post(
+            "/api/my/shares",
+            cookies={USER_SESSION_COOKIE: owner_token},
+            json={
+                "object_type": "resource",
+                "object_id": "r_user_share",
+                "title": "冷却测试",
+                "access_mode": "code",
+                "duration": "1h",
+            },
+        )
+        assert created.status_code == 200, created.text
+        token = created.json()["token"]
+        code = created.json()["code"]
+
+        for _ in range(4):
+            invalid = await client.post(
+                f"/api/public/shares/{token}/verify",
+                json={"code": "ZZZZ"},
+            )
+            assert invalid.status_code == 403, invalid.text
+            assert invalid.json()["detail"]["code"] == "SHARE_CODE_INVALID"
+
+        threshold = await client.post(
+            f"/api/public/shares/{token}/verify",
+            json={"code": "ZZZZ"},
+        )
+        assert threshold.status_code == 429, threshold.text
+        assert threshold.json()["detail"]["code"] == "SHARE_VERIFY_COOLDOWN"
+
+        blocked_correct = await client.post(
+            f"/api/public/shares/{token}/verify",
+            json={"code": code},
+        )
+        assert blocked_correct.status_code == 429, blocked_correct.text
+        assert blocked_correct.json()["detail"]["code"] == "SHARE_VERIFY_COOLDOWN"
+
+        async with state_factory() as state:
+            attempt = await state.scalar(select(ShareVerifyAttempt))
+            assert attempt is not None
+            attempt.challenge_required_until = utcnow() - timedelta(seconds=1)
+            await state.commit()
+
+        verified = await client.post(
+            f"/api/public/shares/{token}/verify",
+            json={"code": code},
+        )
+        assert verified.status_code == 200, verified.text
+
+        content = await client.get(
+            f"/api/public/shares/{token}/content",
+        )
+        assert content.status_code == 200, content.text
+        assert content.json()["share"]["token"] == token
+        assert content.json()["target"]["id"] == "r_user_share"
+
     await state_engine.dispose()
     await index_engine.dispose()
