@@ -12,6 +12,7 @@ Indexing module boundary.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -19,6 +20,8 @@ from ..application.reconcile import ReconcileResult, ReconcileService, WriteSumm
 from ..application.scan_category import ScanCategoryResult, ScanCategoryService
 from .provider_adapter import ProviderAdapter
 from .repository import IndexingStore
+
+logger = logging.getLogger(__name__)
 
 GLOBAL_SCAN_CONCURRENCY = 16  # global scan concurrency
 RECONCILE_CONCURRENCY = 1     # production reconcile concurrency
@@ -95,13 +98,19 @@ async def run_indexing_v2(
 
     await asyncio.gather(*(scan_one(cid) for cid in categories))
 
-    for category_id in sorted(categories):
-        if category_id in scan_errors:
-            exc = scan_errors[category_id]
-            summary.errors.append(f"{category_id}: {type(exc).__name__}: {exc}")
-            continue
-        scan_result = scan_results[category_id]
-        try:
+    # Reconcile phase -- single atomic DB transaction (V2 doc section 20).
+    # Any exception rolls back the entire reconcile so production stays in
+    # its last consistent state.  Staging (scan snapshots / index_scan_entries)
+    # is preserved so the caller can retry reconcile without rescanning.
+    try:
+        for category_id in sorted(categories):
+            if category_id in scan_errors:
+                exc = scan_errors[category_id]
+                summary.errors.append(
+                    f"{category_id}: {type(exc).__name__}: {exc}"
+                )
+                continue
+            scan_result = scan_results[category_id]
             reconcile_result: ReconcileResult = await reconcile_service.reconcile(
                 scan_result.snapshot
             )
@@ -112,8 +121,17 @@ async def run_indexing_v2(
             summary.writes.removed += reconcile_result.writes.removed
             summary.writes.unchanged += reconcile_result.writes.unchanged
             summary.suppressed_removals += reconcile_result.suppressed_removals
-        except Exception as exc:  # noqa: BLE001 - per-category isolation
-            summary.errors.append(f"{category_id}: {type(exc).__name__}: {exc}")
+    except Exception as exc:  # noqa: BLE001 - atomic reconcile boundary
+        logger.exception(
+            "atomic reconcile failed; rolling back transaction, "
+            "staging preserved for retry"
+        )
+        rollback = getattr(store, "rollback", None)
+        if rollback is not None:
+            await rollback()
+        summary.errors.append(f"reconcile: {type(exc).__name__}: {exc}")
+        summary.status = "partial"
+        return summary.to_dict()
 
     if summary.errors:
         summary.status = "partial"

@@ -112,6 +112,16 @@ class IndexingRepository:
         result = await self._session.execute(stmt)
         return result.rowcount or 0
 
+    @property
+    def session(self) -> AsyncSession:
+        return self._session
+
+    async def commit(self) -> None:
+        await self._session.commit()
+
+    async def rollback(self) -> None:
+        await self._session.rollback()
+
     @staticmethod
     def _orm_to_entry(r: ResourceSkeletonORM) -> IndexedEntry:
         return IndexedEntry(
