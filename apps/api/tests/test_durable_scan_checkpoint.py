@@ -547,7 +547,10 @@ async def test_complete_gate_all_done(tmp_path):
         run_id = await _seed_run_with_dirs(factory, root_id, ["done", "done"])
         async with factory() as session:
             ckpt = DirCheckpoint(session)
-            assert await ckpt.is_scan_complete(run_id) is True
+            result = await ckpt.is_scan_complete(run_id)
+            assert result.complete is True
+            assert result.reason is None
+            assert result.suppressed_count == 0
     finally:
         await engine.dispose()
 
@@ -562,7 +565,10 @@ async def test_complete_gate_has_pending(tmp_path):
         )
         async with factory() as session:
             ckpt = DirCheckpoint(session)
-            assert await ckpt.is_scan_complete(run_id) is False
+            result = await ckpt.is_scan_complete(run_id)
+            assert result.complete is False
+            assert result.reason == "pending_dirs"
+            assert result.suppressed_count == 1
     finally:
         await engine.dispose()
 
@@ -577,7 +583,10 @@ async def test_complete_gate_has_failed(tmp_path):
         )
         async with factory() as session:
             ckpt = DirCheckpoint(session)
-            assert await ckpt.is_scan_complete(run_id) is False
+            result = await ckpt.is_scan_complete(run_id)
+            assert result.complete is False
+            assert result.reason == "failed_dirs"
+            assert result.suppressed_count == 1
     finally:
         await engine.dispose()
 
@@ -592,6 +601,9 @@ async def test_complete_gate_has_running(tmp_path):
         )
         async with factory() as session:
             ckpt = DirCheckpoint(session)
-            assert await ckpt.is_scan_complete(run_id) is False
+            result = await ckpt.is_scan_complete(run_id)
+            assert result.complete is False
+            assert result.reason == "running_dirs"
+            assert result.suppressed_count == 1
     finally:
         await engine.dispose()
