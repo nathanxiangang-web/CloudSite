@@ -26,7 +26,7 @@ platform/tasks/
   repository.py   - DB-backed queue (tasks table)
   lease.py        - lease claiming and expiry
   retry.py        - exponential backoff, max retry per kind
-  worker.py       - worker runtime (in-process or dedicated)
+  worker.py       - dedicated worker runtime used by `cloudsite.worker_main`
   registry.py     - task kind registration with handlers and schemas
   api.py          - enqueue/claim/complete/fail contracts
   models.py       - ORM models for the tasks table
@@ -66,13 +66,13 @@ enqueued -> claimed (lease acquired) -> running -> completed
 
 1. Define the task payload schema in the module's public/ directory.
 2. Register the kind in platform/tasks/registry.py with handler and max retries.
-3. Enqueue via platform/tasks api: `enqueue(kind, payload, idempotency_key)`.
+3. Enqueue through a task-specific application helper or the existing `TaskRepository`; do not invent a queue API that the runtime does not expose.
 4. Implement the handler as an application service in the module.
-5. Never run the work inline in a request handler; always enqueue.
+5. Move a request path to enqueue-only execution only when the deployed worker for that queue is guaranteed to exist.
 
 ## Rules
 
-1. Request handlers enqueue tasks; they do not run the work inline.
+1. Durable background work should use the task queue when its worker is part of the deployment contract; existing synchronous compatibility paths stay explicit until then.
 2. Task payloads are JSON; large payloads must reference stored data, not
    embed it.
 3. Handlers run with system scope, not a user session. The lease owner is a
