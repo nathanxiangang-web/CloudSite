@@ -83,7 +83,9 @@ export async function loginViaApi(
     const res = await ctx.post('/api/auth/login', { data: creds });
     if (!res.ok()) {
       // Try register first, then login (test user may not exist yet).
-      const reg = await ctx.post('/api/auth/register', { data: creds });
+      const reg = await ctx.post('/api/auth/register', {
+        data: { ...creds, password_confirm: creds.password },
+      });
       if (!reg.ok()) return null;
       const login2 = await ctx.post('/api/auth/login', { data: creds });
       if (!login2.ok()) return null;
