@@ -7,7 +7,7 @@ import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { RESOURCE_TYPES } from "@/lib/submission";
+import { RESOURCE_TYPE_OPTIONS } from "@/lib/submission";
 
 type FormState = {
   resourceName: string;
@@ -21,7 +21,7 @@ type FormState = {
 
 const initialForm: FormState = {
   resourceName: "",
-  resourceType: "软件",
+  resourceType: "software",
   description: "",
   sourceUrl: "",
   downloadUrl: "",
@@ -66,11 +66,11 @@ export default function SubmitPage() {
   };
 
   return <PublicShell><div className="page submit-page">
-    <header className="submit-hero"><span><Send /></span><div><h1>资源投稿</h1><p>把值得收藏的资源分享给 CloudSite。提交后进入审核队列，通过后会发布到站点。</p></div></header>
+    <header className="submit-hero"><span><Send /></span><div><h1>资源投稿</h1><p>把值得收藏的资源分享给 CloudSite。提交后进入审核队列，通过后由管理员绑定已索引资源并发布。</p></div></header>
     <div className="submit-layout">
       <form className="submit-form" onSubmit={onSubmit}>
         <label>资源名称 *<input required maxLength={120} value={form.resourceName} onChange={(event) => update("resourceName", event.target.value)} placeholder="例如：PotPlayer" /></label>
-        <label>资源类型 *<select required value={form.resourceType} onChange={(event) => update("resourceType", event.target.value)}>{RESOURCE_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label>
+        <label>资源类型 *<select required value={form.resourceType} onChange={(event) => update("resourceType", event.target.value)}>{RESOURCE_TYPE_OPTIONS.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
         <label className="wide">资源简介 *<textarea required maxLength={1000} rows={5} value={form.description} onChange={(event) => update("description", event.target.value)} placeholder="说明资源用途、特点和适用平台" /></label>
         <label>来源网址<input maxLength={1000} inputMode="url" value={form.sourceUrl} onChange={(event) => update("sourceUrl", event.target.value)} placeholder="https://..." /></label>
         <label>下载 / 网盘链接<input maxLength={2000} inputMode="url" value={form.downloadUrl} onChange={(event) => update("downloadUrl", event.target.value)} placeholder="https://..." /></label>
@@ -88,7 +88,7 @@ export default function SubmitPage() {
         <h2>站内投稿</h2>
         <p>直接提交到 CloudSite 审核队列，无需打开邮件客户端，也不必复制邮箱。</p>
         <h3>审核流程</h3>
-        <p>提交 → 管理员审核 → 通过 / 拒绝 → 发布。审核结果会显示在&ldquo;我的投稿&rdquo;。</p>
+        <p>提交 → 管理员审核 → 通过 / 拒绝 → 绑定已索引资源 → 发布。审核结果会显示在&ldquo;我的投稿&rdquo;。</p>
         <h3>需要提交文件？</h3>
         <p>请填写可访问的网盘 / 下载链接。CloudSite 本身不接收文件上传，开发成本和风险都可控。</p>
       </aside>

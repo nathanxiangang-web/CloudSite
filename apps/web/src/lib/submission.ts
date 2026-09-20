@@ -1,6 +1,14 @@
 export const SUBMISSION_EMAIL = "nathxo@outlook.com";
 export const RESOURCE_TYPES = ["软件", "图库", "视频", "教程", "其他文件"] as const;
 
+export const RESOURCE_TYPE_OPTIONS = [
+  { value: "software", label: "软件" },
+  { value: "image", label: "图库" },
+  { value: "video", label: "视频" },
+  { value: "document", label: "教程" },
+  { value: "file", label: "其他文件" },
+] as const;
+
 export type SubmissionInput = {
   resourceName: string;
   resourceType: string;

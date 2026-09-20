@@ -285,7 +285,7 @@ class SearchOutput(BaseModel):
 
 class SubmissionInput(BaseModel):
     resource_name: str = Field(min_length=1, max_length=120)
-    resource_type: str = Field(min_length=1, max_length=20)
+    resource_type: Literal["software", "image", "video", "document", "file"]
     description: str = Field(default="", max_length=2000)
     source_url: str = Field(default="", max_length=1000)
     download_url: str = Field(default="", max_length=2000)
