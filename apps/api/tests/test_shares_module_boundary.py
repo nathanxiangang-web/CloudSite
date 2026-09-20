@@ -166,3 +166,51 @@ async def test_verification_attempt_state_runs_behind_public_contract(monkeypatc
         assert [row.share_token for row in rows] == ["fresh"]
 
     await engine.dispose()
+
+
+async def test_expired_verification_window_resets_existing_row():
+    engine, factory = await _store()
+    secret_key = "test-secret"
+    address = "198.51.100.7"
+
+    async with factory() as state:
+        assert not await verify_attempt_failed(
+            state,
+            "window-reset",
+            address,
+            secret_key=secret_key,
+        )
+        await state.flush()
+        row = await state.scalar(
+            select(ShareVerifyAttempt).where(
+                ShareVerifyAttempt.share_token == "window-reset"
+            )
+        )
+        assert row is not None
+        row.fail_count = 5
+        row.window_started_at = utcnow() - timedelta(minutes=11)
+        row.challenge_required_until = utcnow() + timedelta(minutes=5)
+        await state.commit()
+
+        assert not await verify_attempt_failed(
+            state,
+            "window-reset",
+            address,
+            secret_key=secret_key,
+        )
+        await state.commit()
+
+        rows = list(
+            (
+                await state.scalars(
+                    select(ShareVerifyAttempt).where(
+                        ShareVerifyAttempt.share_token == "window-reset"
+                    )
+                )
+            ).all()
+        )
+        assert len(rows) == 1
+        assert rows[0].fail_count == 1
+        assert rows[0].challenge_required_until is None
+
+    await engine.dispose()
