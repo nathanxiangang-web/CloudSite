@@ -170,6 +170,7 @@ async def run_indexing_v2_production(
                 "sync", "v2_category_started",
                 f"Scanning: {root_label}",
             )
+            root_failed = False
             try:
                 async def _on_progress(path: str, count: int) -> None:
                     await _update_v2_sync_status(
@@ -184,13 +185,23 @@ async def run_indexing_v2_production(
                         category_ids=[f"root:{root.root_mapping_id}"],
                         on_progress=_on_progress,
                     )
-                    await session.commit()
+                    if result.get("status") == "partial":
+                        root_failed = True
+                        total_summary.errors.extend(result.get("errors", []))
+                    if not root_failed:
+                        await session.commit()
             except asyncio.CancelledError:
                 await _update_v2_sync_status(
                     "cancelled", categories_done, total_categories,
                     int(time.time() - t0), root.storage_path, entries_scanned,
                 )
                 raise
+            except Exception as exc:  # noqa: BLE001 - per-root isolation
+                root_failed = True
+                total_summary.errors.append(
+                    f"{root_label}: {type(exc).__name__}: {exc}",
+                )
+                result = {"status": "partial", "errors": [f"{root_label}: {exc}"], "writes": {}}
             categories_done += 1
             writes = result.get("writes", {})
             entries_scanned += writes.get("added", 0) + writes.get("changed", 0) + writes.get("unchanged", 0)
@@ -198,7 +209,13 @@ async def run_indexing_v2_production(
                 "running", categories_done, total_categories,
                 int(time.time() - t0), "", entries_scanned,
             )
-            if result.get("status") == "success":
+            if root_failed:
+                await _log_operation(
+                    "sync", "v2_category_partial",
+                    f"Partial: {root_label} | errors: {result.get('errors', [])}",
+                    level="WARNING",
+                )
+            elif result.get("status") == "success":
                 total_summary.categories_scanned += result.get("categories_scanned", 0)
                 total_summary.pages_fetched += result.get("pages_fetched", 0)
                 total_summary.writes.added += writes.get("added", 0)
@@ -210,13 +227,6 @@ async def run_indexing_v2_production(
                     f"Done: {root_label} | "
                     f"added={writes.get('added', 0)} changed={writes.get('changed', 0)} "
                     f"removed={writes.get('removed', 0)} unchanged={writes.get('unchanged', 0)}",
-                )
-            elif result.get("status") == "partial":
-                total_summary.errors.extend(result.get("errors", []))
-                await _log_operation(
-                    "sync", "v2_category_partial",
-                    f"Partial: {root_label} | errors: {result.get('errors', [])}",
-                    level="WARNING",
                 )
 
     elapsed = int(time.time() - t0)
