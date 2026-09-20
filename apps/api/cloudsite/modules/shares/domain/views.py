@@ -17,6 +17,12 @@ ShareStatus = Literal[
 
 
 @dataclass(frozen=True, slots=True)
+class CreatedShareView:
+    share: "ShareView"
+    code: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ShareView:
     token: str
     creator_user_id: int | None
@@ -39,4 +45,4 @@ class ShareView:
     updated_at: datetime
 
 
-__all__ = ["ShareStatus", "ShareView"]
+__all__ = ["CreatedShareView", "ShareStatus", "ShareView"]

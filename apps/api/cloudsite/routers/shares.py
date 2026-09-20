@@ -13,9 +13,11 @@ from ..modules.shares.contracts.public import (
     MAX_SHARE_DOWNLOADS,
     ShareNotFound,
     ShareValidationError,
+    build_share_target_payload,
     cancel_share as cancel_share_record,
     challenge_required,
     clear_verify_attempts,
+    create_share as create_share_record,
     delete_share as delete_share_record,
     get_owned_share,
     get_share,
@@ -23,9 +25,11 @@ from ..modules.shares.contracts.public import (
     record_share_access,
     reserve_share_download as reserve_share_download_record,
     reset_share_code as reset_share_code_record,
+    resolve_share_download_resource,
     restore_share as restore_share_record,
     share_payload,
     share_status as module_share_status,
+    target_valid_for_share,
     update_share_duration as update_share_duration_record,
     verify_attempt_failed,
 )
@@ -37,19 +41,9 @@ from ..download_rate_limit import (
 )
 from ..request_context import request_is_https
 from ..schemas import ShareInput, ShareUpdate, ShareVerifyInput
-from ..services.shares import (
-    build_share_target_payload,
-    resolve_share_download_resource,
-    share_dict,
-    share_is_expired,
-)
+from ..services.shares import share_dict, share_is_expired
 from ..shares.code import verify_share_code
-from ..shares.service import (
-    captcha_token_valid,
-    create_share as create_share_row,
-    ensure_share_active,
-    target_valid_for_share,
-)
+from ..shares.service import captcha_token_valid, ensure_share_active
 from ..shares.ticket import create_share_ticket, share_cookie_name, validate_share_ticket
 from ..modules.site.contracts.public import (
     share_page_image_name as get_share_page_image_name,
@@ -90,7 +84,10 @@ async def public_share(token: str):
                 404,
                 {"code": "SHARE_TARGET_INVALID", "message": "分享目标已不可用"},
             )
-        payload = await build_share_target_payload(state, index, row)
+        try:
+            payload = await build_share_target_payload(state, index, row)
+        except ShareValidationError as exc:
+            raise _translate_share_module_error(exc) from exc
         row = await record_share_access(
             state,
             token,
@@ -316,11 +313,14 @@ async def public_share_content(token: str, request: Request):
                 token,
                 increment_view=True,
             )
-        payload = await build_share_target_payload(
-            state,
-            index,
-            row,
-        )
+        try:
+            payload = await build_share_target_payload(
+                state,
+                index,
+                row,
+            )
+        except ShareValidationError as exc:
+            raise _translate_share_module_error(exc) from exc
         await state.commit()
         return {"share": share_payload(row), "target": payload}
 
@@ -380,12 +380,15 @@ async def _share_download_response(
                     "message": "无分享码直下只支持单文件",
                 },
             )
-        resource = await resolve_share_download_resource(
-            state,
-            index,
-            row,
-            resource_id,
-        )
+        try:
+            resource = await resolve_share_download_resource(
+                state,
+                index,
+                row,
+                resource_id,
+            )
+        except ShareValidationError as exc:
+            raise _translate_share_module_error(exc) from exc
         rate = await check_download_rate(
             get_effective_client_ip(request)
         )
@@ -544,12 +547,20 @@ async def create_my_share(
         )
     async with StateSession() as state, IndexSession() as index:
         _, user = await require_user(state, request)
-        created = await create_share_row(
-            state,
-            index,
-            payload,
-            creator_user_id=user.id,
-        )
+        try:
+            created = await create_share_record(
+                state,
+                index,
+                object_type=payload.object_type,
+                object_id=payload.object_id,
+                access_mode=payload.access_mode,
+                duration=payload.duration,
+                title=payload.title,
+                secret_key=settings.secret_key,
+                creator_user_id=user.id,
+            )
+        except ShareValidationError as exc:
+            raise _translate_share_module_error(exc) from exc
         await write_operation_log(
             state,
             module="share",

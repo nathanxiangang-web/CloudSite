@@ -215,6 +215,66 @@ async def get_public_collection(
     return await collection_view(state, index, row, include_items=True)
 
 
+async def collection_publication_scope(
+    state: AsyncSession,
+    index: AsyncSession,
+    collection_id: int,
+) -> bool:
+    """Return whether every collection resource is inside publication scope.
+
+    This intentionally preserves the legacy share rule: a collection is
+    shareable only when it is active and every distinct item is a publishable
+    resource. Catalog-entry items therefore remain outside this legacy share
+    scope until share semantics explicitly support them.
+    """
+
+    row = await state.get(Collection, collection_id)
+    if row is None or row.status != "active":
+        return False
+
+    items = await _items_for(state, collection_id)
+    resource_ids_with_gaps = [item.resource_id for item in items]
+    if not resource_ids_with_gaps:
+        return True
+
+    resource_ids = [
+        resource_id
+        for resource_id in dict.fromkeys(resource_ids_with_gaps)
+        if resource_id
+    ]
+    refs = await resource_queries(index).resource_references(
+        resource_ids=resource_ids
+    )
+    roots = await enabled_root_ids(state)
+    visible_count = sum(
+        1
+        for resource_id in resource_ids
+        if (
+            resource_id in refs
+            and refs[resource_id].status == "active"
+            and refs[resource_id].root_mapping_id is not None
+            and refs[resource_id].root_mapping_id in roots
+        )
+    )
+    return visible_count == len(set(resource_ids_with_gaps))
+
+
+async def collection_contains_resource(
+    state: AsyncSession,
+    collection_id: int,
+    resource_id: str,
+) -> bool:
+    item_id = await state.scalar(
+        select(CollectionItem.id)
+        .where(
+            CollectionItem.collection_id == collection_id,
+            CollectionItem.resource_id == resource_id,
+        )
+        .limit(1)
+    )
+    return item_id is not None
+
+
 async def list_admin_collections(
     state: AsyncSession,
     index: AsyncSession,
@@ -478,6 +538,8 @@ __all__ = [
     "CollectionNotFound",
     "CollectionValidationError",
     "collection_view",
+    "collection_publication_scope",
+    "collection_contains_resource",
     "list_public_collections",
     "get_public_collection",
     "list_admin_collections",

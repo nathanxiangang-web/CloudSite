@@ -90,6 +90,7 @@ Collections is now **partial** rather than a skeleton.
 - Resource references are resolved through the Resources contract.
 - Catalog entry references are resolved through the Catalog contract.
 - Enabled publication roots are resolved through the Providers contract.
+- Strict collection publication validation and resource-membership lookup are exported for Shares without exposing CollectionItem ORM.
 - `services/collections.py` is a compatibility shim only.
 - Both public and admin Collections routers contain no direct ORM/SQLAlchemy
   access.

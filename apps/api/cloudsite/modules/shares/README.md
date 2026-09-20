@@ -93,13 +93,22 @@ public/user/admin share routers no longer import SQLAlchemy or shared ORM
 models directly.
 
 P2a moves brute-force verification-attempt persistence behind the Shares
-public contract. The public verify route now records/checks/clears attempt
-state through module-owned application code, scheduled verification cleanup
-also uses the module contract, and the legacy service keeps only thin
-configuration-aware wrappers for compatibility.
+public contract. The public verify route records/checks/clears attempt state
+through module-owned application code, and scheduled verification cleanup also
+uses the module contract.
 
-The remaining production compatibility edge is target/scope resolution
-(resource/folder/collection publication checks plus share target/download
-assembly). That work is intentionally separate because it must compose the
-Resources, Collections and Providers owner contracts rather than moving their
-ORM into Shares.
+P2b moves the remaining production target/scope path behind owner contracts:
+
+- Resources owns publication-safe resource/folder lookup and same-root folder
+  child projection;
+- Collections owns strict collection publication validation and resource
+  membership;
+- Shares composes those contracts for creation, target validity, target payload
+  and download membership;
+- public/admin share routers call the Shares contract directly;
+- legacy `cloudsite/shares/service.py` and `services/shares.py` retain
+  compatibility wrappers without cross-domain ORM queries.
+
+Folder downloads now also require the selected resource root to match the
+shared folder root, closing the cross-root same-`parent_id` edge while keeping
+the existing public payload behavior.

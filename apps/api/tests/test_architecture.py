@@ -684,14 +684,18 @@ class TestSharesVerificationBoundary:
     def test_public_share_router_uses_module_verification_contract(self):
         router_file = CLOUDSITE / "routers" / "shares.py"
         source = router_file.read_text(encoding="utf-8")
-        legacy_import = source.split(
-            "from ..shares.service import (",
-            1,
-        )[1].split(")", 1)[0]
+        tree = ast.parse(source)
 
-        assert "challenge_required" not in legacy_import
-        assert "verify_attempt_failed" not in legacy_import
-        assert "clear_verify_attempts" not in legacy_import
+        legacy_names: set[str] = set()
+        for node in tree.body:
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.level == 2 and node.module == "shares.service":
+                legacy_names.update(alias.name for alias in node.names)
+
+        assert "challenge_required" not in legacy_names
+        assert "verify_attempt_failed" not in legacy_names
+        assert "clear_verify_attempts" not in legacy_names
         assert "modules.shares.contracts.public" in source
 
     def test_scheduler_cleanup_entry_uses_shares_contract(self):
@@ -706,6 +710,76 @@ class TestSharesVerificationBoundary:
             "from .shares.service import cleanup_share_verify_attempts"
             not in source
         )
+
+
+class TestSharesTargetScopeBoundary:
+    """Share target/scope orchestration composes owner contracts only."""
+
+    def test_shares_target_scope_has_no_cross_module_orm(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "shares"
+            / "application"
+            / "target_scope.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "cloudsite.models" not in source
+        assert "modules.resources.infrastructure" not in source
+        assert "modules.collections.infrastructure" not in source
+        assert "resources.contracts.public" in source
+        assert "collections.contracts.public" in source
+
+    def test_resources_publication_owns_resource_orm(self):
+        path = (
+            CLOUDSITE
+            / "modules"
+            / "resources"
+            / "application"
+            / "publication.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        assert "from ..infrastructure.models import Folder, Resource" in source
+        assert "providers.contracts.public" in source
+        assert "modules.shares" not in source
+
+    def test_legacy_share_services_do_not_own_target_scope_orm(self):
+        legacy = (CLOUDSITE / "shares" / "service.py").read_text(
+            encoding="utf-8"
+        )
+        service = (CLOUDSITE / "services" / "shares.py").read_text(
+            encoding="utf-8"
+        )
+
+        for symbol in (
+            "CollectionItem",
+            "ContentRootMapping",
+            "Folder",
+            "Resource",
+        ):
+            assert symbol not in legacy
+        assert "sqlalchemy" not in service
+        assert "cloudsite.models" not in service
+        assert "from ..models" not in service
+
+    def test_share_routers_use_module_target_scope_contract(self):
+        public_router = (CLOUDSITE / "routers" / "shares.py").read_text(
+            encoding="utf-8"
+        )
+        admin_router = (
+            CLOUDSITE / "routers" / "admin" / "shares.py"
+        ).read_text(encoding="utf-8")
+
+        assert "create_share as create_share_row" not in public_router
+        assert "create_share as create_share_row" not in admin_router
+        assert "target_valid_for_share" in public_router
+        assert "target_valid_for_share" in admin_router
+        assert "build_share_target_payload" in public_router
+        assert "resolve_share_download_resource" in public_router
+        assert "modules.shares.contracts.public" in public_router
+        assert "modules.shares.contracts.public" in admin_router
 
 
 class TestModuleStructure:
