@@ -96,6 +96,26 @@ async def run_indexing_v2(
     return summary.to_dict()
 
 
+async def _log_operation(
+    module: str,
+    action: str,
+    message: str,
+    level: str = "INFO",
+) -> None:
+    """Persist an operation log through the platform observability boundary."""
+    from cloudsite.platform.db import state_session
+    from cloudsite.platform.observability import write_operation_log
+
+    async with state_session() as session:
+        await write_operation_log(
+            session,
+            module=module,
+            action=action,
+            message=message[:2000],
+            level=level,
+        )
+        await session.commit()
+
 async def run_indexing_v2_production(
     *,
     store_factory: Callable[[Any], IndexingStore],
