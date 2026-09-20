@@ -334,6 +334,27 @@ class TestCatalogModuleCoreBoundary:
         assert "platform.db" in source
 
 
+class TestSearchLegacyFacadeBoundary:
+    """Legacy cloudsite.search must remain an implementation-free facade."""
+
+    def test_legacy_search_module_has_no_runtime_implementation(self):
+        path = CLOUDSITE / "search.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        assert "modules.search" in source
+        assert "sqlalchemy" not in source
+        implementations = [
+            node
+            for node in tree.body
+            if isinstance(
+                node,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+            )
+        ]
+        assert implementations == []
+
+
 class TestCatalogSearchProjectionBoundary:
     """Catalog owns projection source data; Search owns projection persistence."""
 
