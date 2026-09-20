@@ -2,24 +2,26 @@
 
 ## Module inventory
 
-| Module | Responsibility | Owner | Current code location |
-|--------|---------------|-------|----------------------|
-| `identity` | Stable resource ID generation, fingerprinting, migration | — | `identity/` |
-| `users` | User accounts, sessions, auth, admin auth | — | `auth.py`, `users.py`, `userdata.py`, `sessions.py`, `admin_auth.py` |
-| `providers` | Storage provider abstraction, AList client, capabilities, delta | — | `providers/`, `alist.py`, `connection_schemas.py` |
-| `resources` | Resource domain: folders, files, previews, downloads, rate limit | — | `indexer.py`, `search.py`, `preview.py`, `download.py`, `download_rate_limit.py`, `office.py` |
-| `indexing` | Inventory scan, resource inspection, snapshot, reconcile | — | `sync/`, `tasks/` (new module; legacy rolling frozen) |
-| `search` | Full-text search, search projection, search index recovery | — | `search.py`, `services/catalog_search*.py` |
-| `catalog` | Catalog entries, metadata, follow, views | — | `services/catalog*.py`, `routers/catalog.py`, `routers/admin/catalog*.py`, `catalog_schemas.py` |
-| `collections` | User collections, topics, seeds | — | `services/collections.py`, `services/collection_seeds.py`, `routers/collections.py` |
-| `shares` | Share links, tickets, scope, share page | — | `shares/`, `routers/shares.py` |
-| `submissions` | User submissions, admin review | — | `services/submissions.py`, `routers/submissions.py` |
-| `notifications` | Notification channels | — | `services/notifications.py`, `routers/notifications.py` |
-| `automation` | Automation rules, suggestion engine, parser candidates | — | `services/suggestion_*.py`, `services/parser_candidate*.py`, `routers/admin/automation.py`, `routers/admin/parser_candidates.py` |
-| `delivery` | Delivery preparation, redirect | — | `services/delivery.py`, `routers/delivery.py`, `delivery_schemas.py` |
-| `presentation` | Site presentation presets, theme/navigation/home blocks, revisions and rollback | — | `modules/presentation/`, legacy `services/presentation.py`, `routers/admin/presentation.py` |
-| `setup` | First-run setup workflow progress and cross-module onboarding orchestration | — | `modules/setup/`, `routers/admin/setup.py` |
-| `site` | Site identity/settings, registration policy, Home limits, and share-page branding state | — | `modules/site/`, compatibility `site.py`, `routers/admin/site.py` |
+The business implementation home is now `apps/api/cloudsite/modules/<name>/` for every module below. Legacy top-level/service/router paths, where they still exist, are compatibility edges rather than the ownership location. Current convergence notes live in [modularization-status.md](./modularization-status.md).
+
+| Module | Responsibility | Manifest status | Implementation home |
+|--------|---------------|-----------------|---------------------|
+| `identity` | Stable resource ID generation, fingerprinting, migration | partial | `modules/identity/` |
+| `users` | User accounts, sessions, auth, roles and user data | partial | `modules/users/` |
+| `providers` | Storage provider abstraction, AList gateway, roots and capabilities | partial | `modules/providers/` |
+| `resources` | Folders/files, previews, downloads and rate limits | partial | `modules/resources/` |
+| `indexing` | Inventory scan, inspection, snapshot and reconcile | active | `modules/indexing/` |
+| `search` | Full-text search, projection, rebuild and recovery | partial | `modules/search/` |
+| `catalog` | Catalog entries, metadata, releases and publication scope | partial | `modules/catalog/` |
+| `collections` | User collections, topics and seeds | partial | `modules/collections/` |
+| `shares` | Share lifecycle, tickets and scope | partial | `modules/shares/` |
+| `submissions` | User submissions and admin review/publish workflow | partial | `modules/submissions/` |
+| `notifications` | Notification persistence and delivery-facing contracts | partial | `modules/notifications/` |
+| `automation` | Parser candidates and suggestion generation/review | partial | `modules/automation/` |
+| `delivery` | Delivery preparation, redirects, events and diagnostics | partial | `modules/delivery/` |
+| `presentation` | Presets, theme/navigation/home blocks and revisions | partial | `modules/presentation/` |
+| `setup` | First-run setup orchestration | partial | `modules/setup/` |
+| `site` | Site identity/settings and public branding state | partial | `modules/site/` |
 
 ## Platform layer
 
@@ -28,8 +30,8 @@
 | `platform/db` | Database engines, sessions, ORM base, migration registry | `database.py`, `models.py`, `migrations.py` |
 | `platform/http` | Middleware, request context, exception handlers | `infrastructure/middleware.py`, `infrastructure/exception_handlers.py`, `request_context.py` |
 | `platform/security` | Session tokens, crypto, credential service | `infrastructure/security.py`, `crypto.py` |
-| `platform/tasks` | Task queue, worker runtime, lease, retry | `tasks/` (to be expanded in B2) |
-| `platform/observability` | Structured logging, metrics, tracing | (new) |
+| `platform/tasks` | Task queue, worker runtime, lease, retry | `platform/tasks/` |
+| `platform/observability` | Operation/audit observability boundary | `platform/observability/` |
 | `platform/settings` | Configuration | `config.py` |
 
 ## App layer
