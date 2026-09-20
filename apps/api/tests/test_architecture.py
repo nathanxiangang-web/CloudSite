@@ -684,14 +684,18 @@ class TestSharesVerificationBoundary:
     def test_public_share_router_uses_module_verification_contract(self):
         router_file = CLOUDSITE / "routers" / "shares.py"
         source = router_file.read_text(encoding="utf-8")
-        legacy_import = source.split(
-            "from ..shares.service import (",
-            1,
-        )[1].split(")", 1)[0]
+        tree = ast.parse(source)
 
-        assert "challenge_required" not in legacy_import
-        assert "verify_attempt_failed" not in legacy_import
-        assert "clear_verify_attempts" not in legacy_import
+        legacy_names: set[str] = set()
+        for node in tree.body:
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.level == 2 and node.module == "shares.service":
+                legacy_names.update(alias.name for alias in node.names)
+
+        assert "challenge_required" not in legacy_names
+        assert "verify_attempt_failed" not in legacy_names
+        assert "clear_verify_attempts" not in legacy_names
         assert "modules.shares.contracts.public" in source
 
     def test_scheduler_cleanup_entry_uses_shares_contract(self):
