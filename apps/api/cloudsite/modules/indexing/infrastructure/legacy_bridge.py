@@ -96,6 +96,27 @@ async def run_indexing_v2(
     return summary.to_dict()
 
 
+async def _log_operation(
+    module: str,
+    action: str,
+    message: str,
+    level: str = "INFO",
+) -> None:
+    """Persist an operation log through the platform observability boundary."""
+    from cloudsite.platform.db import state_session
+    from cloudsite.platform.observability import write_operation_log
+
+    async with state_session() as session:
+        await write_operation_log(
+            session,
+            module=module,
+            action=action,
+            message=message[:2000],
+            level=level,
+        )
+        await session.commit()
+
+
 async def run_indexing_v2_production(
     *,
     store_factory: Callable[[Any], IndexingStore],
@@ -109,13 +130,13 @@ async def run_indexing_v2_production(
     import asyncio
     import time
 
-    from cloudsite.indexer import load_all_connections_and_roots, log_operation
+    from cloudsite.indexer import load_all_connections_and_roots
     from cloudsite.platform.db import index_session
 
     from .alist_adapter import AListProviderAdapter
 
     t0 = time.time()
-    await log_operation("sync", "v2_sync_started", "v2 indexing sync started")
+    await _log_operation("sync", "v2_sync_started", "v2 indexing sync started")
     await _update_v2_sync_status("running", 0, 0, 0, "", 0)
 
     connections = await load_all_connections_and_roots()
@@ -142,7 +163,7 @@ async def run_indexing_v2_production(
                 "running", categories_done, total_categories,
                 int(time.time() - t0), root.alist_path, entries_scanned,
             )
-            await log_operation(
+            await _log_operation(
                 "sync", "v2_category_started",
                 f"Scanning: {root_label}",
             )
@@ -181,7 +202,7 @@ async def run_indexing_v2_production(
                 total_summary.writes.changed += writes.get("changed", 0)
                 total_summary.writes.removed += writes.get("removed", 0)
                 total_summary.writes.unchanged += writes.get("unchanged", 0)
-                await log_operation(
+                await _log_operation(
                     "sync", "v2_category_completed",
                     f"Done: {root_label} | "
                     f"added={writes.get('added', 0)} changed={writes.get('changed', 0)} "
@@ -189,7 +210,7 @@ async def run_indexing_v2_production(
                 )
             elif result.get("status") == "partial":
                 total_summary.errors.extend(result.get("errors", []))
-                await log_operation(
+                await _log_operation(
                     "sync", "v2_category_partial",
                     f"Partial: {root_label} | errors: {result.get('errors', [])}",
                     level="WARNING",
@@ -198,7 +219,7 @@ async def run_indexing_v2_production(
     elapsed = int(time.time() - t0)
     if total_summary.errors:
         total_summary.status = "partial"
-        await log_operation(
+        await _log_operation(
             "sync", "v2_sync_failed",
             f"v2 sync completed with errors in {elapsed}s: {total_summary.errors[:3]}",
             level="ERROR",
@@ -211,7 +232,7 @@ async def run_indexing_v2_production(
             total_summary.writes.unchanged,
         )
     else:
-        await log_operation(
+        await _log_operation(
             "sync", "v2_sync_completed",
             f"v2 sync completed in {elapsed}s | "
             f"categories={total_summary.categories_scanned} "

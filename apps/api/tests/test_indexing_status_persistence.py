@@ -3,11 +3,13 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite import database
 from cloudsite.models import SystemSetting
 from cloudsite.modules.indexing.infrastructure.legacy_bridge import (
+    _log_operation,
     _update_v2_sync_status,
 )
 from cloudsite.modules.indexing.infrastructure.status_store import v2_sync_due
@@ -52,6 +54,38 @@ async def test_v2_sync_status_persists_same_system_setting_payload(monkeypatch):
             "unchanged": 30,
         }
         assert row.value_type == "string"
+
+    await engine.dispose()
+
+
+async def test_v2_operation_log_uses_observability_boundary(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(StateBase.metadata.create_all)
+
+    monkeypatch.setattr(database, "StateSession", factory)
+
+    await _log_operation(
+        "sync",
+        "v2_test",
+        "x" * 2100,
+        level="WARNING",
+    )
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT level, module, action, message "
+                    "FROM operation_logs ORDER BY id DESC LIMIT 1"
+                )
+            )
+        ).one()
+        assert row.level == "WARNING"
+        assert row.module == "sync"
+        assert row.action == "v2_test"
+        assert row.message == "x" * 2000
 
     await engine.dispose()
 
