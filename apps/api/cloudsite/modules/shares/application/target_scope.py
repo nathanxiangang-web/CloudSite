@@ -229,13 +229,20 @@ async def resolve_share_download_resource(
         selected_id = resource_id
 
     if share.object_type == "folder":
+        folder = await folder_publication_target(
+            state,
+            index,
+            share.object_id,
+        )
         refs = await resource_queries(index).resource_references(
             resource_ids=[selected_id]
         )
         reference = refs.get(selected_id)
         if (
-            reference is None
+            folder is None
+            or reference is None
             or reference.parent_id != share.object_id
+            or reference.root_mapping_id != folder.root_mapping_id
         ):
             raise ShareValidationError(
                 "SHARE_RESOURCE_NOT_ALLOWED",
