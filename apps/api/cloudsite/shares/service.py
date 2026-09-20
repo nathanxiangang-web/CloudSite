@@ -22,6 +22,7 @@ from cloudsite.modules.resources.contracts.public import (
 )
 from cloudsite.modules.shares.contracts.public import (
     CreatedShareView as CreatedShare,
+    ShareValidationError as _ModuleShareValidationError,
     challenge_required as _module_challenge_required,
     cleanup_share_verify_attempts as _module_cleanup_share_verify_attempts,
     clear_verify_attempts as _module_clear_verify_attempts,
@@ -179,15 +180,11 @@ async def create_share(
             secret_key=settings.secret_key,
             creator_user_id=creator_user_id,
         )
-    except Exception as exc:
-        from cloudsite.modules.shares.contracts.public import ShareValidationError
-
-        if isinstance(exc, ShareValidationError):
-            raise HTTPException(
-                exc.status_code,
-                {"code": exc.code, "message": exc.message},
-            ) from exc
-        raise
+    except _ModuleShareValidationError as exc:
+        raise HTTPException(
+            exc.status_code,
+            {"code": exc.code, "message": exc.message},
+        ) from exc
 
 
 async def reset_share_code(session: AsyncSession, share: Share) -> str:
