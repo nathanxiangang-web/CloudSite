@@ -4,9 +4,11 @@
 [![Release](https://img.shields.io/github/v/release/nathanxiangang-web/CloudSite?include_prereleases&label=release)](https://github.com/nathanxiangang-web/CloudSite/releases)
 [![License](https://img.shields.io/github/license/nathanxiangang-web/CloudSite)](LICENSE)
 
-**CloudSite is a self-hosted resource portal built around AList and other storage providers.**
+**CloudSite is a self-hosted resource platform built on cloud drives and cloud storage.**
 
-It turns selected storage directories into a searchable resource website with accounts, previews, collections, sharing, administration, local indexing, and direct-download delivery. CloudSite is the presentation, index, policy, and authorization layer; the underlying storage provider remains responsible for large-file transfer.
+**CloudSite 是一个以网盘和云存储为底座的自托管资源平台。**
+
+It turns selected storage directories into a searchable resource platform with accounts, previews, collections, sharing, administration, local indexing, and direct-download delivery. CloudSite is the presentation, index, policy, and authorization layer; the underlying storage provider remains responsible for large-file transfer.
 
 > **Stable line:** `v1.0.0`  
 > **Current development line:** `v2.0.0-alpha.3`  
