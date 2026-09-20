@@ -197,10 +197,15 @@ async def run_indexing_v2_production(
             root_failed = False
             try:
                 async def _on_progress(recent_paths: list[str], count: int) -> None:
-                    current = recent_paths[-1] if recent_paths else ""
+                    metrics = adapter.last_scan_metrics
                     await _update_v2_sync_status(
                         "running", categories_done, total_categories,
-                        int(time.time() - t0), current, entries_scanned + count,
+                        int(time.time() - t0), "", entries_scanned + count,
+                        active_workers=metrics.get("active_workers", 0),
+                        directories_done=metrics.get("dirs_done", 0),
+                        known_pending=metrics.get("dirs_pending", 0),
+                        entries_discovered=entries_scanned + count,
+                        recent_paths=recent_paths,
                     )
                 async with index_session() as session:
                     store = store_factory(session)
@@ -300,36 +305,40 @@ async def _update_v2_sync_status(
     changed: int = 0,
     removed: int = 0,
     unchanged: int = 0,
+    *,
+    active_workers: int = 0,
+    directories_done: int = 0,
+    known_pending: int = 0,
+    entries_discovered: int | None = None,
+    recent_paths: list[str] | None = None,
 ) -> None:
-    """Persist v2 sync progress to SystemSetting for status endpoint."""
-    import json
-
+    """Persist truthful concurrent-scan progress for the Admin status API."""
     from cloudsite.platform.db import state_session
-    from sqlalchemy import text
+    from .status_store import write_v2_sync_progress
 
-    payload = json.dumps({
-        "status": status,
-        "categories_done": categories_done,
-        "categories_total": categories_total,
-        "elapsed_seconds": elapsed_seconds,
-        "current_path": current_path,
-        "entries_scanned": entries_scanned,
-        "added": added,
-        "changed": changed,
-        "removed": removed,
-        "unchanged": unchanged,
-    })
+    if entries_discovered is None:
+        entries_discovered = entries_scanned
+    if recent_paths is None:
+        recent_paths = [current_path] if current_path else []
+
     async with state_session() as session:
-        await session.execute(
-            text(
-                "INSERT INTO system_settings(key, value, value_type, updated_at) "
-                "VALUES (:key, :value, 'string', CURRENT_TIMESTAMP) "
-                "ON CONFLICT(key) DO UPDATE SET "
-                "value = excluded.value, "
-                "value_type = excluded.value_type, "
-                "updated_at = CURRENT_TIMESTAMP"
-            ),
-            {"key": "v2_sync_progress", "value": payload},
+        await write_v2_sync_progress(
+            session,
+            status=status,
+            categories_done=categories_done,
+            categories_total=categories_total,
+            elapsed_seconds=elapsed_seconds,
+            active_workers=active_workers,
+            directories_done=directories_done,
+            known_pending=known_pending,
+            entries_discovered=entries_discovered,
+            recent_paths=recent_paths,
+            added=added,
+            changed=changed,
+            removed=removed,
+            unchanged=unchanged,
+            current_path=current_path,
+            entries_scanned=entries_scanned,
         )
         await session.commit()
 
