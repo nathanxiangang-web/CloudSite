@@ -558,3 +558,95 @@ class CloudDownloadTask(StateBase):
     display_name: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class IndexScanRun(StateBase):
+    """Durable scan run state (V2 doc section 11): one row per root-mapping scan.
+
+    Persisted so concurrent BFS scan progress survives process restarts.
+    status transitions: pending -> running -> completed/failed/cancelled/expired.
+    fingerprint validates whether a resume candidate still matches the
+    intended scan scope. This table is written by future scan logic; the
+    schema is introduced ahead of that logic in this PR.
+    """
+
+    __tablename__ = "index_scan_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    root_mapping_id: Mapped[int] = mapped_column(
+        ForeignKey("content_root_mappings.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", index=True
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=text("CURRENT_TIMESTAMP"), index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    total_dirs: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    total_entries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'cancelled', 'expired')",
+            name="ck_index_scan_runs_status",
+        ),
+    )
+
+
+class IndexScanDir(StateBase):
+    """Durable scan directory queue (V2 doc section 12): persistent BFS queue + resume checkpoint.
+
+    Unique (scan_run_id, path) ensures a directory is enqueued at most once
+    per run. status transitions: pending -> running -> done/failed/skipped.
+    """
+
+    __tablename__ = "index_scan_dirs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    scan_run_id: Mapped[str] = mapped_column(
+        ForeignKey("index_scan_runs.id", ondelete="CASCADE"), index=True
+    )
+    path: Mapped[str] = mapped_column(Text)
+    depth: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", index=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    entry_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        UniqueConstraint("scan_run_id", "path", name="uq_index_scan_dirs_scan_run_path"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'done', 'failed', 'skipped')",
+            name="ck_index_scan_dirs_status",
+        ),
+        Index("ix_index_scan_dirs_scan_run_status", "scan_run_id", "status"),
+    )
+
+
+class IndexScanEntry(StateBase):
+    """Durable scan entry staging snapshot (V2 doc section 13).
+
+    Holds entries discovered during a scan that have not yet been promoted
+    to the formal resources table. staged_at defaults to now() to record
+    when the snapshot row was written.
+    """
+
+    __tablename__ = "index_scan_entries"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    scan_run_id: Mapped[str] = mapped_column(
+        ForeignKey("index_scan_runs.id", ondelete="CASCADE"), index=True
+    )
+    dir_path: Mapped[str] = mapped_column(Text)
+    resource_id: Mapped[str] = mapped_column(Text, index=True)
+    name: Mapped[str] = mapped_column(Text)
+    is_dir: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    staged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
+    __table_args__ = (
+        Index("ix_index_scan_entries_scan_run_dir_path", "scan_run_id", "dir_path"),
+    )

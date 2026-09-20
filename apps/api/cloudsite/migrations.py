@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 30
+CURRENT_SCHEMA_VERSION = 31
 
 
 @dataclass(frozen=True, slots=True)
@@ -1663,6 +1663,102 @@ async def state_v29_to_v30_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v30_to_v31_upgrade(conn: AsyncConnection) -> None:
+    """Schema v30 -> v31: durable scan run state tables (V2 doc sections 11-13).
+
+    Adds index_scan_runs, index_scan_dirs, index_scan_entries to state.db so
+    that concurrent BFS scan progress survives process restarts. This PR only
+    introduces the schema; no scan logic reads or writes these tables yet.
+
+    index_scan_runs: one row per root-mapping scan attempt.
+    index_scan_dirs: persistent directory queue + resume checkpoint; unique
+      per (scan_run_id, path).
+    index_scan_entries: staging snapshot of entries discovered during a scan
+      that have not yet been promoted to the formal resources table.
+
+    Enumerated statuses are enforced via CHECK constraints. Foreign keys
+    reference content_root_mappings(id) (the actual root mapping table) and
+    cascade on root deletion so stale scan state cannot outlive its root.
+    All statements are idempotent (CREATE TABLE IF NOT EXISTS / CREATE INDEX
+    IF NOT EXISTS) so re-running init_databases is safe.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS index_scan_runs("
+        "id VARCHAR(36) PRIMARY KEY,"
+        "root_mapping_id INTEGER NOT NULL REFERENCES content_root_mappings(id) ON DELETE CASCADE,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "finished_at DATETIME,"
+        "fingerprint TEXT,"
+        "total_dirs INTEGER NOT NULL DEFAULT 0,"
+        "total_entries INTEGER NOT NULL DEFAULT 0,"
+        "error_message TEXT,"
+        "CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled', 'expired')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_runs_root_mapping_id "
+        "ON index_scan_runs (root_mapping_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_runs_status "
+        "ON index_scan_runs (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_runs_started_at "
+        "ON index_scan_runs (started_at)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS index_scan_dirs("
+        "id VARCHAR(36) PRIMARY KEY,"
+        "scan_run_id VARCHAR(36) NOT NULL REFERENCES index_scan_runs(id) ON DELETE CASCADE,"
+        "path TEXT NOT NULL,"
+        "depth INTEGER NOT NULL,"
+        "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "started_at DATETIME,"
+        "finished_at DATETIME,"
+        "entry_count INTEGER NOT NULL DEFAULT 0,"
+        "error_message TEXT,"
+        "UNIQUE (scan_run_id, path),"
+        "CHECK (status IN ('pending', 'running', 'done', 'failed', 'skipped')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_dirs_scan_run_id "
+        "ON index_scan_dirs (scan_run_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_dirs_status "
+        "ON index_scan_dirs (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_dirs_scan_run_status "
+        "ON index_scan_dirs (scan_run_id, status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS index_scan_entries("
+        "id VARCHAR(36) PRIMARY KEY,"
+        "scan_run_id VARCHAR(36) NOT NULL REFERENCES index_scan_runs(id) ON DELETE CASCADE,"
+        "dir_path TEXT NOT NULL,"
+        "resource_id TEXT NOT NULL,"
+        "name TEXT NOT NULL,"
+        "is_dir BOOLEAN NOT NULL DEFAULT 0,"
+        "modified DATETIME,"
+        "metadata_hash TEXT,"
+        "staged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_entries_scan_run_id "
+        "ON index_scan_entries (scan_run_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_entries_scan_run_dir_path "
+        "ON index_scan_entries (scan_run_id, dir_path)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_scan_entries_resource_id "
+        "ON index_scan_entries (resource_id)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1693,5 +1789,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v27_to_v28", from_version=27, to_version=28, upgrade=state_v27_to_v28_upgrade),
     Migration(id="state_v28_to_v29", from_version=28, to_version=29, upgrade=state_v28_to_v29_upgrade),
     Migration(id="state_v29_to_v30", from_version=29, to_version=30, upgrade=state_v29_to_v30_upgrade),
+    Migration(id="state_v30_to_v31", from_version=30, to_version=31, upgrade=state_v30_to_v31_upgrade),
 ]
 
