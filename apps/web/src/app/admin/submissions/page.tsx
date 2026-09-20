@@ -47,6 +47,7 @@ export default function AdminSubmissionsPage() {
   const [adminNote, setAdminNote] = useState("");
   const [resourceId, setResourceId] = useState("");
   const [resourceKeyword, setResourceKeyword] = useState("");
+  const [selectedResourceName, setSelectedResourceName] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const query = useQuery({ queryKey: ["admin-submissions", statusFilter], queryFn: () => api<{ items: Submission[] }>(`/api/admin/submissions${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`) });
@@ -57,7 +58,7 @@ export default function AdminSubmissionsPage() {
   });
   const review = useMutation({
     mutationFn: () => api<Submission>(`/api/admin/submissions/${reviewingId}`, { method: "PATCH", body: JSON.stringify(buildReviewPayload(action, adminNote, resourceId)) }),
-    onSuccess: () => { setReviewingId(null); setAdminNote(""); setResourceId(""); setResourceKeyword(""); client.invalidateQueries({ queryKey: ["admin-submissions"] }); },
+    onSuccess: () => { setReviewingId(null); setAdminNote(""); setResourceId(""); setResourceKeyword(""); setSelectedResourceName(""); client.invalidateQueries({ queryKey: ["admin-submissions"] }); },
   });
   const remove = useMutation({
     mutationFn: (id: number) => api<{ ok: boolean }>(`/api/admin/submissions/${id}`, { method: "DELETE" }),
@@ -75,11 +76,22 @@ export default function AdminSubmissionsPage() {
   const publishReady = isPublishReady(action, resourceId);
 
   function openReview(id: number, defaultAction: ReviewAction) {
+    review.reset();
     setReviewingId(id);
     setAction(defaultAction);
     setAdminNote("");
     setResourceId("");
     setResourceKeyword("");
+    setSelectedResourceName("");
+  }
+
+  function closeReview() {
+    review.reset();
+    setReviewingId(null);
+    setAdminNote("");
+    setResourceId("");
+    setResourceKeyword("");
+    setSelectedResourceName("");
   }
 
   return <AdminShell title="投稿审核"><div className="admin-page">
@@ -105,7 +117,7 @@ export default function AdminSubmissionsPage() {
       {(review.error || remove.error) && <p className="form-error">{(review.error || remove.error)?.message}</p>}
     </section>
 
-    {reviewingId !== null && reviewable && (query.data?.items ?? []).find((item) => item.id === reviewingId) && <div className="submission-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setReviewingId(null); }}>
+    {reviewingId !== null && reviewable && (query.data?.items ?? []).find((item) => item.id === reviewingId) && <div className="submission-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeReview(); }}>
       {(() => { const item = (query.data?.items ?? []).find((it) => it.id === reviewingId)!; return <section className="panel submission-detail" role="dialog" aria-modal="true" aria-label="投稿详情" onMouseDown={(event) => event.stopPropagation()}>
         <h2>{item.resource_name}</h2>
         <dl>
@@ -121,24 +133,23 @@ export default function AdminSubmissionsPage() {
           {item.admin_note && <div><dt>审核备注</dt><dd>{item.admin_note}</dd></div>}
         </dl>
         <div className="submission-review-inline">
-          <select value={action} onChange={(event) => setAction(event.target.value as ReviewAction)}>
-            {item.status === "pending" && <><option value="approve">通过</option><option value="reject">拒绝</option></>}
-            {item.status === "approved" && <option value="publish">发布</option>}
-          </select>
+          {item.status === "pending"
+            ? <select value={action} onChange={(event) => setAction(event.target.value as ReviewAction)}><option value="approve">通过</option><option value="reject">拒绝</option></select>
+            : <strong>发布已审核投稿</strong>}
           <input value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="审核备注（可选）" maxLength={500} />
           {action === "publish" && <>
             <label className="diagnostic-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={resourceKeyword} onChange={(event) => setResourceKeyword(event.target.value)} placeholder="按资源名称搜索已索引资源" /></label>
             {resourceKeyword && <div className="diagnostic-suggestions">
               {resourceSearch.isFetching ? <span>正在搜索…</span>
                 : resourceSearch.error ? <><span>搜索失败：{resourceSearch.error.message}</span><button type="button" onClick={() => resourceSearch.refetch()}>重试</button></>
-                : resourceSearch.data?.items.length ? resourceSearch.data.items.map((resource) => <button key={resource.id} type="button" onClick={() => { setResourceId(resource.id); setResourceKeyword(resource.name); }}><strong>{resource.name}</strong><small>{typeLabel[resource.content_type] ?? resource.content_type} · {resource.extension || "资源"} · {resource.id}</small></button>)
+                : resourceSearch.data?.items.length ? resourceSearch.data.items.map((resource) => <button key={resource.id} type="button" onClick={() => { setResourceId(resource.id); setSelectedResourceName(resource.name); setResourceKeyword(""); }}><strong>{resource.name}</strong><small>{typeLabel[resource.content_type] ?? resource.content_type} · {resource.extension || "资源"} · {resource.id}</small></button>)
                 : <span>没有匹配资源</span>}
             </div>}
-            <input value={resourceId} onChange={(event) => setResourceId(event.target.value)} placeholder="已选资源 ID，也可手动输入" maxLength={200} />
-            {resourceId && <small>将绑定资源：{resourceId}</small>}
+            <input value={resourceId} onChange={(event) => { setResourceId(event.target.value); setSelectedResourceName(""); }} placeholder="已选资源 ID，也可手动输入" maxLength={200} />
+            {resourceId && <small>将绑定资源：{selectedResourceName ? `${selectedResourceName} · ` : ""}{resourceId}</small>}
           </>}
           <button className="primary" disabled={review.isPending || !publishReady} onClick={() => review.mutate()}>{review.isPending ? "处理中…" : item.status === "approved" ? "确认发布" : "提交审核"}</button>
-          <button onClick={() => { setReviewingId(null); setResourceKeyword(""); }}>关闭</button>
+          <button onClick={closeReview}>关闭</button>
         </div>
       </section>; })()}
     </div>}
