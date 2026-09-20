@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter, HTTPException
 
+from ...app.root_mapping_lifecycle import delete_root_mapping_with_identity_cleanup
 from ...modules.providers.contracts.public import (
     ProviderAdminError,
     create_root_mapping,
-    delete_root_mapping,
     list_root_mappings,
     update_root_mapping,
     validate_root_mapping_path as validate_provider_root_mapping_path,
@@ -104,7 +104,7 @@ async def delete_root_mapping_route(mapping_id: int):
 
     async with StateSession() as state:
         try:
-            await delete_root_mapping(state, mapping_id)
+            await delete_root_mapping_with_identity_cleanup(state, mapping_id)
         except ProviderAdminError as exc:
             raise _provider_http_exception(exc) from exc
     invalidate_home_cache()
