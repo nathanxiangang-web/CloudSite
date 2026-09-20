@@ -31,16 +31,62 @@ class WriteSummary:
 
 
 @dataclass(slots=True)
+class ScanRunSummary:
+    """Aggregated scan-run state consumed by the Complete Gate (V2 §18-19).
+
+    Carries the dir-status counts and the pagination flag so that
+    ``ReconcileService.reconcile`` can decide whether removals are safe
+    without taking a hard dependency on the durable-scan infrastructure.
+    """
+
+    pending_dirs: int = 0
+    running_dirs: int = 0
+    failed_dirs: int = 0
+    pagination_complete: bool = True
+
+
+@dataclass(slots=True)
 class ReconcileResult:
     changes: list[ChangeRecord] = field(default_factory=list)
     writes: WriteSummary = field(default_factory=WriteSummary)
     suppressed_removals: int = 0
     pagination_complete: bool = True
     shrink_suppressed: bool = False
+    degraded: bool = False
+    complete_gate_reason: str | None = None
 
     @property
     def removal_writes_blocked(self) -> bool:
         return self.suppressed_removals > 0
+
+
+def _is_snapshot_complete(scan_run: ScanRunSummary) -> bool:
+    """Complete Gate predicate (V2 doc sections 18-19).
+
+    True only when every dir is done (pending/running/failed all zero)
+    AND the snapshot pagination is complete. When False the caller must
+    suppress removal writes because absent entries may simply be
+    unobserved rather than genuinely removed.
+    """
+    return (
+        scan_run.pending_dirs == 0
+        and scan_run.running_dirs == 0
+        and scan_run.failed_dirs == 0
+        and scan_run.pagination_complete is True
+    )
+
+
+def _complete_gate_reason(scan_run: ScanRunSummary) -> str:
+    """First failing condition for the Complete Gate, for diagnostics."""
+    if scan_run.pending_dirs > 0:
+        return "pending_dirs"
+    if scan_run.running_dirs > 0:
+        return "running_dirs"
+    if scan_run.failed_dirs > 0:
+        return "failed_dirs"
+    if not scan_run.pagination_complete:
+        return "pagination_incomplete"
+    return "unknown"
 
 
 _ENTRY_FIELDS: tuple[str, ...] = ('path', 'name', 'size', 'modified_at', 'content_hash')
@@ -112,7 +158,11 @@ class ReconcileService:
     def __init__(self, store: IndexingStore) -> None:
         self._store = store
 
-    async def reconcile(self, snapshot: CategorySnapshot) -> ReconcileResult:
+    async def reconcile(
+        self,
+        snapshot: CategorySnapshot,
+        scan_run: ScanRunSummary | None = None,
+    ) -> ReconcileResult:
         existing = await self._store.list_indexed(
             category_id=snapshot.category_id,
             provider_id=snapshot.provider_id,
@@ -165,6 +215,8 @@ class ReconcileService:
 
         writes = WriteSummary()
         suppressed = 0
+        degraded = False
+        gate_reason: str | None = None
 
         if added_entries or changed_entries:
             await self._store.upsert(added_entries + changed_entries)
@@ -174,8 +226,20 @@ class ReconcileService:
         if to_touch:
             writes.unchanged = await self._store.touch_unchanged(to_touch)
 
+        # Complete Gate (V2 doc sections 18-19). When a scan_run summary is
+        # supplied, removals require every dir done AND pagination complete.
+        # When no scan_run is supplied, fall back to the snapshot's
+        # pagination_complete flag (backward-compatible behavior).
+        if scan_run is not None:
+            gate_ok = _is_snapshot_complete(scan_run)
+            if not gate_ok:
+                degraded = True
+                gate_reason = _complete_gate_reason(scan_run)
+        else:
+            gate_ok = snapshot.pagination_complete
+
         if removed_ids:
-            if snapshot.pagination_complete:
+            if gate_ok:
                 shrink_threshold = max(1, SHRINK_RATIO * len(existing_by_id))
                 if len(removed_ids) > shrink_threshold:
                     logger.warning(
@@ -191,6 +255,13 @@ class ReconcileService:
             else:
                 suppressed = len(removed_ids)
                 shrink_suppressed = False
+                if degraded:
+                    logger.warning(
+                        "complete gate failed (reason=%s): suppressing "
+                        "removal of %d entries for category=%s provider=%s; "
+                        "run marked degraded",
+                        gate_reason, len(removed_ids), cat, prov,
+                    )
         else:
             shrink_suppressed = False
 
@@ -200,6 +271,8 @@ class ReconcileService:
             suppressed_removals=suppressed,
             pagination_complete=snapshot.pagination_complete,
             shrink_suppressed=shrink_suppressed,
+            degraded=degraded,
+            complete_gate_reason=gate_reason,
         )
 
     @staticmethod
@@ -235,4 +308,9 @@ class ReconcileService:
         return False
 
 
-__all__ = ['WriteSummary', 'ReconcileResult', 'ReconcileService']
+__all__ = [
+    'ReconcileResult',
+    'ReconcileService',
+    'ScanRunSummary',
+    'WriteSummary',
+]
