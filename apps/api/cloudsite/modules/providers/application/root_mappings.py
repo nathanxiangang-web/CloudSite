@@ -174,15 +174,32 @@ async def update_root_mapping_preferences(
 async def delete_root_mapping(
     state: AsyncSession,
     mapping_id: int,
-) -> None:
+) -> dict[str, int]:
+    """Delete a root mapping and cascade-delete all owned identity rows.
+
+    Returns a dict with ``folders`` and ``resources`` counts of identity
+    rows removed so callers (admin route, tests) can audit the cascade.
+    """
     row = await state.get(ContentRootMapping, mapping_id)
     if row is None:
         raise ProviderAdminError(
             "映射不存在",
             status_code=404,
         )
+    from ....modules.identity.infrastructure.folder_repository import (
+        SqlAlchemyFolderIdentityRepository,
+    )
+    from ....modules.identity.infrastructure.resource_repository import (
+        SqlAlchemyResourceIdentityRepository,
+    )
+
+    folder_repo = SqlAlchemyFolderIdentityRepository(state)
+    resource_repo = SqlAlchemyResourceIdentityRepository(state)
+    folders_deleted = await folder_repo.cascade_delete_by_root(mapping_id)
+    resources_deleted = await resource_repo.cascade_delete_by_root(mapping_id)
     await state.delete(row)
     await state.commit()
+    return {"folders": folders_deleted, "resources": resources_deleted}
 
 
 __all__ = [
