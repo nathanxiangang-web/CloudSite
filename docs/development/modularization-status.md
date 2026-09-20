@@ -34,7 +34,7 @@ A module being `partial` does not by itself justify more refactoring.
 | Module | Manifest | Current convergence note |
 | --- | --- | --- |
 | Indexing | `active` | Production v2 scan/reconcile is the active path. I2a moves operation logging to platform observability; I2b moves provider loading behind the Providers scan-source contract. |
-| Search | `partial` | S2a owns dirty recovery; S2b deletes caller-zero row delta; S2c owns Catalog FTS/watermark/consume/rebuild behind Catalog source DTOs. Remaining Search S2 work is task-driven rebuild. |
+| Search | `partial` | S2a owns dirty recovery; S2b deletes caller-zero row delta; S2c owns Catalog FTS/watermark/consume/rebuild. S2d audited task-driven rebuild and intentionally deferred it because the default deployment does not guarantee a worker consumer; no further Search S2 refactor is mandatory. |
 | Resources | `partial` | Authoritative Folder/Resource persistence and public query/preview/download boundaries are module-owned. Remaining work is compatibility-facade/caller cleanup, not another persistence rewrite. |
 | Providers | `partial` | Connection/root administration, download/preview runtime, and inventory scan-source composition are module-owned. Low-level AList transport compatibility still remains internal to Providers. |
 | Identity | `partial` | Resource/folder identity persistence, matching, descendant path mutation boundary, and admin query boundary are module-owned. Remaining work is compatibility/migration orchestration cleanup only where callers still exist. |
@@ -56,7 +56,7 @@ The current backlog is tracked in issue #157. The intended order is:
 
 1. keep documentation/current-state metadata reconciled;
 2. narrow Indexing production-loader/logging compatibility;
-3. prioritize Search S2 consistency/recovery work;
+3. treat Search S2 consistency/recovery as converged; only revisit task-driven rebuild when worker availability becomes a default deployment invariant;
 4. converge other `partial` modules only where a real production caller still crosses a legacy edge;
 5. shift effort toward product/UI/E2E once the stop conditions are met.
 
