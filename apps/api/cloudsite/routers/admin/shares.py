@@ -10,6 +10,7 @@ from ...modules.shares.contracts.public import (
     ShareNotFound,
     ShareValidationError,
     cancel_share as cancel_share_record,
+    create_share as create_share_record,
     delete_share as delete_share_record,
     get_share,
     list_all_shares,
@@ -17,15 +18,11 @@ from ...modules.shares.contracts.public import (
     restore_share as restore_share_record,
     share_payload,
     share_status as module_share_status,
+    target_valid_for_share,
     update_share_duration as update_share_duration_record,
 )
 from ...modules.users.contracts.public import user_references
 from ...schemas import ShareInput, ShareUpdate
-from ...services.shares import share_dict
-from ...shares.service import (
-    create_share as create_share_row,
-    target_valid_for_share,
-)
 
 router = APIRouter()
 
@@ -163,9 +160,21 @@ async def create_share(payload: ShareInput):
     from ...main import StateSession, IndexSession
 
     async with StateSession() as state, IndexSession() as index:
-        created = await create_share_row(state, index, payload)
+        try:
+            created = await create_share_record(
+                state,
+                index,
+                object_type=payload.object_type,
+                object_id=payload.object_id,
+                access_mode=payload.access_mode,
+                duration=payload.duration,
+                title=payload.title,
+                secret_key=settings.secret_key,
+            )
+        except ShareValidationError as exc:
+            raise _translate_share_module_error(exc) from exc
         await state.commit()
-        return share_dict(created.share) | {"code": created.code}
+        return share_payload(created.share) | {"code": created.code}
 
 
 @router.patch("/api/admin/shares/{token}")
