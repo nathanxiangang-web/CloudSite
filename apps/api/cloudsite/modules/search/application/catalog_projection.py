@@ -13,7 +13,7 @@ from ...catalog.contracts.public import (
     pending_catalog_search_outbox,
     prepare_catalog_search_rebuild,
 )
-from ..infrastructure.catalog_projection import (
+from ..infrastructure.fts_repository import (
     catalog_projection_revision,
     catalog_search_fts_match as _catalog_search_fts_match,
     clear_catalog_search_projection,
