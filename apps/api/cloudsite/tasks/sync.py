@@ -5,7 +5,7 @@
 """
 import asyncio
 import random
-from contextlib import suppress
+
 
 from ..config import settings
 from ..modules.indexing.contracts.public import v2_sync_due
@@ -72,5 +72,17 @@ async def _safe_startup_sync():
             return
     if main.manual_sync_task and not main.manual_sync_task.done():
         return
-    with suppress(Exception):
+    main.manual_sync_task = asyncio.current_task()
+    try:
         await run_indexing_v2_production()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        await main.log_operation(
+            "sync",
+            "startup_sync_failed",
+            f"启动同步失败：{type(exc).__name__}: {str(exc)[:900]}",
+            level="ERROR",
+        )
+    finally:
+        main.manual_sync_task = None

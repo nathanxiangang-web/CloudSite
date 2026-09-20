@@ -30,10 +30,15 @@ async def sync(payload: SyncInput):
 @router.post("/api/admin/sync/cancel")
 async def cancel_sync():
     from ... import main as _main
+    from ...main import StateSession
 
     if not _main.manual_sync_task or _main.manual_sync_task.done():
         return {"status": "not_running"}
     _main.manual_sync_task.cancel()
+    from ...modules.indexing.infrastructure.status_store import write_v2_sync_progress
+    async with StateSession() as session:
+        await write_v2_sync_progress(session, status="cancelled")
+        await session.commit()
     return {"status": "cancelled", "message": "同步任务已取消"}
 
 

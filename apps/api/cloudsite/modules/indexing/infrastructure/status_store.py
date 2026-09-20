@@ -113,6 +113,46 @@ async def recover_interrupted_v2_sync(
     return True
 
 
+async def write_v2_sync_progress(
+    state: AsyncSession,
+    *,
+    status: str,
+    categories_done: int = 0,
+    categories_total: int = 0,
+    elapsed_seconds: int = 0,
+    current_path: str = "",
+    entries_scanned: int = 0,
+    added: int = 0,
+    changed: int = 0,
+    removed: int = 0,
+    unchanged: int = 0,
+) -> None:
+    """Persist v2 sync progress to SystemSetting for status endpoint."""
+    payload = json.dumps({
+        "status": status,
+        "categories_done": categories_done,
+        "categories_total": categories_total,
+        "elapsed_seconds": elapsed_seconds,
+        "current_path": current_path,
+        "entries_scanned": entries_scanned,
+        "added": added,
+        "changed": changed,
+        "removed": removed,
+        "unchanged": unchanged,
+    })
+    await state.execute(
+        text(
+            "INSERT INTO system_settings(key, value, value_type, updated_at) "
+            "VALUES (:key, :value, 'string', CURRENT_TIMESTAMP) "
+            "ON CONFLICT(key) DO UPDATE SET "
+            "value = excluded.value, "
+            "value_type = excluded.value_type, "
+            "updated_at = CURRENT_TIMESTAMP"
+        ),
+        {"key": "v2_sync_progress", "value": payload},
+    )
+
+
 async def toggle_automatic_sync(
     state: AsyncSession,
 ) -> bool:
@@ -165,6 +205,7 @@ async def toggle_automatic_sync(
 __all__ = [
     "read_v2_sync_progress",
     "recover_interrupted_v2_sync",
+    "write_v2_sync_progress",
     "v2_sync_due",
     "toggle_automatic_sync",
 ]

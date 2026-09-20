@@ -87,6 +87,7 @@ async def scheduler_loop() -> None:
             continue
         if main.manual_sync_task and not main.manual_sync_task.done():
             continue
+        main.manual_sync_task = asyncio.current_task()
         try:
             await run_indexing_v2_production()
         except asyncio.CancelledError:
@@ -98,3 +99,5 @@ async def scheduler_loop() -> None:
                 f"自动同步调度失败：{type(exc).__name__}: {str(exc)[:900]}",
                 level="ERROR",
             )
+        finally:
+            main.manual_sync_task = None
