@@ -114,7 +114,6 @@ class ShareUpdate(BaseModel):
 
 class ShareVerifyInput(BaseModel):
     code: str = Field(min_length=1, max_length=16)
-    captcha_token: str | None = Field(default=None, max_length=2000)
 
 
 class AdminLoginInput(BaseModel):
