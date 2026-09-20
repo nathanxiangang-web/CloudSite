@@ -6,9 +6,18 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from ..auth import require_user, validate_request_origin
 from ..config import settings
-from ..download import DownloadError, resolve_download_entry
+from ..modules.delivery.contracts.public import (
+    DownloadError,
+    _download_event,
+    resolve_download_entry,
+)
 from ..modules.providers.contracts.public import provider_runtime
-from ..modules.resources.contracts.public import resource_queries
+from ..modules.resources.contracts.public import (
+    check_download_rate,
+    get_effective_client_ip,
+    rate_limit_payload,
+    resource_queries,
+)
 from ..modules.shares.contracts.public import (
     MAX_SHARE_DOWNLOADS,
     ShareNotFound,
@@ -34,11 +43,6 @@ from ..modules.shares.contracts.public import (
     verify_attempt_failed,
 )
 from ..platform.observability import write_operation_log
-from ..download_rate_limit import (
-    check_download_rate,
-    get_effective_client_ip,
-    rate_limit_payload,
-)
 from ..request_context import request_is_https
 from ..schemas import ShareInput, ShareUpdate, ShareVerifyInput
 from ..services.shares import share_dict, share_is_expired
@@ -330,7 +334,7 @@ async def _share_download_response(
     request: Request,
     resource_id: str | None = None,
 ):
-    from ..main import StateSession, IndexSession, _download_event
+    from ..main import StateSession, IndexSession
 
     started = time.perf_counter()
     async with StateSession() as state, IndexSession() as index:
