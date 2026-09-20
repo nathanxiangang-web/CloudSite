@@ -1,6 +1,8 @@
 """admin/sync 路由：同步触发与状态。"""
 import asyncio
+
 from fastapi import APIRouter
+
 from ...modules.indexing.contracts.public import (
     read_v2_sync_progress,
     toggle_automatic_sync,
@@ -8,6 +10,8 @@ from ...modules.indexing.contracts.public import (
 from ...schemas import SyncInput
 
 router = APIRouter()
+
+_RECENT_PATHS_MAX = 64
 
 
 @router.post("/api/admin/sync", status_code=202)
@@ -35,11 +39,38 @@ async def cancel_sync():
     if not _main.manual_sync_task or _main.manual_sync_task.done():
         return {"status": "not_running"}
     _main.manual_sync_task.cancel()
-    from ...modules.indexing.infrastructure.status_store import write_v2_sync_progress
+    from ...modules.indexing.infrastructure.status_store import (
+        write_v2_sync_progress,
+    )
+
     async with StateSession() as session:
         await write_v2_sync_progress(session, status="cancelled")
         await session.commit()
     return {"status": "cancelled", "message": "同步任务已取消"}
+
+
+def _recent_paths(progress: dict[str, object]) -> list[str]:
+    raw = progress.get("recent_paths")
+    if raw is None:
+        raw = progress.get("current_path")
+
+    if isinstance(raw, str):
+        paths = [raw] if raw else []
+    elif isinstance(raw, list):
+        paths = [str(item) for item in raw if str(item)]
+    else:
+        paths = []
+    return paths[-_RECENT_PATHS_MAX:]
+
+
+def _count(progress: dict[str, object], key: str, fallback: str | None = None) -> int:
+    value = progress.get(key)
+    if value is None and fallback is not None:
+        value = progress.get(fallback)
+    try:
+        return max(int(value or 0), 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 @router.get("/api/admin/sync/status")
@@ -52,17 +83,26 @@ async def admin_sync_status():
     )
     async with StateSession() as session:
         progress = await read_v2_sync_progress(session)
+
+    status = str(progress.get("status") or "idle")
+    active_workers = _count(progress, "active_workers")
+    if status != "running":
+        active_workers = 0
+
     return {
         "engine_version": "v2",
         "manual_sync_running": manual_running,
-        "status": progress.get("status", "idle"),
-        "categories_done": progress.get("categories_done", 0),
-        "categories_total": progress.get("categories_total", 0),
-        "elapsed_seconds": progress.get("elapsed_seconds", 0),
-        "current_path": progress.get("current_path", ""),
-        "entries_scanned": progress.get("entries_scanned", 0),
+        "status": status,
+        "categories_done": _count(progress, "categories_done"),
+        "elapsed_seconds": _count(progress, "elapsed_seconds"),
+        "active_workers": active_workers,
+        "directories_done": _count(progress, "directories_done", "dirs_done"),
+        "known_pending": _count(progress, "known_pending", "dirs_pending"),
+        "entries_discovered": _count(
+            progress, "entries_discovered", "entries_scanned"
+        ),
+        "recent_paths": _recent_paths(progress),
     }
-
 
 
 @router.post("/api/admin/sync/auto-toggle")
