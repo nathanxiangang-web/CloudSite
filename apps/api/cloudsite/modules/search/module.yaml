@@ -22,6 +22,6 @@ forbidden_dependencies:
 
 constraints:
   - "FTS is rebuildable and never authoritative."
-  - "Rebuild/recovery must run through tasks."
+  - "Do not enqueue rebuild/recovery work unless the default deployment guarantees a worker consumer; admin/startup compatibility paths may remain synchronous until then."
   - "Every query must enforce visibility scope."
   - "Consume indexing events instead of importing indexing internals."
