@@ -1,11 +1,14 @@
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from cloudsite import search
+from cloudsite import search as legacy_search
 from cloudsite.database import IndexBase, StateBase
+from cloudsite.modules.search.application import service as search_service
+from cloudsite.modules.search.contracts.public import recover_search_index_if_dirty
+from cloudsite.platform.db import session as db_session
 from cloudsite.models import Folder, Resource, SystemSetting
 
 
@@ -23,8 +26,8 @@ async def test_search_dirty_recovery_rebuilds_from_index_without_alist(monkeypat
             "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
             "content_type UNINDEXED, description, tags, breadcrumb_text)"
         )
-    monkeypatch.setattr(search, "StateSession", state_factory)
-    monkeypatch.setattr(search, "IndexSession", index_factory)
+    monkeypatch.setattr(db_session, "StateSession", state_factory)
+    monkeypatch.setattr(db_session, "IndexSession", index_factory)
 
     now = datetime(2026, 8, 31, tzinfo=timezone.utc)
     async with state_factory() as session:
@@ -58,7 +61,7 @@ async def test_search_dirty_recovery_rebuilds_from_index_without_alist(monkeypat
         )
         await session.commit()
 
-    assert await search.recover_search_index_if_dirty() == 2
+    assert await recover_search_index_if_dirty() == 2
 
     async with index_factory() as session:
         rows = list(
@@ -91,8 +94,8 @@ async def test_failed_search_recovery_keeps_dirty_marker(monkeypatch):
             "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
             "content_type UNINDEXED, description, tags, breadcrumb_text)"
         )
-    monkeypatch.setattr(search, "StateSession", state_factory)
-    monkeypatch.setattr(search, "IndexSession", index_factory)
+    monkeypatch.setattr(db_session, "StateSession", state_factory)
+    monkeypatch.setattr(db_session, "IndexSession", index_factory)
     async with state_factory() as session:
         session.add(SystemSetting(key="search_index_dirty", value="true", value_type="boolean"))
         await session.commit()
@@ -100,12 +103,16 @@ async def test_failed_search_recovery_keeps_dirty_marker(monkeypatch):
     async def fail_rebuild(*_args, **_kwargs):
         raise RuntimeError("simulated interrupted rebuild")
 
-    monkeypatch.setattr(search, "rebuild_search_index", fail_rebuild)
+    monkeypatch.setattr(search_service, "rebuild_search_index", fail_rebuild)
     with pytest.raises(RuntimeError, match="interrupted rebuild"):
-        await search.recover_search_index_if_dirty()
+        await recover_search_index_if_dirty()
     async with state_factory() as session:
         dirty = await session.get(SystemSetting, "search_index_dirty")
         assert dirty.value == "true"
 
     await state_engine.dispose()
     await index_engine.dispose()
+
+
+def test_legacy_recovery_symbol_is_module_contract():
+    assert legacy_search.recover_search_index_if_dirty is recover_search_index_if_dirty
