@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -227,7 +228,7 @@ async def set_catalog_projection_revision(
     *,
     entry_id: str,
     revision: int,
-    updated_at,
+    updated_at: datetime,
 ) -> None:
     await index.execute(
         _CATALOG_PROJECTION_STATE_UPSERT_SQL,
