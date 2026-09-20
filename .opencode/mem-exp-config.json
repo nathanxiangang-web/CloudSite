@@ -1,0 +1,7 @@
+{
+  "auto_experience_retrieve": false,
+  "enable_experience_collect": false,
+  "enable_experience_reflect": false,
+  "scheduled_time_start": "00:00",
+  "scheduled_time_end": "06:00"
+}

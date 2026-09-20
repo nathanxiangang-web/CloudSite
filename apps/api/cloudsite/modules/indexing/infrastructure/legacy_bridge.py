@@ -159,6 +159,22 @@ async def _log_operation(
         await session.commit()
 
 
+async def _expire_stale_durable_runs() -> None:
+    """Expire stale durable scan runs on startup (V2 section 15)."""
+    try:
+        from cloudsite.platform.db import state_session
+
+        from .durable_scan_checkpoint import ScanRunManager
+
+        async with state_session() as session:
+            mgr = ScanRunManager(session)
+            await mgr.expire_stale_runs()
+            await session.commit()
+    except Exception as exc:  # noqa: BLE001 - non-fatal startup cleanup
+        logger = __import__("logging").getLogger(__name__)
+        logger.warning("expire_stale_durable_runs failed: %s", exc)
+
+
 async def run_indexing_v2_production(
     *,
     store_factory: Callable[[Any], IndexingStore],
@@ -177,11 +193,13 @@ async def run_indexing_v2_production(
     )
     from cloudsite.platform.db import index_session, state_session
 
-    from .alist_adapter import AListProviderAdapter
+    from .alist_adapter import AListProviderAdapter, _durable_scan_enabled
 
     t0 = time.time()
     await _log_operation("sync", "v2_sync_started", "v2 indexing sync started")
     await _update_v2_sync_status("running", 0, 0, 0, "", 0)
+
+    await _expire_stale_durable_runs()
 
     async with state_session() as state:
         sources = await enabled_provider_scan_sources(state)
@@ -225,19 +243,35 @@ async def run_indexing_v2_production(
                         entries_discovered=entries_scanned + count,
                         recent_paths=recent_paths,
                     )
-                async with index_session() as session:
-                    store = store_factory(session)
-                    result = await run_indexing_v2(
-                        adapter=adapter,
-                        store=store,
-                        category_ids=[f"root:{root.root_mapping_id}"],
-                        on_progress=_on_progress,
-                    )
-                    if result.get("status") == "partial":
-                        root_failed = True
-                        total_summary.errors.extend(result.get("errors", []))
-                    if not root_failed:
-                        await session.commit()
+                durable_session_cm = None
+                durable_session = None
+                if _durable_scan_enabled():
+                    durable_session_cm = state_session()
+                    durable_session = await durable_session_cm.__aenter__()
+                    adapter.set_durable_session(durable_session)
+                else:
+                    adapter.set_durable_session(None)
+                try:
+                    async with index_session() as session:
+                        store = store_factory(session)
+                        result = await run_indexing_v2(
+                            adapter=adapter,
+                            store=store,
+                            category_ids=[f"root:{root.root_mapping_id}"],
+                            on_progress=_on_progress,
+                        )
+                        if result.get("status") == "partial":
+                            root_failed = True
+                            total_summary.errors.extend(result.get("errors", []))
+                        if not root_failed:
+                            await session.commit()
+                finally:
+                    if durable_session is not None:
+                        try:
+                            await durable_session.commit()
+                        except Exception:  # noqa: BLE001
+                            pass
+                        await durable_session_cm.__aexit__(None, None, None)
             except asyncio.CancelledError:
                 await _update_v2_sync_status(
                     "cancelled", categories_done, total_categories,
