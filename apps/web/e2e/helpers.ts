@@ -3,8 +3,9 @@ import { request, expect, type APIRequestContext } from '@playwright/test';
 /**
  * Common E2E helpers for CloudSite.
  *
- * All helpers are defensive: they never throw on connection failures,
- * returning sentinel values instead so callers can skip tests cleanly.
+ * Environment probes/API bootstrap return sentinel values so unavailable
+ * environments can skip cleanly. Once the environment is ready, UI interaction
+ * helpers fail normally so broken user flows cannot be hidden as successful tests.
  */
 
 const WEB_BASE_URL = process.env.E2E_WEB_URL ?? 'http://localhost:3000';
@@ -120,7 +121,7 @@ export async function loginViaUi(
   await passInput.fill(creds.password);
   const submit = page.locator('button.user-auth-submit, button[type="submit"], button:has-text("登录"), button:has-text("Login"), button:has-text("Sign in")').first();
   await submit.click();
-  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15_000 }).catch(() => {});
+  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15_000 });
 }
 
 /**
