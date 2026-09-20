@@ -1,57 +1,50 @@
 import { test, expect } from './fixtures';
-import { navigateTo, waitForApiResponse, uniqueName } from './helpers';
+import { navigateTo } from './helpers';
 
 /**
- * B5-03 Browse flow.
+ * Deterministic browse flow.
  *
- * Covers: homepage -> category/resource list -> resource detail.
- * Tests skip when the API is not running.
+ * Environment availability may skip through shared fixtures. Once the guarded
+ * E2E seed is enabled, missing seeded content is a real failure.
  */
 
 test.describe('03 - Browse', () => {
-  test('homepage shows resource listings or categories', async ({ loggedInPage }) => {
+  test('homepage exposes the browse entry', async ({ loggedInPage }) => {
     await navigateTo(loggedInPage, '/');
-    const resourceLinks = loggedInPage.locator('a[href*="/resource/"], a[href*="/resources/"], a[href*="/browse"]');
-    const count = await resourceLinks.count();
-    expect(count).toBeGreaterThan(0);
+    await expect(loggedInPage.locator('a[href="/browse"]').first()).toBeVisible();
   });
 
-  test('browse page lists resources', async ({ loggedInPage }) => {
-    await navigateTo(loggedInPage, '/browse');
-    await waitForApiResponse(loggedInPage, /\/api\//);
-    const items = loggedInPage.locator('a[href*="/resource/"], [data-testid="resource-item"], article, .resource-card');
-    const count = await items.count();
-    expect(count).toBeGreaterThan(0);
+  test('browse lists the deterministic seeded resource', async ({
+    loggedInPage,
+    e2eSeed,
+  }) => {
+    await navigateTo(loggedInPage, '/browse?sort=name');
+
+    const resourceLink = loggedInPage.locator(
+      `a.resource-copy[href="/resource/${e2eSeed.resource_id}"]`,
+    );
+    await expect(resourceLink).toBeVisible();
+    await expect(resourceLink).toContainText(e2eSeed.resource_name);
   });
 
-  test('navigate from browse to resource detail', async ({ loggedInPage }) => {
-    await navigateTo(loggedInPage, '/browse');
-    await waitForApiResponse(loggedInPage, /\/api\//);
-    const resourceLink = loggedInPage.locator('a[href*="/resource/"]').first();
-    const linkCount = await resourceLink.count();
-    test.skip(linkCount === 0, 'no resources available to browse');
+  test('seeded browse resource opens its exact detail page', async ({
+    loggedInPage,
+    e2eSeed,
+  }) => {
+    await navigateTo(loggedInPage, '/browse?sort=name');
+
+    const resourceLink = loggedInPage.locator(
+      `a.resource-copy[href="/resource/${e2eSeed.resource_id}"]`,
+    );
+    await expect(resourceLink).toBeVisible();
     await resourceLink.click();
-    await loggedInPage.waitForURL((url) => url.pathname.includes('/resource/'), { timeout: 15_000 }).catch(() => {});
-    expect(loggedInPage.url()).toMatch(/\/resource\//);
-    const body = loggedInPage.locator('body');
-    await expect(body).toBeVisible();
-  });
 
-  test('resource detail page shows content', async ({ loggedInPage }) => {
-    await navigateTo(loggedInPage, '/browse');
-    await waitForApiResponse(loggedInPage, /\/api\//);
-    const resourceLink = loggedInPage.locator('a[href*="/resource/"]').first();
-    const linkCount = await resourceLink.count();
-    test.skip(linkCount === 0, 'no resources available');
-    await resourceLink.click();
-    await loggedInPage.waitForURL((url) => url.pathname.includes('/resource/'), { timeout: 15_000 }).catch(() => {});
-    const heading = loggedInPage.locator('h1, h2, [data-testid="resource-title"]').first();
-    await expect(heading).toBeVisible();
-  });
-
-  test('resources type filter page loads', async ({ loggedInPage }) => {
-    await navigateTo(loggedInPage, '/resources');
-    const body = loggedInPage.locator('body');
-    await expect(body).toBeVisible();
+    await expect(loggedInPage).toHaveURL(
+      new RegExp(`/resource/${e2eSeed.resource_id}$`),
+    );
+    await expect(loggedInPage.getByRole('heading', {
+      level: 1,
+      name: e2eSeed.resource_name,
+    })).toBeVisible();
   });
 });
