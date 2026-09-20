@@ -18,7 +18,7 @@ Core duties:
 ## Public API
 
 - `search(query, filters, sort, page)` - full-text search with pagination.
-- `rebuild_index()` - full FTS rebuild from DB (task-driven).
+- `rebuild_index()` - full FTS rebuild from DB. The current admin compatibility path is synchronous; task migration is deferred until a worker consumer is guaranteed by the default deployment.
 - `recover_index()` - detect and repair FTS corruption.
 - `upsert_search_doc(resource_id)` - project one resource into FTS.
 - `delete_search_doc(resource_id)` - remove from FTS on delete.
@@ -43,7 +43,7 @@ search document schema.
 ## Dependencies
 
 - platform/db
-- platform/tasks (for rebuild and recovery jobs)
+- platform/tasks (available for background work once worker consumption is guaranteed)
 - modules/resources (via contracts) - source data for projection.
 - modules/catalog (via contracts) - catalog metadata for projection.
 
@@ -51,10 +51,10 @@ Search does not own the data; it owns the index over data owned by others.
 
 ## Events/Tasks
 
-- Consumes `indexing.change_detected` to upsert/delete search docs.
-- Consumes `catalog.metadata_changed` to refresh projection.
-- Enqueues `rebuild_index` and `recover_index` as tasks.
-- Emits `search.index_rebuilt` for operational monitoring.
+- Catalog projection changes are consumed through the Catalog outbox contract.
+- Startup dirty-index recovery runs through the Search module contract.
+- Public and Catalog full rebuilds are currently synchronous, admin-only compatibility operations.
+- Do not convert these endpoints to enqueue-only behavior until the default deployment guarantees an active worker for the target queue.
 
 ## Security
 
@@ -69,7 +69,7 @@ Search does not own the data; it owns the index over data owned by others.
   to a degraded DB-side LIKE search until rebuild completes.
 - Projection lag: outbox pattern ensures eventual consistency; stale results
   are acceptable for search, corrected on next projection tick.
-- Rebuild OOM on large catalogs: rebuild is batched and resumable via tasks.
+- Large rebuilds can make the admin request long-running today; task-backed execution remains a deployment-level follow-up, not a Search-only refactor.
 - Query timeout: return partial results with a `truncated` flag.
 
 ## Tests
@@ -81,7 +81,7 @@ Search does not own the data; it owns the index over data owned by others.
 ## Do Not
 
 - Do not store authoritative data in the FTS index; it is rebuildable.
-- Do not run rebuild inline; always via tasks.
+- Do not enqueue rebuild work unless the deployment guarantees a worker consumer; until then keep the admin-only synchronous compatibility path explicit.
 - Do not bypass visibility filters; every query must scope to the user.
 - Do not depend on modules/indexing directly; consume its events.
 
