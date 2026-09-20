@@ -1,0 +1,308 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-debt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enforce architecture debt ratchet
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          zero_sha="0000000000000000000000000000000000000000"
+          if [[ -n "$BASE_REF" ]]; then
+            python scripts/check-architecture-debt.py --baseline-ref "origin/$BASE_REF"
+          elif [[ "$EVENT_NAME" == "push" && "$EVENT_REF" == "refs/heads/main" && -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero_sha" ]]; then
+            python scripts/check-architecture-debt.py --baseline-ref "$BEFORE_SHA"
+          else
+            python scripts/check-architecture-debt.py
+          fi
+      - name: Self-test architecture debt rules
+        run: bash scripts/tests/test-architecture-debt-ratchet.sh
+      - name: Validate module ownership and dependency graph
+        run: python scripts/check-module-architecture.py
+      - name: Self-test module architecture rules
+        run: bash scripts/tests/test-module-architecture.sh
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend with test dependencies
+        run: pip install -e ".[test]"
+      - name: Run backend tests
+        run: pytest
+      - name: Build API wheel
+        run: pip wheel . --no-deps -w dist
+      - name: Verify API wheel contents
+        run: |
+          python - <<'PY'
+          import glob
+          import sys
+          import zipfile
+
+          wheels = sorted(glob.glob("dist/*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(
+                  "wheel content gate FAILED: expected exactly one wheel, found "
+                  + str(wheels)
+              )
+          wheel = wheels[0]
+          with zipfile.ZipFile(wheel) as zf:
+              names = zf.namelist()
+
+          errors = []
+          if not any(name.startswith("cloudsite/") for name in names):
+              errors.append("wheel is missing the cloudsite/ package")
+          for prefix in ("tests/", "data/"):
+              count = sum(name.startswith(prefix) for name in names)
+              if count:
+                  errors.append(f"wheel contains forbidden {prefix!r} payload ({count} entries)")
+          for name in names:
+              lower = name.lower()
+              if lower.endswith((
+                  ".db", ".sqlite", ".sqlite3", ".sqlite-journal",
+                  ".db-journal", ".db-wal", ".db-shm",
+              )):
+                  errors.append("wheel contains database file: " + name)
+              basename = lower.rsplit("/", 1)[-1]
+              if basename == ".env" or basename.startswith(".env."):
+                  errors.append("wheel contains environment file: " + name)
+
+          top_level = {name.split("/", 1)[0] for name in names}
+          extras = {
+              item for item in top_level
+              if not item.endswith((".dist-info", ".egg-info"))
+              and item != "cloudsite"
+          }
+          if extras:
+              errors.append("wheel contains unexpected top-level entries: " + str(sorted(extras)))
+          if errors:
+              print("wheel content gate FAILED for " + wheel, file=sys.stderr)
+              for error in errors:
+                  print("  - " + error, file=sys.stderr)
+              raise SystemExit(1)
+          print("wheel content gate PASSED for " + wheel)
+          print("  entries: " + str(len(names)))
+          print("  top-level: " + str(sorted(top_level)))
+          PY
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Frontend architecture
+        run: pnpm run arch
+      - name: Self-test frontend architecture rules
+        run: pnpm run arch:test
+      - name: Type check
+        run: pnpm run typecheck
+      - name: Lint
+        run: pnpm run lint
+      - name: Test
+        run: pnpm run test
+      - name: Build frontend
+        run: pnpm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDSITE_SECRET_KEY: ci-validation-key
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate generic Compose
+        run: docker compose config --quiet
+      - name: Validate Traefik Compose
+        env:
+          CLOUDSITE_DOMAIN: cloud.example.com
+        run: docker compose -f docker-compose.traefik.yml config --quiet
+      - name: Validate development Compose
+        run: docker compose -f docker-compose.dev.yml config --quiet
+      - name: Validate offline Compose overlay
+        run: docker compose -f docker-compose.yml -f docker-compose.offline.yml config --quiet
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build API and Web images
+        run: docker compose -f docker-compose.dev.yml build
+      - name: Start stack and wait for health
+        run: docker compose -f docker-compose.dev.yml up -d --wait
+      - name: Verify API health and version
+        run: |
+          curl -fsS http://127.0.0.1:8000/api/health | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["status"]=="healthy"; print("api", d["version"])'
+      - name: Verify Web responds
+        run: curl -fsS -o /dev/null http://127.0.0.1:3000/
+      - name: Compose down
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down
+
+  version-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check release version consistency
+        run: |
+          if [[ "${{ github.ref_name }}" == v* ]]; then
+            python scripts/check-release-version.py --tag "${{ github.ref_name }}"
+          else
+            python scripts/check-release-version.py
+          fi
+      - name: Check README install consistency
+        run: python scripts/check-readme-install.py
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Python dependency audit (pip-audit)
+        working-directory: apps/api
+        run: |
+          pip install -e ".[test]"
+          pip install pip-audit
+          pip-audit --skip-editable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - name: Node dependency audit (pnpm audit)
+        working-directory: apps/web
+        run: pnpm audit --audit-level=high --prod
+
+  backup-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run backup hardening test
+        run: bash scripts/tests/test-backup-hardening.sh
+      - name: Run backup content roundtrip test
+        run: bash scripts/tests/test-backup-content-roundtrip.sh
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: [architecture-debt, backend, frontend, compose, docker-smoke, version-consistency, dependency-audit, backup-hardening]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/images.yml
+    secrets: inherit
+
+  release-offline:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify release version matches tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/check-release-version.py --tag "$RELEASE_TAG"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build offline release assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/CloudSite
+          for arch in amd64 arm64; do
+            for component in api web; do
+              image="ghcr.io/${IMAGE_OWNER}/cloudsite-${component}:${RELEASE_TAG}"
+              archive="artifacts/cloudsite-${component}-${RELEASE_TAG}-linux-${arch}.tar.gz"
+              docker pull --platform "linux/${arch}" "$image"
+              docker save "$image" | gzip -1 > "$archive"
+              docker image rm "$image"
+            done
+          done
+          cp docker-compose.yml docker-compose.offline.yml .env.example README.md LICENSE artifacts/CloudSite/
+          cp -R scripts docs artifacts/CloudSite/
+          (cd artifacts && zip -qr "cloudsite-${RELEASE_TAG}-offline-deploy.zip" CloudSite)
+          (cd artifacts && sha256sum \
+            "cloudsite-api-${RELEASE_TAG}-linux-amd64.tar.gz" \
+            "cloudsite-api-${RELEASE_TAG}-linux-arm64.tar.gz" \
+            "cloudsite-web-${RELEASE_TAG}-linux-amd64.tar.gz" \
+            "cloudsite-web-${RELEASE_TAG}-linux-arm64.tar.gz" \
+            "cloudsite-${RELEASE_TAG}-offline-deploy.zip" > SHA256SUMS.txt)
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          prerelease=false
+          if [[ "$RELEASE_TAG" =~ -(alpha|beta|rc)([.-]|$) ]]; then
+            prerelease=true
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS.txt --clobber
+            if [[ "$prerelease" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --prerelease
+            fi
+          else
+            release_args=(--generate-notes --verify-tag)
+            if [[ "$prerelease" == "true" ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS.txt "${release_args[@]}"
+          fi

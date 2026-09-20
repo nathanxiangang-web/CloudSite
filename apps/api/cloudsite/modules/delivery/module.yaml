@@ -1,0 +1,29 @@
+schema_version: 1
+name: "delivery"
+kind: "business"
+migration_status: "partial"
+responsibility: "Delivery preparation, authorization, AList redirect construction, delivery tracking, diagnostics, and optional cache warm-up."
+public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/http"
+  - "modules/providers/contracts"
+  - "modules/resources/contracts"
+  - "modules/identity/contracts"
+
+owned_tables:
+  - "delivery_jobs"
+  - "download_events"
+  - "download_diagnostics"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Never proxy file bytes; issue redirects to AList."
+  - "Redact tokens from logged redirect URLs."
+  - "Do not depend on catalog or search internals."
+  - "Tracking writes must not block delivery."

@@ -1,0 +1,207 @@
+"""C1 Catalog request and response models for the HTTP boundary.
+
+Domain exceptions live in ``services/catalog.py``. Keeping them out of this
+module prevents the HTTP layer from catching a different class than the
+application layer raises.
+
+All identifiers use the reviewed C1 stable-ID contract: a 3-character prefix
+followed by 32 hex characters (35 characters total), matching the String(35)
+columns on CatalogEntry, CatalogRelease, CatalogAsset, and CatalogLocation.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+# ---- Shared field patterns ----
+
+_CONTENT_TYPE_PATTERN = r"^[a-z][a-z0-9_-]{1,39}$"
+_ENTRY_ID_PATTERN = r"^ce_[A-Za-z0-9_-]{32}$"
+_ASSET_ID_PATTERN = r"^ca_[A-Za-z0-9_-]{32}$"
+_RESOURCE_ID_PATTERN = r"^r_[A-Za-z0-9_-]{32}$"
+
+
+# ---- Request schemas ----
+
+class CatalogEntryCreateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    summary: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=4000)
+    content_type: str = Field(pattern=_CONTENT_TYPE_PATTERN)
+    slug: str | None = Field(default=None, min_length=1, max_length=160)
+
+
+class CatalogEntryUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=0)
+    slug: str | None = Field(default=None, min_length=1, max_length=160)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    summary: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=4000)
+    content_type: str | None = Field(default=None, pattern=_CONTENT_TYPE_PATTERN)
+    cover_resource_id: str | None = Field(default=None, max_length=64)
+    status: Literal["draft", "published", "archived", "disabled"] | None = None
+    sort_order: int | None = None
+
+
+class CatalogEntryPublishInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+
+
+class CatalogLocationBindInput(BaseModel):
+    """Bind an indexed resource as a download location for a catalog asset.
+
+    Only stable resource_id references are accepted; arbitrary upstream or
+    mirror URLs are never accepted. Extra fields are forbidden so callers
+    cannot sneak in url/upstream_url/mirror_url fields. The resource_id must
+    exist in index.db (enforced by the service layer).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: str = Field(pattern=_ASSET_ID_PATTERN)
+    resource_id: str = Field(pattern=_RESOURCE_ID_PATTERN)
+    label: str = Field(default="", max_length=100)
+    is_primary: bool = False
+
+
+# ---- Response schemas ----
+
+class CatalogLocationSummary(BaseModel):
+    location_id: str
+    asset_id: str
+    display_name: str
+    sort_order: int
+    available: bool
+    content_type: str = ""
+    extension: str = ""
+    size: int = 0
+
+
+class CatalogEntrySummary(BaseModel):
+    entry_id: str
+    title: str
+    summary: str
+    content_type: str
+    status: Literal["draft", "published", "archived", "disabled"]
+    revision: int
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
+
+
+class CatalogEntryDetail(CatalogEntrySummary):
+    description: str = ""
+    locations: list[CatalogLocationSummary] = Field(default_factory=list)
+
+
+class CatalogEntryListOutput(BaseModel):
+    items: list[CatalogEntrySummary]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class CatalogPreviewOutput(BaseModel):
+    entry: CatalogEntryDetail
+    previewable: bool
+    reason: str = ""
+
+
+_LOCATION_ID_PATTERN = r"^cl_[A-Za-z0-9_-]{32}$"
+_RELEASE_SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,159}$"
+_ASSET_SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,159}$"
+_RELEASE_STATUS = Literal["draft", "published", "archived", "disabled"]
+_ASSET_STATUS = Literal["active", "disabled"]
+_LOCATION_STATUS = Literal["active", "disabled"]
+
+
+class CatalogReleaseCreateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(pattern=_RELEASE_SLUG_PATTERN, max_length=160)
+    title: str = Field(min_length=1, max_length=200)
+    release_notes: str = Field(default="", max_length=4000)
+    channel: str = Field(default="unknown", max_length=20)
+    release_date: datetime | None = None
+    is_recommended: bool = False
+    sort_order: int = 0
+
+
+class CatalogReleaseUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str | None = Field(default=None, pattern=_RELEASE_SLUG_PATTERN, max_length=160)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    release_notes: str | None = Field(default=None, max_length=4000)
+    channel: str | None = Field(default=None, max_length=20)
+    release_date: datetime | None = None
+    is_recommended: bool | None = None
+    status: _RELEASE_STATUS | None = None
+    sort_order: int | None = None
+
+
+class CatalogAssetCreateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(pattern=_ASSET_SLUG_PATTERN, max_length=160)
+    display_name: str = Field(min_length=1, max_length=500)
+    platform: str = Field(default="", max_length=40)
+    kind: str = Field(default="file", max_length=40)
+    architecture: str = Field(default="unknown", max_length=20)
+    package_type: str = Field(default="unknown", max_length=40)
+    language: str = Field(default="unknown", max_length=20)
+    build_label: str = Field(default="", max_length=120)
+    checksum: str | None = Field(default=None, max_length=200)
+    checksum_algorithm: str | None = Field(default=None, max_length=20)
+    size: int | None = Field(default=None, ge=0)
+    sort_order: int = 0
+
+
+class CatalogAssetUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str | None = Field(default=None, pattern=_ASSET_SLUG_PATTERN, max_length=160)
+    display_name: str | None = Field(default=None, min_length=1, max_length=500)
+    platform: str | None = Field(default=None, max_length=40)
+    kind: str | None = Field(default=None, max_length=40)
+    architecture: str | None = Field(default=None, max_length=20)
+    package_type: str | None = Field(default=None, max_length=40)
+    language: str | None = Field(default=None, max_length=20)
+    build_label: str | None = Field(default=None, max_length=120)
+    checksum: str | None = Field(default=None, max_length=200)
+    checksum_algorithm: str | None = Field(default=None, max_length=20)
+    size: int | None = Field(default=None, ge=0)
+    status: _ASSET_STATUS | None = None
+    sort_order: int | None = None
+
+
+class CatalogLocationAttachInput(BaseModel):
+    """Bind an indexed resource as a download location for a catalog asset.
+
+    Only stable resource_id references are accepted; arbitrary upstream or
+    mirror URLs are never accepted. Extra fields are forbidden.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    resource_id: str = Field(pattern=_RESOURCE_ID_PATTERN)
+    label: str = Field(default="", max_length=100)
+    is_primary: bool = False
+
+
+class CatalogLocationUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = Field(default=None, max_length=100)
+    is_primary: bool | None = None
+    status: _LOCATION_STATUS | None = None

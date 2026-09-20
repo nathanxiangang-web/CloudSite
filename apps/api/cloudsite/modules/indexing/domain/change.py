@@ -8,11 +8,11 @@ from typing import Any
 
 class ChangeType(str, Enum):
     ADDED = 'added'
+    REMOVED = 'removed'
     CHANGED = 'changed'
+    UNCHANGED = 'unchanged'
     RENAMED = 'renamed'
     MOVED = 'moved'
-    REMOVED = 'removed'
-    UNCHANGED = 'unchanged'
     CONFLICT = 'conflict'
 
 
@@ -32,7 +32,7 @@ class ChangeRecord:
 
     @property
     def is_write(self) -> bool:
-        return self.change_type not in (ChangeType.UNCHANGED, ChangeType.CONFLICT)
+        return self.change_type is not ChangeType.UNCHANGED
 
 
 __all__ = ['ChangeType', 'ChangeRecord']

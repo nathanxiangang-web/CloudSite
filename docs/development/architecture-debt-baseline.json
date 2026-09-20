@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "policy": "Architecture debt may only decrease: current baseline must exactly match current debt, and no change may introduce debt absent from the previous baseline.",
+  "counts": {
+    "module_legacy_import": 0,
+    "router_orm_import": 0
+  },
+  "violations": []
+}

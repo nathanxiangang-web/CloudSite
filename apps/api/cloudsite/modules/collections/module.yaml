@@ -1,0 +1,28 @@
+schema_version: 1
+name: "collections"
+kind: "business"
+migration_status: "partial"
+responsibility: "User collections, collection items, topics, seeds, and visibility rules."
+public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "modules/catalog/contracts"
+  - "modules/resources/contracts"
+  - "modules/providers/contracts"
+  - "modules/identity/contracts"
+
+owned_tables:
+  - "collections"
+  - "collection_items"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Reference catalog/resources by ID instead of copying metadata."
+  - "Visibility checks are mandatory."
+  - "Shares may depend on collections; collections must not depend on shares."
+  - "Generated seeds are not auto-shared."

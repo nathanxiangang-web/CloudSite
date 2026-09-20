@@ -1,0 +1,41 @@
+"use client";
+
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CalendarDays, Clock3, Heart, KeyRound, LogOut, PlayCircle, Share2, ShieldCheck, Star, UserRound } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { PublicShell } from "@/components/PublicShell";
+import { api } from "@/lib/api";
+import { AUTH_QUERY_KEY, useAuth } from "@/lib/auth";
+
+export default function AccountPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const auth = useAuth();
+  useEffect(() => { if (!auth.isLoading && !auth.error && !auth.data?.authenticated) router.replace("/login"); }, [auth.isLoading, auth.error, auth.data?.authenticated, router]);
+  const logout = useMutation({
+    mutationFn: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY }); router.push("/login"); },
+  });
+  const user = auth.data?.user;
+  return <PublicShell><div className="page account-page">
+    {auth.isLoading ? <div className="loading">正在读取账号…</div>
+      : auth.error ? <div className="empty error-state">账号状态加载失败：{auth.error.message}<button type="button" onClick={() => auth.refetch()}>重试</button></div>
+      : !user ? <div className="loading">正在跳转登录…</div> : <>
+      <section className="account-hero"><span className="account-avatar">{user.username.slice(0, 1).toUpperCase()}</span><div><p>CloudSite 账号</p><h1>{user.username}</h1><span className="status-pill active"><ShieldCheck />账号正常</span></div></section>
+      <section className="account-grid">
+        <article className="panel account-details"><h2><UserRound />账号信息</h2><dl>
+          <div><dt>用户名</dt><dd>{user.username}</dd></div>
+          <div><dt>账号状态</dt><dd>正常</dd></div>
+          <div><dt>注册时间</dt><dd>{formatTime(user.created_at)}</dd></div>
+          <div><dt>最近登录</dt><dd>{user.last_login_at ? formatTime(user.last_login_at) : "暂无记录"}</dd></div>
+        </dl></article>
+        <article className="panel account-actions"><h2><CalendarDays />我的内容</h2><p>查看收藏、浏览历史、播放进度和自己创建的分享。</p><Link className="button primary" href="/account/follows"><Star />我的关注</Link><Link className="button" href="/account/favorites"><Heart />文件收藏</Link><Link className="button" href="/account/history"><Clock3 />浏览历史</Link><Link className="button" href="/account/playback"><PlayCircle />继续播放</Link><Link className="button" href="/account/shares"><Share2 />我的分享</Link><Link className="button" href="/account/security"><KeyRound />修改密码</Link><button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut />{logout.isPending ? "正在退出…" : "退出登录"}</button></article>
+      </section>
+      {logout.error && <p className="form-error">{logout.error.message}</p>}
+    </>}
+  </div></PublicShell>;
+}
+
+function formatTime(value: string) { return new Date(value).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }); }

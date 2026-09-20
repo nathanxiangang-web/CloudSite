@@ -1,0 +1,329 @@
+import asyncio
+from contextlib import asynccontextmanager
+import json
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+
+async def _true_coro():
+    return True
+
+from fastapi import Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from cloudsite import download_rate_limit, main
+from cloudsite.modules.resources.infrastructure import rate_limit as rate_limit_impl
+from cloudsite.database import StateBase
+from cloudsite.download_rate_limit import (
+    DownloadRateDecision,
+    check_download_rate,
+    get_effective_client_ip,
+    hash_ip,
+    normalize_ip,
+    rate_limit_payload,
+)
+from cloudsite.modules.resources.infrastructure.models import DownloadRateLimit
+
+
+BASE_TIME = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+
+
+def _state_session_scope(factory):
+    @asynccontextmanager
+    async def scoped():
+        async with factory() as session:
+            yield session
+
+    return scoped
+
+
+async def rate_store(tmp_path, monkeypatch, name="rate.db"):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / name}")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(StateBase.metadata.create_all)
+    monkeypatch.setattr(rate_limit_impl, "state_session", _state_session_scope(factory))
+    return engine, factory
+
+
+def request_from(peer: str, forwarded: str | None = None) -> Request:
+    headers = [] if forwarded is None else [(b"x-forwarded-for", forwarded.encode())]
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/d/r_test",
+            "raw_path": b"/d/r_test",
+            "query_string": b"",
+            "headers": headers,
+            "client": (peer, 12345),
+            "server": ("testserver", 80),
+        }
+    )
+
+
+async def test_download_first_five_allowed(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    decisions = [await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=i)) for i in range(5)]
+    assert [item.allowed for item in decisions] == [True, True, True, True, True]
+    await engine.dispose()
+
+
+async def test_download_sixth_blocked(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    for offset in (0, 10, 20, 30, 40):
+        assert (await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))).allowed
+    denied = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=50))
+    assert denied.allowed is False
+    assert denied.retry_after == 60
+    assert denied.blocked_until == BASE_TIME + timedelta(seconds=110)
+    assert rate_limit_payload(denied)["code"] == "DOWNLOAD_RATE_LIMITED"
+    await engine.dispose()
+
+
+async def test_download_retry_after_uses_persisted_remaining_time(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    for offset in (0, 10, 20, 30, 40, 50):
+        decision = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
+    again = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=70))
+    assert decision.retry_after == 60
+    assert again.retry_after == 40
+    await engine.dispose()
+
+
+async def test_refresh_does_not_reset_block(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    for offset in (0, 10, 20, 30, 40, 50):
+        blocked = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
+    refreshed = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=61))
+    assert refreshed.allowed is False
+    assert refreshed.blocked_until == blocked.blocked_until
+    assert refreshed.retry_after == 49
+    await engine.dispose()
+
+
+async def test_blocked_retry_does_not_extend_wait(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    for offset in (0, 10, 20, 30, 40, 50):
+        first = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
+    repeated = [await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset)) for offset in (60, 70, 90)]
+    assert all(item.blocked_until == first.blocked_until for item in repeated)
+    await engine.dispose()
+
+
+async def test_wait_expires(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    for offset in (0, 10, 20, 30, 40, 50):
+        await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
+    assert (await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=110))).allowed
+    await engine.dispose()
+
+
+async def test_different_ip_independent(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    for offset in (0, 10, 20, 30, 40, 50):
+        blocked = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
+    assert blocked.allowed is False
+    assert (await check_download_rate("203.0.113.11", BASE_TIME + timedelta(seconds=30))).allowed
+    await engine.dispose()
+
+
+def test_ipv6_normalization():
+    assert normalize_ip("2001:0db8:0:0:0:0:0:1") == "2001:db8::1"
+    assert hash_ip("2001:0db8:0:0:0:0:0:1") == hash_ip("2001:db8::1")
+    assert normalize_ip("::ffff:192.0.2.10") == "192.0.2.10"
+
+
+async def test_concurrent_six_requests_only_five_pass(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    results = await asyncio.gather(*(check_download_rate("203.0.113.10", BASE_TIME) for _ in range(6)))
+    assert sum(item.allowed for item in results) == 5
+    assert sum(not item.allowed for item in results) == 1
+    await engine.dispose()
+
+
+async def test_api_restart_keeps_rate_limit_state(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+    for offset in (0, 10, 20, 30, 40, 50):
+        blocked = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=offset))
+    await engine.dispose()
+
+    restarted_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'rate.db'}")
+    restarted_factory = async_sessionmaker(restarted_engine, expire_on_commit=False)
+    monkeypatch.setattr(rate_limit_impl, "state_session", _state_session_scope(restarted_factory))
+    after_restart = await check_download_rate("203.0.113.10", BASE_TIME + timedelta(seconds=55))
+    assert after_restart.allowed is False
+    assert after_restart.blocked_until == blocked.blocked_until
+    assert after_restart.retry_after == 55
+    await restarted_engine.dispose()
+
+
+async def test_download_rate_cleanup_removes_only_stale_inactive_rows(tmp_path, monkeypatch):
+    engine, factory = await rate_store(tmp_path, monkeypatch)
+    async with factory() as session:
+        session.add_all(
+            [
+                DownloadRateLimit(
+                    ip_key="a" * 64,
+                    blocked_until=BASE_TIME - timedelta(minutes=1),
+                    updated_at=BASE_TIME - timedelta(hours=25),
+                ),
+                DownloadRateLimit(
+                    ip_key="b" * 64,
+                    blocked_until=None,
+                    updated_at=BASE_TIME - timedelta(hours=25),
+                ),
+                DownloadRateLimit(
+                    ip_key="c" * 64,
+                    blocked_until=BASE_TIME + timedelta(hours=1),
+                    updated_at=BASE_TIME - timedelta(hours=25),
+                ),
+                DownloadRateLimit(
+                    ip_key="d" * 64,
+                    blocked_until=BASE_TIME - timedelta(minutes=1),
+                    updated_at=BASE_TIME - timedelta(hours=1),
+                ),
+            ]
+        )
+        await session.commit()
+
+    assert await download_rate_limit.cleanup_download_rate_limits(BASE_TIME) == 2
+    async with factory() as session:
+        remaining = set((await session.scalars(select(DownloadRateLimit.ip_key))).all())
+        assert remaining == {"c" * 64, "d" * 64}
+    await engine.dispose()
+
+
+def test_untrusted_x_forwarded_for_not_accepted(monkeypatch):
+    monkeypatch.setattr(rate_limit_impl.settings, "trusted_proxy_cidrs", "127.0.0.1/32,172.16.0.0/12")
+    assert get_effective_client_ip(request_from("198.51.100.20", "203.0.113.99")) == "198.51.100.20"
+
+
+def test_trusted_proxy_chain_uses_first_untrusted_hop(monkeypatch):
+    monkeypatch.setattr(rate_limit_impl.settings, "trusted_proxy_cidrs", "127.0.0.1/32,172.16.0.0/12")
+    request = request_from("172.20.0.5", "192.0.2.250, 198.51.100.20, 172.19.0.8")
+    assert get_effective_client_ip(request) == "198.51.100.20"
+
+
+async def test_rate_limit_runs_before_provider(monkeypatch):
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+    class FakeQueries:
+        async def download_resource(self, *, resource_id, enabled_root_ids):
+            assert resource_id == "r_1234567890"
+            assert enabled_root_ids == {1}
+            return SimpleNamespace(
+                id=resource_id,
+                path="/files/file.zip",
+                root_mapping_id=1,
+                status="active",
+            )
+
+    monkeypatch.setattr(main, "IndexSession", FakeSession)
+    monkeypatch.setattr(main, "StateSession", FakeSession)
+
+    async def enabled_roots(_state):
+        return {1}
+
+    async def denied(_):
+        return DownloadRateDecision(
+            False,
+            retry_after=43,
+            blocked_until=BASE_TIME + timedelta(seconds=43),
+            ip_key="a" * 64,
+        )
+
+    async def no_event(*_args, **_kwargs):
+        return None
+
+    async def must_not_call(*_args, **_kwargs):
+        raise AssertionError("rate-limited request reached provider runtime")
+
+    from cloudsite.routers import downloads as downloads_router_mod
+
+    monkeypatch.setattr(downloads_router_mod, "enabled_root_ids", enabled_roots)
+    monkeypatch.setattr(
+        downloads_router_mod,
+        "resource_queries",
+        lambda _session: FakeQueries(),
+    )
+    monkeypatch.setattr(downloads_router_mod, "check_download_rate", denied)
+    monkeypatch.setattr(downloads_router_mod, "_download_event", no_event)
+    monkeypatch.setattr(downloads_router_mod, "provider_runtime", must_not_call)
+    monkeypatch.setattr(downloads_router_mod, "resolve_download_entry", must_not_call)
+
+    response = await downloads_router_mod.download(
+        "r_1234567890",
+        request_from("198.51.100.20"),
+    )
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "43"
+    assert json.loads(response.body)["code"] == "DOWNLOAD_RATE_LIMITED"
+
+
+async def test_download_route_first_five_302_sixth_429(tmp_path, monkeypatch):
+    engine, _ = await rate_store(tmp_path, monkeypatch)
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+    class FakeQueries:
+        async def download_resource(self, *, resource_id, enabled_root_ids):
+            return SimpleNamespace(
+                id=resource_id,
+                path="/files/file.zip",
+                root_mapping_id=1,
+                status="active",
+            )
+
+    monkeypatch.setattr(main, "IndexSession", FakeSession)
+    monkeypatch.setattr(main, "StateSession", FakeSession)
+
+    async def enabled_roots(_state):
+        return {1}
+
+    async def no_event(*_args, **_kwargs):
+        return None
+
+    async def resolved(*_args, **_kwargs):
+        return SimpleNamespace(url="https://alist.example/d/file.zip")
+
+    from cloudsite.routers import downloads as downloads_router_mod
+
+    monkeypatch.setattr(downloads_router_mod, "enabled_root_ids", enabled_roots)
+    monkeypatch.setattr(
+        downloads_router_mod,
+        "resource_queries",
+        lambda _session: FakeQueries(),
+    )
+    monkeypatch.setattr(downloads_router_mod, "_download_event", no_event)
+    monkeypatch.setattr(downloads_router_mod, "provider_runtime", lambda _state: object())
+    monkeypatch.setattr(downloads_router_mod, "resolve_download_entry", resolved)
+
+    request = request_from("198.51.100.20")
+    responses = [
+        await downloads_router_mod.download("r_1234567890", request)
+        for _ in range(6)
+    ]
+    assert [response.status_code for response in responses] == [
+        302,
+        302,
+        302,
+        302,
+        302,
+        429,
+    ]
+    assert responses[-1].headers["retry-after"] == "60"
+    await engine.dispose()

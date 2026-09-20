@@ -1,0 +1,27 @@
+schema_version: 1
+name: "setup"
+kind: "business"
+migration_status: "partial"
+responsibility: "First-run setup workflow state and orchestration across provider, presentation, site, and system settings boundaries."
+public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/observability"
+  - "platform/settings"
+  - "modules/providers/contracts"
+  - "modules/presentation/contracts"
+  - "modules/site/contracts"
+
+owned_tables:
+  - "setup_wizard_state"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Setup owns workflow progress only; provider, presentation, and site persistence stays with owning modules."
+  - "Setup completion is explicit through publish, skip, or the one-shot setup endpoint."
+  - "The setup token is required for the first connection unless that connection step was already completed."

@@ -1,0 +1,29 @@
+schema_version: 1
+name: "identity"
+kind: "business"
+migration_status: "partial"
+responsibility: "Stable resource identity generation, fingerprinting, candidate reconciliation, history, and legacy ID migration."
+public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/observability"
+  - "modules/providers/contracts"
+
+owned_tables:
+  - "resource_identities"
+  - "resource_identity_history"
+  - "resource_identity_candidates"
+  - "folder_identities"
+  - "folder_identity_histories"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Do not store business metadata here."
+  - "Do not depend on resources or shares internals."
+  - "Provider object IDs are not CloudSite stable IDs."
+  - "Identity history is append-only on fingerprint changes."

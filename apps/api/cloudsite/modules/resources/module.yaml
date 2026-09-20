@@ -1,0 +1,28 @@
+schema_version: 1
+name: "resources"
+kind: "business"
+migration_status: "partial"
+responsibility: "Folder/resource browsing, resource details, previews, download redirects, rate limiting, and office preview integration."
+public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/http"
+  - "modules/providers/contracts"
+  - "modules/identity/contracts"
+
+owned_tables:
+  - "folders"
+  - "resources"
+  - "download_rate_limits"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Never proxy file bytes through the API."
+  - "Do not expose provider-specific paths."
+  - "Do not depend on catalog or shares internals."
+  - "Scanning belongs to indexing, not resources."

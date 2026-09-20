@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "policy": "Feature boundaries are strict immediately; legacy globals.css may shrink but must not grow.",
+  "globals_css_max_bytes": 151484
+}

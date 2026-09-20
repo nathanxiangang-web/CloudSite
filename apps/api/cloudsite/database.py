@@ -1,0 +1,490 @@
+import sqlite3
+from pathlib import Path
+
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+
+from .config import settings
+from .migrations import CURRENT_SCHEMA_VERSION, STATE_MIGRATIONS, get_state_schema_version, repair_content_root_mappings_legacy_unique, run_migrations, set_index_schema_version, set_state_schema_version
+
+
+class StateBase(DeclarativeBase):
+    pass
+
+
+class IndexBase(DeclarativeBase):
+    pass
+
+
+class DatabaseRecoveryRequired(RuntimeError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+STATE_REQUIRED_TABLES = {
+    "alist_connections",
+    "site_settings",
+    "system_settings",
+    "users",
+    "user_sessions",
+}
+INDEX_REQUIRED_TABLES = {
+    "folders",
+    "resources",
+    "sync_runs",
+}
+
+
+def _read_only_database_check(path: Path, required_tables: set[str], code: str) -> None:
+    try:
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            quick_check = connection.execute("PRAGMA quick_check(1)").fetchone()
+            if not quick_check or quick_check[0] != "ok":
+                raise DatabaseRecoveryRequired(code, f"{path.name} 完整性检查失败")
+            tables = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                )
+            }
+        finally:
+            connection.close()
+    except DatabaseRecoveryRequired:
+        raise
+    except (OSError, sqlite3.DatabaseError) as exc:
+        raise DatabaseRecoveryRequired(code, f"{path.name} 无法读取或已损坏") from exc
+    missing = sorted(required_tables - tables)
+    if missing:
+        raise DatabaseRecoveryRequired(code, f"{path.name} 缺少关键表：{', '.join(missing)}")
+
+
+def _database_has_rows(path: Path, tables: tuple[str, ...]) -> bool:
+    try:
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            return any(
+                connection.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone() is not None
+                for table in tables
+            )
+        finally:
+            connection.close()
+    except (OSError, sqlite3.DatabaseError) as exc:
+        raise DatabaseRecoveryRequired(
+            "STATE_RECOVERY_REQUIRED",
+            "无法确认数据库实例身份；请先恢复 state.db 备份",
+        ) from exc
+
+
+def validate_database_files(data_dir: Path | None = None) -> dict[str, str]:
+    root = (data_dir or settings.data_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    state_path = root / "state.db"
+    index_path = root / "index.db"
+
+    if not state_path.exists():
+        traces = [
+            item
+            for item in root.iterdir()
+            if item.name not in {"state.db-shm", "state.db-wal"}
+        ]
+        if index_path.exists() or traces:
+            raise DatabaseRecoveryRequired(
+                "STATE_RECOVERY_REQUIRED",
+                "state.db 丢失，但数据目录中存在既有实例痕迹；请恢复备份",
+            )
+        return {"state": "fresh", "index": "fresh"}
+
+    _read_only_database_check(state_path, STATE_REQUIRED_TABLES, "STATE_RECOVERY_REQUIRED")
+    if not index_path.exists():
+        return {"state": "ready", "index": "recovery_required"}
+    _read_only_database_check(index_path, INDEX_REQUIRED_TABLES, "INDEX_RECOVERY_REQUIRED")
+    state_has_identity = _database_has_rows(
+        state_path,
+        ("users", "alist_connections", "site_settings", "system_settings"),
+    )
+    index_has_content = _database_has_rows(index_path, ("folders", "resources", "sync_runs"))
+    if index_has_content and not state_has_identity:
+        raise DatabaseRecoveryRequired(
+            "STATE_RECOVERY_REQUIRED",
+            "index.db 包含既有索引，但 state.db 没有实例身份数据；请恢复 state.db 备份",
+        )
+    return {"state": "ready", "index": "ready"}
+
+
+state_engine = create_async_engine(settings.state_db_url)
+index_engine = create_async_engine(settings.index_db_url)
+StateSession = async_sessionmaker(state_engine, expire_on_commit=False, class_=AsyncSession)
+IndexSession = async_sessionmaker(index_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+for engine in (state_engine, index_engine):
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, _):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA wal_autocheckpoint=1000")
+        cursor.close()
+
+
+async def _create_pre_migration_backup() -> bool:
+    """如果 state.db 的 schema_version 低于当前版本，创建迁移前快照。
+
+    快照保存到 data_dir / .codex-backups / pre-migration / {timestamp} / state.db。
+    返回 True 表示创建了快照，False 表示无需快照（已是最新或新库）。
+    """
+    from datetime import datetime, timezone
+
+    state_path = settings.data_dir.resolve() / "state.db"
+    if not state_path.exists():
+        return False
+
+    try:
+        conn = sqlite3.connect(f"{state_path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            tables = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                )
+            }
+            if "system_settings" not in tables:
+                return False
+            row = conn.execute(
+                "SELECT value FROM system_settings WHERE key='schema_version'"
+            ).fetchone()
+            current_version = int(row[0]) if row else 0
+        finally:
+            conn.close()
+    except (sqlite3.DatabaseError, ValueError):
+        return False
+
+    if current_version >= CURRENT_SCHEMA_VERSION:
+        return False
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup_dir = settings.data_dir / ".codex-backups" / "pre-migration" / stamp
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    # SQLite online backup
+    src = sqlite3.connect(str(state_path))
+    try:
+        dst = sqlite3.connect(str(backup_dir / "state.db"))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+    return True
+
+
+async def _create_pre_repair_backup() -> bool:
+    """Create a safe SQLite online backup before repairing an already-v25 state.db.
+
+    Only triggers when schema_version is already current but the legacy
+    single-column UNIQUE(alist_path) auto-index is still present. Uses the
+    SQLite online backup API (no WAL checkpoint required).
+    Returns True if a backup was created.
+    """
+    from datetime import datetime, timezone
+
+    state_path = settings.data_dir.resolve() / "state.db"
+    if not state_path.exists():
+        return False
+
+    try:
+        conn = sqlite3.connect(f"{state_path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            tables = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                )
+            }
+            if "system_settings" not in tables or "content_root_mappings" not in tables:
+                return False
+            row = conn.execute(
+                "SELECT value FROM system_settings WHERE key='schema_version'"
+            ).fetchone()
+            current_version = int(row[0]) if row else 0
+            if current_version < CURRENT_SCHEMA_VERSION:
+                return False
+            has_legacy = False
+            for (idx_name,) in conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='index' AND tbl_name='content_root_mappings' "
+                "AND sql IS NULL AND name LIKE 'sqlite_autoindex_%'"
+            ):
+                info = conn.execute(f"PRAGMA index_info('{idx_name}')").fetchall()
+                if len(info) == 1 and info[0][2] == "alist_path":
+                    has_legacy = True
+                    break
+            if not has_legacy:
+                return False
+        finally:
+            conn.close()
+    except (sqlite3.DatabaseError, ValueError):
+        return False
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup_dir = settings.data_dir / ".codex-backups" / "pre-repair" / stamp
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    src_db = sqlite3.connect(str(state_path))
+    try:
+        dst_db = sqlite3.connect(str(backup_dir / "state.db"))
+        try:
+            src_db.backup(dst_db)
+        finally:
+            dst_db.close()
+    finally:
+        src_db.close()
+
+    return True
+
+
+async def init_databases() -> None:
+    from . import models  # noqa: F401
+
+    await _create_pre_migration_backup()
+    await _create_pre_repair_backup()
+
+    async with state_engine.begin() as connection:
+        await connection.run_sync(StateBase.metadata.create_all)
+        columns = await connection.exec_driver_sql("PRAGMA table_info(system_settings)")
+        if "value_type" not in {row[1] for row in columns.fetchall()}:
+            await connection.exec_driver_sql(
+                "ALTER TABLE system_settings ADD COLUMN value_type VARCHAR(20) NOT NULL DEFAULT 'string'"
+            )
+        download_columns = await connection.exec_driver_sql("PRAGMA table_info(download_events)")
+        if "source" not in {row[1] for row in download_columns.fetchall()}:
+            await connection.exec_driver_sql(
+                "ALTER TABLE download_events ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'public'"
+            )
+        alist_columns = await connection.exec_driver_sql("PRAGMA table_info(alist_connections)")
+        alist_column_names = {row[1] for row in alist_columns.fetchall()}
+        if "base_path" not in alist_column_names:
+            await connection.exec_driver_sql(
+                "ALTER TABLE alist_connections ADD COLUMN base_path VARCHAR(1000) NOT NULL DEFAULT '/'"
+            )
+        for column, definition in (
+            ("provider_type", "VARCHAR(40) NOT NULL DEFAULT 'generic_alist'"),
+            ("provider_capability_version", "INTEGER NOT NULL DEFAULT 1"),
+            ("provider_capabilities_json", "TEXT NOT NULL DEFAULT ''"),
+            ("capabilities_checked_at", "DATETIME"),
+        ):
+            if column not in alist_column_names:
+                await connection.exec_driver_sql(f"ALTER TABLE alist_connections ADD COLUMN {column} {definition}")
+        collection_columns = await connection.exec_driver_sql("PRAGMA table_info(collections)")
+        if "status" not in {row[1] for row in collection_columns.fetchall()}:
+            await connection.exec_driver_sql(
+                "ALTER TABLE collections ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
+            )
+        submission_columns = await connection.exec_driver_sql("PRAGMA table_info(submissions)")
+        if "published_resource_id" not in {row[1] for row in submission_columns.fetchall()}:
+            await connection.exec_driver_sql(
+                "ALTER TABLE submissions ADD COLUMN published_resource_id VARCHAR(64)"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_submissions_published_resource_id ON submissions (published_resource_id)"
+            )
+        site_columns = await connection.exec_driver_sql("PRAGMA table_info(site_settings)")
+        site_column_names = {row[1] for row in site_columns.fetchall()}
+        for column, definition in (
+            ("share_image_name", "VARCHAR(255) NOT NULL DEFAULT ''"),
+            ("hero_subtitle", "VARCHAR(200) NOT NULL DEFAULT ''"),
+            ("footer_text", "VARCHAR(300) NOT NULL DEFAULT ''"),
+            ("submission_email", "VARCHAR(200) NOT NULL DEFAULT 'nathxo@outlook.com'"),
+            ("github_url", "VARCHAR(300) NOT NULL DEFAULT ''"),
+            ("registration_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("default_share_duration", "VARCHAR(20) NOT NULL DEFAULT '24h'"),
+        ):
+            if column not in site_column_names:
+                await connection.exec_driver_sql(f"ALTER TABLE site_settings ADD COLUMN {column} {definition}")
+        for statement in (
+            "CREATE INDEX IF NOT EXISTS ix_user_favorites_user_created_at ON user_favorites (user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_user_resource_history_user_last_viewed_at ON user_resource_history (user_id, last_viewed_at)",
+            "CREATE INDEX IF NOT EXISTS ix_user_playback_progress_user_last_played_at ON user_playback_progress (user_id, last_played_at)",
+            "CREATE INDEX IF NOT EXISTS ix_user_playback_progress_user_completed ON user_playback_progress (user_id, completed)",
+        ):
+            await connection.exec_driver_sql(statement)
+        share_columns = await connection.exec_driver_sql("PRAGMA table_info(shares)")
+        share_column_names = {row[1] for row in share_columns.fetchall()}
+        for column, definition in (
+            ("creator_user_id", "INTEGER"),
+            ("last_accessed_at", "DATETIME"),
+            ("access_mode", "VARCHAR(20) NOT NULL DEFAULT 'code'"),
+            ("code_hash", "VARCHAR(64)"),
+            ("code_version", "INTEGER NOT NULL DEFAULT 0"),
+            ("cancelled_at", "DATETIME"),
+            ("cancel_reason", "VARCHAR(30)"),
+            ("view_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("download_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_downloaded_at", "DATETIME"),
+        ):
+            if column not in share_column_names:
+                await connection.exec_driver_sql(f"ALTER TABLE shares ADD COLUMN {column} {definition}")
+        await connection.exec_driver_sql(
+            "UPDATE shares SET view_count = access_count WHERE view_count = 0 AND access_count > 0"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET access_mode = 'code' WHERE access_mode IS NULL OR access_mode = ''"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET code_version = 0 WHERE code_version IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET download_count = 0 WHERE download_count IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET view_count = 0 WHERE view_count IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "UPDATE shares SET cancelled_at = CURRENT_TIMESTAMP WHERE enabled = 0 AND cancelled_at IS NULL"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_access_mode ON shares (access_mode)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_creator_user_id ON shares (creator_user_id)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_cancelled_at ON shares (cancelled_at)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_shares_last_downloaded_at ON shares (last_downloaded_at)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS share_verify_attempts ("
+            "id INTEGER NOT NULL PRIMARY KEY, "
+            "share_token VARCHAR(64) NOT NULL, "
+            "ip_hash VARCHAR(64) NOT NULL, "
+            "fail_count INTEGER NOT NULL DEFAULT 0, "
+            "window_started_at DATETIME NOT NULL, "
+            "challenge_required_until DATETIME, "
+            "updated_at DATETIME NOT NULL, "
+            "UNIQUE (share_token, ip_hash))"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_share_verify_attempts_share_token ON share_verify_attempts (share_token)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_share_verify_attempts_ip_hash ON share_verify_attempts (ip_hash)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_share_verify_attempts_challenge_required_until ON share_verify_attempts (challenge_required_until)"
+        )
+        for table, column, definition in (
+            ("users", "disabled_at", "DATETIME"),
+            ("users", "deleted_at", "DATETIME"),
+            ("users", "created_by_admin", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("user_sessions", "created_ip_hash", "VARCHAR(64)"),
+            ("user_sessions", "user_agent_hash", "VARCHAR(64)"),
+        ):
+            table_columns = await connection.exec_driver_sql(f"PRAGMA table_info({table})")
+            if column not in {row[1] for row in table_columns.fetchall()}:
+                await connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users (deleted_at)"
+        )
+        await connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_disabled_at ON users (disabled_at)"
+        )
+        current_state_version = await get_state_schema_version(connection)
+        if current_state_version == 0:
+            await set_state_schema_version(connection, 1)
+        await run_migrations(connection, STATE_MIGRATIONS, get_state_schema_version, set_state_schema_version)
+        await repair_content_root_mappings_legacy_unique(connection)
+    async with index_engine.begin() as connection:
+        await connection.run_sync(IndexBase.metadata.create_all)
+        for table, column, definition in (
+            ("folders", "root_mapping_id", "INTEGER"),
+            ("folders", "missing_streak", "INTEGER NOT NULL DEFAULT 0"),
+            ("folders", "missing_candidate_at", "DATETIME"),
+            ("folders", "last_seen_run_id", "INTEGER"),
+            ("folders", "missing_last_observed_cycle_id", "INTEGER"),
+            ("resources", "root_mapping_id", "INTEGER"),
+            ("resources", "missing_streak", "INTEGER NOT NULL DEFAULT 0"),
+            ("resources", "missing_candidate_at", "DATETIME"),
+            ("resources", "last_seen_run_id", "INTEGER"),
+            ("resources", "missing_last_observed_cycle_id", "INTEGER"),
+            ("sync_runs", "duration_ms", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "current_path", "VARCHAR(1500) NOT NULL DEFAULT ''"),
+            ("sync_runs", "roots_total", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "roots_completed", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "roots_failed", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "list_requests", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "trigger_source", "VARCHAR(20) NOT NULL DEFAULT 'auto'"),
+            ("sync_runs", "target_paths_json", "TEXT"),
+            ("sync_runs", "force_refresh_paths_json", "TEXT"),
+            ("sync_runs", "renamed_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "skipped_verified_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "refresh_true_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_runs", "auto_interrupted_at", "DATETIME"),
+            ("sync_runs", "auto_resumed_at", "DATETIME"),
+            ("sync_cycles", "renamed_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("sync_cycles", "skipped_verified_count", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            columns = await connection.exec_driver_sql(f"PRAGMA table_info({table})")
+            if column not in {row[1] for row in columns.fetchall()}:
+                await connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        for tbl in ("folders", "resources"):
+            old_path_indexes = await connection.exec_driver_sql(
+                f"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='{tbl}' "
+                f"AND sql LIKE '%path%' AND sql NOT LIKE '%root_mapping_id%'"
+            )
+            for (idx_name,) in old_path_indexes.fetchall():
+                await connection.exec_driver_sql(f"DROP INDEX IF EXISTS {idx_name}")
+            await connection.exec_driver_sql(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{tbl}_root_path ON {tbl}(root_mapping_id, path)"
+            )
+        expected_search_columns = [
+            "object_id", "object_type", "name", "extension", "content_type",
+            "description", "tags", "breadcrumb_text",
+        ]
+        search_columns = await connection.exec_driver_sql("PRAGMA table_info(search_fts)")
+        if [row[1] for row in search_columns.fetchall()] not in ([], expected_search_columns):
+            await connection.exec_driver_sql("DROP TABLE search_fts")
+        await connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+            "object_id UNINDEXED, object_type UNINDEXED, name, extension, "
+            "content_type UNINDEXED, description, tags, breadcrumb_text, tokenize='unicode61 remove_diacritics 2')"
+        )
+        search_count = await connection.exec_driver_sql("SELECT COUNT(*) FROM search_fts")
+        if int(search_count.scalar_one()) == 0:
+            await connection.exec_driver_sql(
+                "INSERT INTO search_fts(object_id, object_type, name, extension, content_type, description, tags, breadcrumb_text) "
+                "SELECT id, 'folder', name, '', content_type, '', '', path FROM folders WHERE status = 'active'"
+            )
+            await connection.exec_driver_sql(
+                "INSERT INTO search_fts(object_id, object_type, name, extension, content_type, description, tags, breadcrumb_text) "
+                "SELECT id, 'resource', name, extension, content_type, '', '', path FROM resources WHERE status = 'active'"
+            )
+        # D1: catalog 资源级检索投影表（与 search_fts 分离，避免影响旧 /api/search 契约）。
+        # catalog_search_fts 仅服务 /api/catalog/search；旧 search_fts 保持不变。
+        expected_catalog_fts_columns = [
+            "entry_id", "content_type", "title", "summary", "description",
+            "aliases", "tags", "platforms",
+        ]
+        catalog_fts_columns = await connection.exec_driver_sql("PRAGMA table_info(catalog_search_fts)")
+        if [row[1] for row in catalog_fts_columns.fetchall()] not in ([], expected_catalog_fts_columns):
+            await connection.exec_driver_sql("DROP TABLE catalog_search_fts")
+        await connection.exec_driver_sql(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS catalog_search_fts USING fts5("
+            "entry_id UNINDEXED, content_type UNINDEXED, title, summary, description, "
+            "aliases, tags, platforms, tokenize='unicode61 remove_diacritics 2')"
+        )
+        await connection.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS catalog_search_projection_state("
+            "entry_id VARCHAR(35) PRIMARY KEY,"
+            "applied_revision INTEGER NOT NULL,"
+            "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        )
+        await set_index_schema_version(connection, CURRENT_SCHEMA_VERSION)

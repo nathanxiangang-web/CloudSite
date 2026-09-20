@@ -1,0 +1,43 @@
+"""Compatibility facade for Resources-owned preview helpers."""
+
+from .modules.resources.infrastructure.preview import (
+    IMAGE_EXTENSIONS,
+    MARKDOWN_EXTENSIONS,
+    OFFICE_EXTENSIONS,
+    OFFICE_MIME_TYPES,
+    PREVIEW_TICKET_TTL_SECONDS,
+    TEXT_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    PreviewError,
+    PreviewResolution,
+    create_preview_ticket,
+    load_text_preview,
+    preview_capability,
+    preview_url_cache,
+    resolve_preview_url,
+    settings,
+    time,
+    validate_download_url,
+    validate_preview_ticket,
+)
+
+__all__ = [
+    "IMAGE_EXTENSIONS",
+    "MARKDOWN_EXTENSIONS",
+    "OFFICE_EXTENSIONS",
+    "OFFICE_MIME_TYPES",
+    "PREVIEW_TICKET_TTL_SECONDS",
+    "TEXT_EXTENSIONS",
+    "VIDEO_EXTENSIONS",
+    "PreviewError",
+    "PreviewResolution",
+    "create_preview_ticket",
+    "load_text_preview",
+    "preview_capability",
+    "preview_url_cache",
+    "resolve_preview_url",
+    "settings",
+    "time",
+    "validate_download_url",
+    "validate_preview_ticket",
+]

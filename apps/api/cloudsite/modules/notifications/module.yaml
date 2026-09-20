@@ -1,0 +1,27 @@
+schema_version: 1
+name: "notifications"
+kind: "business"
+migration_status: "partial"
+responsibility: "In-app and webhook notifications, user notification history, read state, channel preferences, and retryable delivery."
+public_contract: "contracts/public.py"
+orm_owner: "infrastructure/models.py"
+
+allowed_dependencies:
+  - "platform/db"
+  - "platform/tasks"
+  - "platform/http"
+  - "platform/observability"
+
+owned_tables:
+  - "notifications"
+  - "notification_channels"
+
+forbidden_dependencies:
+  - "cloudsite.main"
+  - "other modules' domain/application/infrastructure/api internals"
+
+constraints:
+  - "Consume business events instead of depending on producer modules."
+  - "Webhook delivery must run through tasks."
+  - "Never include secrets in webhook payloads."
+  - "Users may only read their own notifications."
