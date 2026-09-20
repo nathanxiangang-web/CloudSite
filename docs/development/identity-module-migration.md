@@ -1,5 +1,8 @@
 # Identity Module Migration
 
+> **Historical execution record.** This document preserves the slice-by-slice migration plan and invariants at the time it was written. It is not the current backlog. Before acting on any `Next`, `Then`, or `Later` item here, check `module.yaml`, the module `README.md`, [modularization-status.md](./modularization-status.md), and issue #157 against current `main`.
+
+
 Identity is the first CloudSite 2.0 golden-module migration because stable IDs
 sit underneath indexing, resources, shares, collections, and user history.
 
