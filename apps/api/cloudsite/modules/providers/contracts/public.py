@@ -9,6 +9,7 @@ from ..application.connection_admin import (
     save_setup_connection,
     test_admin_connection,
 )
+from ..application.scan_source import enabled_provider_scan_sources
 from ..application.root_mappings import (
     create_root_mapping,
     delete_root_mapping,
@@ -43,6 +44,11 @@ from ..domain.delta import (
     resolve_sync_strategy,
 )
 from ..domain.provider import StorageProvider
+from ..domain.scan import (
+    ProviderScanPort,
+    ProviderScanRoot,
+    ProviderScanSource,
+)
 from ..domain.runtime import (
     ProviderAccessError,
     ProviderEntry,
@@ -60,6 +66,10 @@ from ..infrastructure.registry import (
 __all__ = [
     "ContentRootView",
     "StorageProvider",
+    "ProviderScanPort",
+    "ProviderScanRoot",
+    "ProviderScanSource",
+    "enabled_provider_scan_sources",
     "ProviderRuntimePort",
     "ProviderEntry",
     "ProviderUnavailableError",

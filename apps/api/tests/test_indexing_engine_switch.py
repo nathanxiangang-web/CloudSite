@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 
 from cloudsite.modules.indexing.domain.inspection import (
@@ -16,6 +15,7 @@ from cloudsite.modules.indexing.infrastructure.provider_adapter import (
     ProviderAdapter,
     ProviderCapabilities,
 )
+from cloudsite.modules.providers.contracts.public import ProviderScanRoot
 from cloudsite.modules.indexing.infrastructure.repository import (
     IndexedEntry,
     IndexingStore,
@@ -211,21 +211,21 @@ async def test_alist_adapter_keeps_same_type_roots_distinct() -> None:
                 }
             ]
 
-        async def get_file_info(self, path: str):
+        async def get_metadata(self, path: str):
             return {"name": path.rsplit("/", 1)[-1], "size": 42}
 
     client = FakeAListClient()
     roots = [
-        SimpleNamespace(
-            id=11,
+        ProviderScanRoot(
+            root_mapping_id=11,
             content_type="software",
-            alist_path="/apps-a",
+            storage_path="/apps-a",
             display_name="Apps A",
         ),
-        SimpleNamespace(
-            id=12,
+        ProviderScanRoot(
+            root_mapping_id=12,
             content_type="software",
-            alist_path="/apps-b",
+            storage_path="/apps-b",
             display_name="Apps B",
         ),
     ]
@@ -257,13 +257,13 @@ async def test_alist_adapter_calculates_folder_depth_and_direct_counts() -> None
                 ]
             return []
 
-        async def get_file_info(self, path: str):
+        async def get_metadata(self, path: str):
             return {"name": path.rsplit("/", 1)[-1]}
 
-    root = SimpleNamespace(
-        id=21,
+    root = ProviderScanRoot(
+        root_mapping_id=21,
         content_type="software",
-        alist_path="/library",
+        storage_path="/library",
         display_name="Library",
     )
     adapter = AListProviderAdapter(HierarchyAListClient(), [root])
@@ -292,20 +292,20 @@ async def test_alist_adapter_namespaces_same_path_ids_by_root_mapping() -> None:
                 }
             ]
 
-        async def get_file_info(self, path: str):
+        async def get_metadata(self, path: str):
             return {"name": path.rsplit("/", 1)[-1]}
 
     roots = [
-        SimpleNamespace(
-            id=31,
+        ProviderScanRoot(
+            root_mapping_id=31,
             content_type="software",
-            alist_path="/shared",
+            storage_path="/shared",
             display_name="Shared A",
         ),
-        SimpleNamespace(
-            id=32,
+        ProviderScanRoot(
+            root_mapping_id=32,
             content_type="software",
-            alist_path="/shared",
+            storage_path="/shared",
             display_name="Shared B",
         ),
     ]

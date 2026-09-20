@@ -1,9 +1,8 @@
-"""AList ProviderAdapter for v2 indexing engine.
+"""Provider scan adapter for the v2 indexing engine.
 
-Implements the ProviderAdapter Protocol by wrapping AListClient.list_path
-to recursively scan AList directories and produce SnapshotEntry lists.
-Each entry carries persistence-neutral resource metadata. Parent IDs are resolved
-inside Indexing before crossing the Resources contract boundary.
+The compatibility class name is retained, but the adapter no longer receives
+or imports AListClient. It consumes the Providers public scan contract and
+translates provider-neutral list/metadata operations into Indexing snapshots.
 """
 from __future__ import annotations
 
@@ -12,10 +11,9 @@ import mimetypes
 import re
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
-from typing import Any, Protocol
+from typing import Any
 
-from cloudsite.alist import AListClient
-
+from ...providers.contracts.public import ProviderScanPort, ProviderScanRoot
 from ..domain.inspection import InspectionRequest, InspectionResult
 from ..domain.snapshot import SnapshotEntry
 from .provider_adapter import ProviderCapabilities
@@ -59,22 +57,24 @@ def _should_ignore(path: str) -> bool:
     )
 
 
-class ContentRootView(Protocol):
-    id: int
-    content_type: str
-    alist_path: str
-    display_name: str
-
-
 class AListProviderAdapter:
-    """Production ProviderAdapter backed by AListClient."""
+    """Compatibility-named Indexing adapter over Providers scan contracts."""
 
-    def __init__(self, client: AListClient, roots: list[ContentRootView]) -> None:
-        self._client = client
-        self._roots = {f"root:{root.id}": root for root in roots}
+    def __init__(
+        self,
+        provider: ProviderScanPort,
+        roots: list[ProviderScanRoot] | tuple[ProviderScanRoot, ...],
+    ) -> None:
+        self._provider = provider
+        self._roots = {
+            f"root:{root.root_mapping_id}": root
+            for root in roots
+        }
 
     @property
     def provider_id(self) -> str:
+        # Preserve the historical persistence key; provider identity is not
+        # changed as part of the ownership migration.
         return "generic_alist"
 
     @property
@@ -99,8 +99,8 @@ class AListProviderAdapter:
             return [], None, True
 
         entries: list[SnapshotEntry] = []
-        root_path = _normalize_path(root.alist_path)
-        root_id = _stable_id("folder", root_path, root.id)
+        root_path = _normalize_path(root.storage_path)
+        root_id = _stable_id("folder", root_path, root.root_mapping_id)
         root_entry = self._make_entry(
             resource_id=root_id,
             path=root_path,
@@ -120,7 +120,7 @@ class AListProviderAdapter:
         while queue:
             current_path, current_depth = queue.pop(0)
             parent_entry = folders_by_path[current_path]
-            items = await self._client.list_path(current_path)
+            items = await self._provider.list_path(current_path)
             if on_progress:
                 await on_progress(current_path, len(entries))
             for item in items:
@@ -139,7 +139,11 @@ class AListProviderAdapter:
                 kind = "folder" if is_dir else "resource"
                 item_depth = current_depth + 1
                 entry = self._make_entry(
-                    resource_id=_stable_id(kind, item_path, root.id),
+                    resource_id=_stable_id(
+                        kind,
+                        item_path,
+                        root.root_mapping_id,
+                    ),
                     path=item_path,
                     name=name,
                     is_dir=is_dir,
@@ -157,7 +161,7 @@ class AListProviderAdapter:
         return entries, None, True
 
     async def inspect(self, request: InspectionRequest) -> InspectionResult:
-        info = await self._client.get_file_info(request.path)
+        info = await self._provider.get_metadata(request.path)
         return InspectionResult(
             resource_id=request.resource_id,
             path=request.path,
@@ -175,7 +179,7 @@ class AListProviderAdapter:
         name: str,
         is_dir: bool,
         modified: datetime | None,
-        root: ContentRootView,
+        root: ProviderScanRoot,
         parent_path: str | None,
         depth: int,
         item: dict[str, Any] | None = None,
@@ -184,7 +188,11 @@ class AListProviderAdapter:
         ext = PurePosixPath(name).suffix.lower().lstrip(".") if not is_dir else ""
         mime = ""
         if not is_dir:
-            mime = str(item.get("type") or mimetypes.guess_type(name)[0] or "application/octet-stream")
+            mime = str(
+                item.get("type")
+                or mimetypes.guess_type(name)[0]
+                or "application/octet-stream"
+            )
         return SnapshotEntry(
             resource_id=resource_id,
             path=path,
@@ -195,13 +203,17 @@ class AListProviderAdapter:
             metadata={
                 "is_dir": is_dir,
                 "content_type": root.content_type,
-                "root_mapping_id": root.id,
+                "root_mapping_id": root.root_mapping_id,
                 "depth": depth,
                 "child_folder_count": 0,
                 "resource_count": 0,
                 "parent_path": parent_path,
                 "parent_id": (
-                    _stable_id("folder", parent_path, root.id)
+                    _stable_id(
+                        "folder",
+                        parent_path,
+                        root.root_mapping_id,
+                    )
                     if parent_path
                     else None
                 ),

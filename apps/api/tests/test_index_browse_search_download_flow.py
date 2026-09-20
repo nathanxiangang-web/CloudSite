@@ -1,13 +1,12 @@
 """Cross-module regression for the primary content delivery flow."""
 
-from types import SimpleNamespace
-
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cloudsite.modules.indexing.infrastructure.alist_adapter import AListProviderAdapter
 from cloudsite.modules.indexing.infrastructure.legacy_bridge import run_indexing_v2
 from cloudsite.modules.indexing.infrastructure.production_store import ProductionIndexingStore
+from cloudsite.modules.providers.contracts.public import ProviderScanRoot
 from cloudsite.modules.resources.api.queries import resource_queries
 from cloudsite.modules.resources.infrastructure.inventory_repository import (
     SqlAlchemyResourceInventoryRepository,
@@ -42,7 +41,7 @@ class _FakeAListClient:
             ]
         return []
 
-    async def get_file_info(self, path: str):
+    async def get_metadata(self, path: str):
         return {"name": path.rsplit("/", 1)[-1]}
 
 
@@ -70,10 +69,10 @@ async def _stores():
 async def test_indexed_alist_content_flows_through_browse_search_and_download():
     state_engine, index_engine, state_factory, index_factory = await _stores()
     try:
-        root = SimpleNamespace(
-            id=1,
+        root = ProviderScanRoot(
+            root_mapping_id=1,
             content_type="file",
-            alist_path="/",
+            storage_path="/",
             display_name="全部内容",
         )
         adapter = AListProviderAdapter(_FakeAListClient(), [root])

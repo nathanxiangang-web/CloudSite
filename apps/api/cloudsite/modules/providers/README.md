@@ -105,5 +105,8 @@ stays inside Providers:
   `application/root_mappings.py`; the admin root router is ORM/SQLAlchemy/
   crypto/AListClient-free.
 
-Providers also exposes a runtime gateway through its public contract for resolving an
-enabled content root to download/preview operations without exporting credentials.
+Providers also exposes runtime gateways through its public contract:
+download/preview resolution and production scan-source composition. The scan
+source keeps connection ORM, credential decryption, and AListClient construction
+inside Providers; Indexing receives only `ProviderScanPort` plus
+`ProviderScanRoot` DTOs.
