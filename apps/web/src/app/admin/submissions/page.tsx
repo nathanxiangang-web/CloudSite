@@ -65,6 +65,7 @@ export default function AdminSubmissionsPage() {
 
   const reviewingItem = reviewingId !== null ? (query.data?.items ?? []).find((item) => item.id === reviewingId) : undefined;
   const canPublish = canPublishSubmission(reviewingItem?.status ?? "pending");
+  const reviewable = reviewingItem ? defaultReviewAction(reviewingItem.status) !== null : false;
   const publishReady = isPublishReady(action, resourceId);
 
   function openReview(id: number, defaultAction: ReviewAction) {
@@ -93,7 +94,8 @@ export default function AdminSubmissionsPage() {
           </span> : <>
             {item.download_url && <a title="打开网盘链接" href={item.download_url} target="_blank" rel="noreferrer"><ExternalLink /></a>}
             {item.status === "pending" && <button onClick={() => openReview(item.id, "approve")}>审核</button>}
-            {item.status !== "pending" && <button onClick={() => openReview(item.id, defaultReviewAction(item.status))}>改判</button>}
+            {item.status === "approved" && <button onClick={() => openReview(item.id, "publish")}>发布</button>}
+            {item.status === "published" && item.published_resource_id && <a href={`/resource/${encodeURIComponent(item.published_resource_id)}`} title="查看发布资源">查看资源</a>}
             {item.status === "rejected" && (deletingId === item.id ? <span className="submission-delete-confirm">
               <button className="danger" disabled={remove.isPending} onClick={() => remove.mutate(item.id)}>{remove.isPending ? "删除中…" : "确认删除"}</button>
               <button onClick={() => setDeletingId(null)}>取消</button>
@@ -104,7 +106,7 @@ export default function AdminSubmissionsPage() {
       {(review.error || remove.error) && <p className="form-error">{(review.error || remove.error)?.message}</p>}
     </section>
 
-    {reviewingId !== null && (query.data?.items ?? []).find((item) => item.id === reviewingId) && <div className="submission-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setReviewingId(null); }}>
+    {reviewingId !== null && reviewable && (query.data?.items ?? []).find((item) => item.id === reviewingId) && <div className="submission-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setReviewingId(null); }}>
       {(() => { const item = (query.data?.items ?? []).find((it) => it.id === reviewingId)!; return <section className="panel submission-detail" role="dialog" aria-modal="true" aria-label="投稿详情" onMouseDown={(event) => event.stopPropagation()}>
         <h2>{item.resource_name}</h2>
         <dl>
