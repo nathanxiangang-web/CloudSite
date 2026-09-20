@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 32
+CURRENT_SCHEMA_VERSION = 33
 
 
 @dataclass(frozen=True, slots=True)
@@ -1738,12 +1738,18 @@ async def state_v30_to_v31_upgrade(conn: AsyncConnection) -> None:
         "id VARCHAR(36) PRIMARY KEY,"
         "scan_run_id VARCHAR(36) NOT NULL REFERENCES index_scan_runs(id) ON DELETE CASCADE,"
         "dir_path TEXT NOT NULL,"
+        "path TEXT,"
+        "parent_path TEXT,"
         "resource_id TEXT NOT NULL,"
         "name TEXT NOT NULL,"
         "is_dir BOOLEAN NOT NULL DEFAULT 0,"
+        "size BIGINT,"
         "modified DATETIME,"
+        "content_hash TEXT,"
+        "metadata_json TEXT NOT NULL DEFAULT '{}',"
         "metadata_hash TEXT,"
-        "staged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        "staged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (scan_run_id, resource_id))"
     )
     await conn.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_index_scan_entries_scan_run_id "
@@ -1844,6 +1850,58 @@ async def state_v31_to_v32_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v32_to_v33_upgrade(conn: AsyncConnection) -> None:
+    """Schema v32 -> v33: repair durable staging entry semantics.
+
+    Separates the checkpoint directory (dir_path) from the resource's actual
+    path, persists directory/file metadata needed to reconstruct a faithful
+    SnapshotEntry, and enforces one staged row per (scan_run_id, resource_id).
+    Existing rows remain readable through legacy fallbacks.
+    """
+    columns_result = await conn.exec_driver_sql(
+        "PRAGMA table_info(index_scan_entries)"
+    )
+    columns = {row[1] for row in columns_result.fetchall()}
+
+    additions = {
+        "path": "TEXT",
+        "parent_path": "TEXT",
+        "size": "BIGINT",
+        "content_hash": "TEXT",
+        "metadata_json": "TEXT NOT NULL DEFAULT '{}'",
+    }
+    for name, sql_type in additions.items():
+        if name not in columns:
+            await conn.exec_driver_sql(
+                f"ALTER TABLE index_scan_entries ADD COLUMN {name} {sql_type}"
+            )
+
+    # Legacy rows used dir_path as the resource path. Preserve that value as
+    # the actual path; new writers use dir_path strictly as checkpoint scope.
+    await conn.exec_driver_sql(
+        "UPDATE index_scan_entries SET path = dir_path "
+        "WHERE path IS NULL OR path = ''"
+    )
+    await conn.exec_driver_sql(
+        "UPDATE index_scan_entries SET content_hash = metadata_hash "
+        "WHERE content_hash IS NULL AND metadata_hash IS NOT NULL"
+    )
+
+    # Old code could append the same resource more than once after retries.
+    # Keep the earliest row before adding the idempotency constraint.
+    await conn.exec_driver_sql(
+        "DELETE FROM index_scan_entries "
+        "WHERE rowid NOT IN ("
+        "SELECT MIN(rowid) FROM index_scan_entries "
+        "GROUP BY scan_run_id, resource_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS "
+        "ux_index_scan_entries_run_resource "
+        "ON index_scan_entries (scan_run_id, resource_id)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1876,5 +1934,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v29_to_v30", from_version=29, to_version=30, upgrade=state_v29_to_v30_upgrade),
     Migration(id="state_v30_to_v31", from_version=30, to_version=31, upgrade=state_v30_to_v31_upgrade),
     Migration(id="state_v31_to_v32", from_version=31, to_version=32, upgrade=state_v31_to_v32_upgrade),
+    Migration(id="state_v32_to_v33", from_version=32, to_version=33, upgrade=state_v32_to_v33_upgrade),
 ]
 
