@@ -650,3 +650,51 @@ class IndexScanEntry(StateBase):
     __table_args__ = (
         Index("ix_index_scan_entries_scan_run_dir_path", "scan_run_id", "dir_path"),
     )
+
+
+class RootState(StateBase):
+    """Per-root index lifecycle state (V2 doc sections 6-7).
+
+    One row per Content Root recording its independent index lifecycle:
+    status transitions through bootstrap_required -> bootstrapping -> ready
+    (and verifying/resume_required/degraded/rebuild_required/disabled).
+    generation is a monotonic counter bumped on each rebuild. The remaining
+    columns track bootstrap/change/verify/audit/reconcile progress, the
+    change cursor, provider revision, scan fingerprint, and the last error.
+
+    PK = root_mapping_id with FK -> content_root_mappings(id) ON DELETE
+    CASCADE so stale state cannot outlive its root.
+    """
+
+    __tablename__ = "index_root_states"
+    root_mapping_id: Mapped[int] = mapped_column(
+        ForeignKey("content_root_mappings.id", ondelete="CASCADE"), primary_key=True
+    )
+    connection_id: Mapped[int] = mapped_column(Integer, index=True)
+    status: Mapped[str] = mapped_column(
+        String(30), default="bootstrap_required", server_default="bootstrap_required", index=True
+    )
+    generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    bootstrap_completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_change_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_verified_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_full_audit_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_reconcile_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    change_cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_revision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scan_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(
+        Text, default=text("datetime('now')"), server_default=text("datetime('now')")
+    )
+    updated_at: Mapped[str] = mapped_column(
+        Text, default=text("datetime('now')"), server_default=text("datetime('now')"), onupdate=text("datetime('now')")
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('bootstrap_required', 'bootstrapping', 'ready', "
+            "'verifying', 'resume_required', 'degraded', 'rebuild_required', 'disabled')",
+            name="ck_index_root_states_status",
+        ),
+    )
