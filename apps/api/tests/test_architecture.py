@@ -363,7 +363,7 @@ class TestCatalogSearchProjectionBoundary:
             / "modules"
             / "search"
             / "infrastructure"
-            / "catalog_projection.py",
+            / "fts_repository.py",
         ]
         for path in paths:
             source = path.read_text(encoding="utf-8")
