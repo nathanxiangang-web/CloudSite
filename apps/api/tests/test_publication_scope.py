@@ -151,7 +151,7 @@ async def test_resource_detail_rejects_disabled_root(monkeypatch):
 from sqlalchemy import text
 
 from cloudsite.models import Folder
-from cloudsite.search import rebuild_search_index
+from cloudsite.modules.search.contracts.public import rebuild_public_search_index
 
 
 async def _scope_store_full(monkeypatch):
@@ -183,14 +183,11 @@ async def _scope_store_full(monkeypatch):
         _, token = await create_user_session(state, user.id, utcnow())
         await state.commit()
 
-    folders = []
-    resources = []
     async with index_factory() as index:
         f_enabled = Folder(id="f_enabled", name="enabled folder", path="/enabled", parent_id=None, content_type="software", root_mapping_id=1, depth=0, status="active")
         f_disabled = Folder(id="f_disabled", name="disabled folder", path="/disabled", parent_id=None, content_type="software", root_mapping_id=2, depth=0, status="active")
         index.add(f_enabled)
         index.add(f_disabled)
-        folders.extend([f_enabled, f_disabled])
         for rid, name, path, root, ext, mime in [
             ("r_enabled", "enabled.zip", "/enabled/enabled.zip", 1, "zip", "application/zip"),
             ("r_enabled_pdf", "enabled.pdf", "/enabled/enabled.pdf", 1, "pdf", "application/pdf"),
@@ -201,10 +198,10 @@ async def _scope_store_full(monkeypatch):
         ]:
             r = Resource(id=rid, name=name, path=path, parent_id=None, content_type="software", root_mapping_id=root, extension=ext, mime_type=mime, size=100, thumbnail="", status="active")
             index.add(r)
-            resources.append(r)
         await index.commit()
-        await rebuild_search_index(index, folders, resources)
-        await index.commit()
+
+    async with state_factory() as state, index_factory() as index:
+        await rebuild_public_search_index(state, index)
 
     return state_engine, index_engine, token
 
