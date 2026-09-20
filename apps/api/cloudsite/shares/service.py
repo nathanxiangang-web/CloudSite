@@ -3,22 +3,33 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudsite.config import settings
+from cloudsite.modules.collections.contracts.public import (
+    collection_publication_scope as _collection_publication_scope,
+)
+from cloudsite.modules.providers.contracts.public import (
+    enabled_root_ids as _enabled_root_ids,
+)
+from cloudsite.modules.resources.contracts.public import (
+    folder_publication_target as _folder_publication_target,
+)
 from cloudsite.modules.shares.contracts.public import (
+    CreatedShareView as CreatedShare,
     challenge_required as _module_challenge_required,
     cleanup_share_verify_attempts as _module_cleanup_share_verify_attempts,
     clear_verify_attempts as _module_clear_verify_attempts,
+    create_share as _module_create_share,
+    target_valid_for_share as _module_target_valid_for_share,
     verify_attempt_failed as _module_verify_attempt_failed,
 )
-from cloudsite.models import Collection, CollectionItem, ContentRootMapping, Folder, OperationLog, Resource, Share, utcnow
+from cloudsite.models import OperationLog, Share, utcnow
 
 from .code import generate_share_code, hash_share_code, verify_share_code
 
@@ -27,12 +38,6 @@ MAX_SHARE_DOWNLOADS = 404
 SHARE_TOKEN_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 DURATION_OPTIONS = {"5m", "1h", "6h", "24h", "7d", "permanent"}
 ShareStatus = Literal["active", "cancelled", "expired", "invalid_target", "migration_pending"]
-
-
-@dataclass(slots=True)
-class CreatedShare:
-    share: Share
-    code: str | None
 
 
 def aware_utc(value: datetime | None) -> datetime | None:
@@ -96,53 +101,63 @@ async def log_share_operation(session: AsyncSession, action: str, message: str, 
 
 
 async def enabled_root_ids(session: AsyncSession) -> set[int]:
-    return set((await session.scalars(select(ContentRootMapping.id).where(ContentRootMapping.enabled.is_(True)))).all())
+    return await _enabled_root_ids(session)
 
 
-async def resource_in_publication_scope(state: AsyncSession, resource: Resource | None) -> bool:
-    if not resource or resource.status != "active" or resource.root_mapping_id is None:
+async def resource_in_publication_scope(
+    state: AsyncSession,
+    resource,
+) -> bool:
+    if (
+        resource is None
+        or resource.status != "active"
+        or resource.root_mapping_id is None
+    ):
         return False
-    return resource.root_mapping_id in await enabled_root_ids(state)
+    return resource.root_mapping_id in await _enabled_root_ids(state)
 
 
-async def folder_in_publication_scope(state: AsyncSession, index: AsyncSession, folder: Folder | None) -> bool:
-    if not folder or folder.status != "active" or folder.root_mapping_id is None:
+async def folder_in_publication_scope(
+    state: AsyncSession,
+    index: AsyncSession,
+    folder,
+) -> bool:
+    if folder is None:
         return False
-    roots = await enabled_root_ids(state)
-    if folder.root_mapping_id not in roots:
-        return False
-    leaked = await index.scalar(
-        select(Resource.id)
-        .where(Resource.parent_id == folder.id, Resource.status == "active")
-        .where((Resource.root_mapping_id.is_(None)) | (Resource.root_mapping_id.not_in(roots)))
-        .limit(1)
+    return (
+        await _folder_publication_target(
+            state,
+            index,
+            folder.id,
+        )
+        is not None
     )
-    return leaked is None
 
 
-async def collection_in_publication_scope(state: AsyncSession, index: AsyncSession, collection: Collection | None) -> bool:
-    if not collection or collection.status != "active":
+async def collection_in_publication_scope(
+    state: AsyncSession,
+    index: AsyncSession,
+    collection,
+) -> bool:
+    if collection is None:
         return False
-    ids = list((await state.scalars(select(CollectionItem.resource_id).where(CollectionItem.collection_id == collection.id))).all())
-    if not ids:
-        return True
-    roots = await enabled_root_ids(state)
-    active_count = await index.scalar(
-        select(func.count())
-        .select_from(Resource)
-        .where(Resource.id.in_(ids), Resource.status == "active", Resource.root_mapping_id.is_not(None))
-        .where(Resource.root_mapping_id.in_(roots))
+    return await _collection_publication_scope(
+        state,
+        index,
+        collection.id,
     )
-    return int(active_count or 0) == len(set(ids))
 
 
-async def target_valid_for_share(state: AsyncSession, index: AsyncSession, share: Share) -> bool:
-    if share.object_type == "resource":
-        return await resource_in_publication_scope(state, await index.get(Resource, share.object_id))
-    if share.object_type == "folder":
-        return await folder_in_publication_scope(state, index, await index.get(Folder, share.object_id))
-    collection = await state.get(Collection, int(share.object_id)) if share.object_id.isdigit() else None
-    return await collection_in_publication_scope(state, index, collection)
+async def target_valid_for_share(
+    state: AsyncSession,
+    index: AsyncSession,
+    share,
+) -> bool:
+    return await _module_target_valid_for_share(
+        state,
+        index,
+        share,
+    )
 
 
 async def create_share(
@@ -152,41 +167,27 @@ async def create_share(
     *,
     creator_user_id: int | None = None,
 ) -> CreatedShare:
-    if payload.access_mode == "direct" and payload.object_type != "resource":
-        raise HTTPException(400, {"code": "SHARE_DIRECT_RESOURCE_ONLY", "message": "无分享码直下只支持单文件"})
-    if payload.object_type == "resource":
-        target = await index.get(Resource, payload.object_id)
-        valid = await resource_in_publication_scope(state, target)
-    elif payload.object_type == "folder":
-        target = await index.get(Folder, payload.object_id)
-        valid = await folder_in_publication_scope(state, index, target)
-    else:
-        target = await state.get(Collection, int(payload.object_id)) if payload.object_id.isdigit() else None
-        valid = await collection_in_publication_scope(state, index, target)
-    if not target or not valid:
-        raise HTTPException(400, {"code": "SHARE_TARGET_INVALID", "message": "分享对象不存在或不在发布范围内"})
-    token = generate_share_token()
-    while await state.get(Share, token):
-        token = generate_share_token()
-    code = generate_share_code() if payload.access_mode == "code" else None
-    row = Share(
-        token=token,
-        creator_user_id=creator_user_id,
-        object_type=payload.object_type,
-        object_id=payload.object_id,
-        title=payload.title,
-        enabled=True,
-        access_mode=payload.access_mode,
-        code_hash=hash_share_code(token, code) if code else None,
-        code_version=1 if code else 0,
-        expires_at=share_expires_at(payload.duration),
-        access_count=0,
-        view_count=0,
-        download_count=0,
-    )
-    state.add(row)
-    await log_share_operation(state, "share_created", f"创建分享 {token}")
-    return CreatedShare(row, code)
+    try:
+        return await _module_create_share(
+            state,
+            index,
+            object_type=payload.object_type,
+            object_id=payload.object_id,
+            access_mode=payload.access_mode,
+            duration=payload.duration,
+            title=payload.title,
+            secret_key=settings.secret_key,
+            creator_user_id=creator_user_id,
+        )
+    except Exception as exc:
+        from cloudsite.modules.shares.contracts.public import ShareValidationError
+
+        if isinstance(exc, ShareValidationError):
+            raise HTTPException(
+                exc.status_code,
+                {"code": exc.code, "message": exc.message},
+            ) from exc
+        raise
 
 
 async def reset_share_code(session: AsyncSession, share: Share) -> str:
