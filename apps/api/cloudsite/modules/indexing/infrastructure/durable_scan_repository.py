@@ -9,6 +9,7 @@ rolls back the surrounding transaction.
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -32,6 +33,21 @@ def _row_to_ns(row, fields):
     return SimpleNamespace(**{f: getattr(row, f) for f in fields})
 
 
+def _serialize_fingerprint(fingerprint: Any) -> str | None:
+    """Normalize a fingerprint value to the TEXT column representation.
+
+    A dict (typically ``ScanFingerprint.to_dict()``) is JSON-encoded with
+    sorted keys for stable equality comparison. A plain string is stored
+    as-is to preserve backward compatibility with existing callers that
+    pass a hex digest. None stays None.
+    """
+    if fingerprint is None:
+        return None
+    if isinstance(fingerprint, dict):
+        return json.dumps(fingerprint, sort_keys=True, separators=(",", ":"))
+    return str(fingerprint)
+
+
 _RUN_FIELDS = ("id", "root_mapping_id", "status", "started_at", "finished_at",
                "fingerprint", "total_dirs", "total_entries", "error_message")
 _DIR_FIELDS = ("id", "scan_run_id", "path", "depth", "status", "started_at",
@@ -49,18 +65,49 @@ class DurableScanRepository:
     async def create_scan_run(
         self,
         root_mapping_id: int,
-        fingerprint: str | None = None,
+        fingerprint: dict | str | None = None,
     ) -> SimpleNamespace:
         run_id = str(uuid.uuid4())
+        stored_fp = _serialize_fingerprint(fingerprint)
         await self._session.execute(
             text(
                 "INSERT INTO index_scan_runs(id, root_mapping_id, status, fingerprint) "
                 "VALUES (:id, :rid, 'pending', :fp)"
             ),
-            {"id": run_id, "rid": root_mapping_id, "fp": fingerprint},
+            {"id": run_id, "rid": root_mapping_id, "fp": stored_fp},
         )
         await self._session.flush()
         return await self.get_scan_run(run_id)
+
+    async def find_resumable_run(
+        self,
+        root_mapping_id: int,
+        fingerprint: dict | str | None,
+    ) -> SimpleNamespace | None:
+        """Return the most recent non-terminal run whose fingerprint matches.
+
+        A run is resumable only when its stored fingerprint equals the
+        current configuration fingerprint (V2 section 17). Any key field
+        change (connection, storage path, adapter version, schema version)
+        yields a different stored fingerprint, so the old run is rejected
+        and None is returned -- the caller must start a fresh run rather
+        than restore an incompatible one.
+        """
+        expected_fp = _serialize_fingerprint(fingerprint)
+        result = await self._session.execute(
+            text(
+                "SELECT id, root_mapping_id, status, started_at, finished_at, "
+                "fingerprint, total_dirs, total_entries, error_message "
+                "FROM index_scan_runs "
+                "WHERE root_mapping_id = :rid "
+                "AND status IN ('pending', 'running') "
+                "AND fingerprint = :fp "
+                "ORDER BY started_at DESC LIMIT 1"
+            ),
+            {"rid": root_mapping_id, "fp": expected_fp},
+        )
+        row = result.first()
+        return _row_to_ns(row, _RUN_FIELDS) if row else None
 
     async def get_scan_run(self, run_id: str) -> SimpleNamespace | None:
         result = await self._session.execute(
