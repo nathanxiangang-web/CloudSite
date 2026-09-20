@@ -11,6 +11,7 @@ Indexing module boundary.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -18,6 +19,9 @@ from ..application.reconcile import ReconcileResult, ReconcileService, WriteSumm
 from ..application.scan_category import ScanCategoryResult, ScanCategoryService
 from .provider_adapter import ProviderAdapter
 from .repository import IndexingStore
+
+GLOBAL_SCAN_CONCURRENCY = 16  # global scan concurrency
+RECONCILE_CONCURRENCY = 1     # production reconcile concurrency
 
 
 @dataclass(slots=True)
@@ -73,11 +77,31 @@ async def run_indexing_v2(
     categories = category_ids or []
     summary = V2IndexingSummary()
 
-    for category_id in categories:
+    if not categories:
+        return summary.to_dict()
+
+    scan_semaphore = asyncio.Semaphore(GLOBAL_SCAN_CONCURRENCY)
+    scan_results: dict[str, ScanCategoryResult] = {}
+    scan_errors: dict[str, Exception] = {}
+
+    async def scan_one(category_id: str) -> None:
+        async with scan_semaphore:
+            try:
+                scan_results[category_id] = await scan_service.scan(
+                    category_id, on_progress=on_progress,
+                )
+            except Exception as exc:  # noqa: BLE001 - per-category isolation
+                scan_errors[category_id] = exc
+
+    await asyncio.gather(*(scan_one(cid) for cid in categories))
+
+    for category_id in sorted(categories):
+        if category_id in scan_errors:
+            exc = scan_errors[category_id]
+            summary.errors.append(f"{category_id}: {type(exc).__name__}: {exc}")
+            continue
+        scan_result = scan_results[category_id]
         try:
-            scan_result: ScanCategoryResult = await scan_service.scan(
-                category_id, on_progress=on_progress,
-            )
             reconcile_result: ReconcileResult = await reconcile_service.reconcile(
                 scan_result.snapshot
             )
