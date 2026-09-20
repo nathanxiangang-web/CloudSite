@@ -1,8 +1,9 @@
 # AI Context Pack: Task System
 
 Purpose: explain the task queue so an AI agent can add or modify background
-work correctly. All background work in CloudSite goes through platform/tasks,
-never inline in request handlers.
+work correctly. `platform/tasks` is the durable queue for work whose deployed
+runtime guarantees a worker consumer. Do not turn an existing synchronous
+compatibility path into enqueue-only behavior without that guarantee.
 
 ## Why a Task System
 
@@ -25,7 +26,7 @@ platform/tasks/
   repository.py   - DB-backed queue (tasks table)
   lease.py        - lease claiming and expiry
   retry.py        - exponential backoff, max retry per kind
-  worker.py       - worker runtime (in-process or dedicated)
+  worker.py       - worker runtime used by the standalone worker entry point
   registry.py     - task kind registration with handlers and schemas
   api.py          - enqueue/claim/complete/fail contracts
   models.py       - ORM models for the tasks table
@@ -53,8 +54,8 @@ enqueued -> claimed (lease acquired) -> running -> completed
 | scan_category | indexing | walk a content root category, emit skeletons |
 | inspect_resource | indexing | fetch full detail for one resource |
 | reconcile_snapshot | indexing | commit snapshot to DB atomically |
-| rebuild_index | search | full FTS rebuild from state.db |
-| recover_index | search | detect and repair FTS corruption |
+| rebuild_index | search | target task kind for full FTS rebuild; current admin compatibility path remains synchronous |
+| recover_index | search | target task kind for recovery; startup dirty recovery remains synchronous |
 | generate_suggestions | automation | AI/rule metadata suggestions |
 | evaluate_parser | automation | score parser candidate against corpus |
 | run_batch | automation | process a batch of candidates/suggestions |
@@ -65,13 +66,13 @@ enqueued -> claimed (lease acquired) -> running -> completed
 
 1. Define the task payload schema in the module's public/ directory.
 2. Register the kind in platform/tasks/registry.py with handler and max retries.
-3. Enqueue via platform/tasks api: `enqueue(kind, payload, idempotency_key)`.
+3. Enqueue through the existing task repository/application path; do not invent a queue API that the runtime does not expose.
 4. Implement the handler as an application service in the module.
-5. Never run the work inline in a request handler; always enqueue.
+5. Move request work to enqueue-only execution only when its worker is part of the deployment contract.
 
 ## Rules
 
-1. Request handlers enqueue tasks; they do not run the work inline.
+1. Durable background work should use the task queue when its worker is guaranteed by the deployment; existing synchronous compatibility paths stay explicit until then.
 2. Task payloads are JSON; large payloads must reference stored data, not
    embed it.
 3. Handlers run with system scope, not a user session. The lease owner is a
@@ -79,8 +80,9 @@ enqueued -> claimed (lease acquired) -> running -> completed
 4. Handlers must be idempotent: a retry after a lease expiry must not double-
    commit. Use idempotency keys.
 5. Per-task timeouts prevent a runaway task from starving the worker.
-6. The worker runtime is in-process by default (shares the FastAPI process).
-   For heavy jobs, a dedicated worker mode is available.
+6. The current production worker runtime is the dedicated `python -m cloudsite.worker_main` process.
+   Base `docker-compose.yml` does not start it; `docker-compose.worker.yml` is an optional overlay.
+   FastAPI lifespan does not currently start an in-process `Worker`.
 
 ## Lease Semantics
 
