@@ -5,6 +5,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from cloudsite.config import settings
 from cloudsite.database import StateBase
 from cloudsite.models import Share as LegacyShare
 from cloudsite.modules.shares.contracts.public import (
@@ -27,6 +28,7 @@ from cloudsite.modules.shares.infrastructure.models import (
     utcnow,
 )
 from cloudsite.platform.db import session as db_session
+from cloudsite.shares.service import challenge_required as legacy_challenge_required
 
 
 async def _store():
@@ -212,5 +214,28 @@ async def test_expired_verification_window_resets_existing_row():
         assert len(rows) == 1
         assert rows[0].fail_count == 1
         assert rows[0].challenge_required_until is None
+
+    await engine.dispose()
+
+
+async def test_verification_hash_is_compatible_with_legacy_wrapper():
+    engine, factory = await _store()
+    address = "192.0.2.44"
+
+    async with factory() as state:
+        for _ in range(5):
+            await verify_attempt_failed(
+                state,
+                "hash-compat",
+                address,
+                secret_key=settings.secret_key,
+            )
+        await state.commit()
+
+        assert await legacy_challenge_required(
+            state,
+            "hash-compat",
+            address,
+        )
 
     await engine.dispose()
