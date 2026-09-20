@@ -2,6 +2,18 @@
 
 CloudSite 2.0 uses `module.yaml` as the machine-readable companion to each business module README.
 
+## Current-state authority
+
+For current modularization work, use the following precedence when documents drift:
+
+1. runtime code/tests on `main`;
+2. `module.yaml` for machine-enforced ownership, dependencies, and migration status;
+3. the module `README.md` for current compatibility edges;
+4. [modularization-status.md](./modularization-status.md) for the cross-module convergence view;
+5. historical migration documents only as execution history.
+
+A `partial` manifest means a real compatibility edge remains; it is **not** a mandate to keep refactoring once the production boundary is already safe. New work should be justified by an observed caller, behavior risk, or maintenance cost.
+
 ## Location
 
 Every business module must contain `module.yaml`, `README.md`, and `contracts/public.py`.
