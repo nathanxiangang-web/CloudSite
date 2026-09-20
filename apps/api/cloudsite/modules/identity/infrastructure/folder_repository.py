@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import datetime, timezone
+from pathlib import PurePosixPath
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application.ports import FolderIdentityRepository
@@ -92,6 +95,104 @@ class SqlAlchemyFolderIdentityRepository(FolderIdentityRepository):
                 cycle_id=record.cycle_id,
             )
         )
+
+    async def backfill_folder_identity(
+        self,
+        folder_path: str,
+        resource_id: str,
+        fingerprint: str | None,
+        *,
+        root_mapping_id: int | None = None,
+        now: datetime | None = None,
+    ) -> FolderIdentityRecord:
+        """Backfill a FolderIdentity row for a folder observed during indexing.
+
+        If an identity already exists at ``folder_path`` it is refreshed in
+        place (fingerprint/last_seen_at updated) and returned.  Otherwise a new
+        identity is created with ``created_from='backfill'`` so audit can
+        distinguish backfilled rows from rows produced by the resolver.
+        """
+        now = now or datetime.now(timezone.utc)
+        entity = await self._session.scalar(
+            select(FolderIdentity).where(FolderIdentity.current_path == folder_path)
+        )
+        if entity is None:
+            entity = FolderIdentity(
+                folder_id=resource_id,
+                current_path=folder_path,
+                root_mapping_id=root_mapping_id,
+                status="active",
+                first_seen_at=now,
+                last_seen_at=now,
+                last_name=PurePosixPath(folder_path).name or folder_path,
+                identity_fingerprint=fingerprint,
+                fingerprint_version=1,
+                created_from="backfill",
+                updated_at=now,
+            )
+            self._session.add(entity)
+        else:
+            entity.last_seen_at = now
+            entity.identity_fingerprint = fingerprint
+            entity.status = "active"
+            if root_mapping_id is not None:
+                entity.root_mapping_id = root_mapping_id
+            entity.updated_at = now
+        self._entities[entity.folder_id] = entity
+        return self._to_record(entity)
+
+    async def find_folder_identity(self, folder_path: str) -> FolderIdentityRecord | None:
+        """Return the folder identity currently mapped to ``folder_path``."""
+        entity = await self._session.scalar(
+            select(FolderIdentity).where(FolderIdentity.current_path == folder_path)
+        )
+        if entity is None:
+            return None
+        self._entities[entity.folder_id] = entity
+        return self._to_record(entity)
+
+    async def find_descendants_by_folder(
+        self, folder_path: str
+    ) -> list[FolderIdentityRecord]:
+        """Return all folder identities whose path is nested under ``folder_path``.
+
+        A descendant is any folder whose ``current_path`` starts with
+        ``folder_path + "/"``.  The folder itself is not included.
+        """
+        prefix = folder_path.rstrip("/") + "/"
+        statement = select(FolderIdentity).where(
+            FolderIdentity.current_path.like(prefix + "%")
+        )
+        entities = list((await self._session.scalars(statement)).all())
+        for entity in entities:
+            self._entities[entity.folder_id] = entity
+        return [self._to_record(entity) for entity in entities]
+
+    async def cascade_delete_by_root(self, root_mapping_id: int) -> int:
+        """Delete every folder identity owned by ``root_mapping_id``.
+
+        Returns the number of rows removed.  History rows reference
+        folder_identities with ondelete=RESTRICT, so they are removed first.
+        """
+        folder_ids_stmt = select(FolderIdentity.folder_id).where(
+            FolderIdentity.root_mapping_id == root_mapping_id
+        )
+        folder_ids = list((await self._session.scalars(folder_ids_stmt)).all())
+        if not folder_ids:
+            return 0
+        await self._session.execute(
+            delete(FolderIdentityHistory).where(
+                FolderIdentityHistory.folder_id.in_(folder_ids)
+            )
+        )
+        result = await self._session.execute(
+            delete(FolderIdentity).where(
+                FolderIdentity.root_mapping_id == root_mapping_id
+            )
+        )
+        for folder_id in folder_ids:
+            self._entities.pop(folder_id, None)
+        return int(result.rowcount or 0)
 
 
 __all__ = ["SqlAlchemyFolderIdentityRepository"]

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..domain.records import ResourceIdentityHistoryRecord, ResourceIdentityRecord
@@ -129,6 +129,32 @@ class SqlAlchemyResourceIdentityRepository(ResourceIdentityRepository):
 
     async def commit(self) -> None:
         await self._session.commit()
+
+    async def cascade_delete_by_root(self, root_mapping_id: int) -> int:
+        """Delete every resource identity owned by ``root_mapping_id``.
+
+        Returns the number of rows removed.  History rows reference
+        resource_identities with ondelete=RESTRICT, so they are removed first.
+        """
+        resource_ids_stmt = select(ResourceIdentity.resource_id).where(
+            ResourceIdentity.root_mapping_id == root_mapping_id
+        )
+        resource_ids = list((await self._session.scalars(resource_ids_stmt)).all())
+        if not resource_ids:
+            return 0
+        await self._session.execute(
+            delete(ResourceIdentityHistory).where(
+                ResourceIdentityHistory.resource_id.in_(resource_ids)
+            )
+        )
+        result = await self._session.execute(
+            delete(ResourceIdentity).where(
+                ResourceIdentity.root_mapping_id == root_mapping_id
+            )
+        )
+        for resource_id in resource_ids:
+            self._entities.pop(resource_id, None)
+        return int(result.rowcount or 0)
 
 
 __all__ = ["SqlAlchemyResourceIdentityRepository"]
