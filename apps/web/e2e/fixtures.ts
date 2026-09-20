@@ -7,13 +7,24 @@ import { waitForApiReady, waitForWebReady, loginViaApi, loginViaUi, WEB_BASE_URL
  * - `apiHealth`: probes the API once per worker; tests skip when unavailable.
  * - `webReady`: probes the web app once; tests skip when unavailable.
  * - `apiAuth`: an APIRequestContext already authenticated as a test user.
+ * - `e2eSeed`: deterministic content/search data from the guarded dev-only seed route.
  * - `freshPage`: a clean page with localStorage cleared.
  */
+
+export type E2ESeedData = {
+  root_mapping_id: number;
+  resource_id: string;
+  resource_name: string;
+  search_query: string;
+  search_indexed: number;
+  download_provider_seeded: false;
+};
 
 export type E2EFixtures = {
   apiHealth: ApiHealth;
   webReady: boolean;
   apiAuth: APIRequestContext;
+  e2eSeed: E2ESeedData;
   freshPage: Page;
   loggedInPage: Page;
 };
@@ -42,6 +53,29 @@ export const test = base.extend<E2EFixtures>({
     } finally {
       await ctx.dispose();
     }
+  },
+
+  e2eSeed: async ({ apiAuth }, use) => {
+    const response = await apiAuth.post('/api/_e2e/seed', {
+      headers: { 'X-E2E-Run': '1' },
+    });
+    if (response.status() === 404) {
+      test.skip(
+        true,
+        'Deterministic E2E seed is disabled; set CLOUDSITE_E2E_SEED_ENABLED=true in the dev E2E environment',
+      );
+      return;
+    }
+    if (!response.ok()) {
+      throw new Error(
+        `E2E seed failed with HTTP ${response.status()}: ${await response.text()}`,
+      );
+    }
+    const seed = await response.json() as E2ESeedData;
+    if (!seed.resource_id || !seed.resource_name || !seed.search_query) {
+      throw new Error('E2E seed returned an invalid payload');
+    }
+    await use(seed);
   },
 
   freshPage: async ({ browser }, use) => {
