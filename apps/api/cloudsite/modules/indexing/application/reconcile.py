@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..domain.change import ChangeRecord, ChangeType
+from ..domain.identity import IdentityFingerprint, IdentityMatchingEngine
 from ..domain.snapshot import CategorySnapshot
+from ..infrastructure.identity_repository import IdentityRepository
 from ..infrastructure.repository import IndexedEntry, IndexingStore
 
 logger = logging.getLogger(__name__)
@@ -37,10 +39,16 @@ class ReconcileResult:
     suppressed_removals: int = 0
     pagination_complete: bool = True
     shrink_suppressed: bool = False
+    conflicts: list[ChangeRecord] = field(default_factory=list)
+    identity_history_updated: bool = False
 
     @property
     def removal_writes_blocked(self) -> bool:
         return self.suppressed_removals > 0
+
+    @property
+    def has_conflicts(self) -> bool:
+        return bool(self.conflicts)
 
 
 _ENTRY_FIELDS: tuple[str, ...] = ('path', 'name', 'size', 'modified_at', 'content_hash')
@@ -59,6 +67,43 @@ def _entry_dict(entry: IndexedEntry) -> dict[str, Any]:
 
 def _snapshot_dict(entry: Any) -> dict[str, Any]:
     return {f: getattr(entry, f) for f in _ENTRY_FIELDS}
+
+
+def _parent_dir(path: str) -> str:
+    if not path:
+        return ""
+    idx = path.rfind('/')
+    if idx <= 0:
+        return "/"
+    return path[:idx]
+
+
+def _same_directory(path1: str, path2: str) -> bool:
+    return _parent_dir(path1) == _parent_dir(path2)
+
+
+def _root_mapping_id(entry: Any) -> int:
+    meta = getattr(entry, "metadata", None) or {}
+    return int(meta.get("root_mapping_id", 0) or 0)
+
+
+def _entry_fingerprint(
+    engine: IdentityMatchingEngine, entry: Any,
+) -> IdentityFingerprint:
+    """Build a fingerprint with root_mapping_id read from entry metadata.
+
+    SnapshotEntry stores root_mapping_id in its metadata dict rather than as a
+    top-level attribute, so the identity engine's extract_fingerprint (which
+    only checks attributes/dict keys) would default it to 0. This helper reads
+    root_mapping_id from metadata so cross-root moves are detected correctly.
+    """
+    return IdentityFingerprint(
+        name=str(getattr(entry, "name", "") or ""),
+        size=getattr(entry, "size", None),
+        modified_at=getattr(entry, "modified_at", None),
+        root_mapping_id=_root_mapping_id(entry),
+        path=getattr(entry, "path", None),
+    )
 
 
 def _canonicalize_entries(
@@ -200,6 +245,206 @@ class ReconcileService:
             suppressed_removals=suppressed,
             pagination_complete=snapshot.pagination_complete,
             shrink_suppressed=shrink_suppressed,
+        )
+
+    async def reconcile_with_identity(
+        self,
+        snapshot: CategorySnapshot,
+        identity_engine: IdentityMatchingEngine | None,
+        identity_repo: IdentityRepository | None = None,
+    ) -> ReconcileResult:
+        """Reconcile using identity matching first, then path match fallback.
+
+        Identity match takes priority over path match: when a staging entry's
+        fingerprint matches an existing identity history record, the preserved
+        resource_id is reused and a path change is classified as RENAMED (same
+        directory) or MOVED (different directory). Conflicts (multiple history
+        records sharing the digest) are reported explicitly via ChangeType.CONFLICT
+        and never silently resolved. Cross-root moves yield no_match (the digest
+        encodes root_mapping_id) and fall back to new-id allocation. When
+        identity_engine is None, behavior degrades to path-based reconcile.
+        """
+        if identity_engine is None:
+            return await self.reconcile(snapshot)
+
+        existing = await self._store.list_indexed(
+            category_id=snapshot.category_id,
+            provider_id=snapshot.provider_id,
+        )
+        existing_by_id = {e.resource_id: e for e in existing}
+        existing_by_path = {
+            (bool((e.metadata or {}).get("is_dir")), e.path): e
+            for e in existing
+        }
+
+        changes: list[ChangeRecord] = []
+        added_entries: list[IndexedEntry] = []
+        changed_entries: list[IndexedEntry] = []
+        to_touch: list[str] = []
+        removed_ids: list[str] = []
+        conflicts: list[ChangeRecord] = []
+        history_to_save: list[tuple[str, IdentityFingerprint]] = []
+
+        cat = snapshot.category_id
+        prov = snapshot.provider_id
+
+        identity_claimed_ids: set[str] = set()
+        incoming_ids: set[str] = set()
+
+        for snap_entry in snapshot.entries:
+            fingerprint = _entry_fingerprint(identity_engine, snap_entry)
+            history: list = []
+            if identity_repo is not None:
+                history = await identity_repo.find_by_fingerprint(fingerprint)
+            match = identity_engine.match(fingerprint, history)
+
+            if match.is_matched:
+                preserved_id = match.resource_id
+                assert preserved_id is not None
+                identity_claimed_ids.add(preserved_id)
+                incoming_ids.add(preserved_id)
+                canonical = replace(snap_entry, resource_id=preserved_id)
+                current = existing_by_id.get(preserved_id)
+                if current is None:
+                    changes.append(ChangeRecord(
+                        change_type=ChangeType.ADDED,
+                        resource_id=preserved_id, category_id=cat,
+                        provider_id=prov, after=_snapshot_dict(canonical),
+                    ))
+                    added_entries.append(self._to_indexed(canonical, cat, prov))
+                elif current.path != canonical.path:
+                    change_type = (
+                        ChangeType.RENAMED
+                        if _same_directory(current.path, canonical.path)
+                        else ChangeType.MOVED
+                    )
+                    changes.append(ChangeRecord(
+                        change_type=change_type,
+                        resource_id=preserved_id, category_id=cat,
+                        provider_id=prov,
+                        before=_entry_dict(current),
+                        after=_snapshot_dict(canonical),
+                    ))
+                    changed_entries.append(self._to_indexed(canonical, cat, prov))
+                elif self._differs(current, canonical):
+                    changes.append(ChangeRecord(
+                        change_type=ChangeType.CHANGED,
+                        resource_id=preserved_id, category_id=cat,
+                        provider_id=prov,
+                        before=_entry_dict(current),
+                        after=_snapshot_dict(canonical),
+                    ))
+                    changed_entries.append(self._to_indexed(canonical, cat, prov))
+                else:
+                    changes.append(ChangeRecord(
+                        change_type=ChangeType.UNCHANGED,
+                        resource_id=preserved_id, category_id=cat,
+                        provider_id=prov,
+                    ))
+                    to_touch.append(preserved_id)
+                history_to_save.append((preserved_id, fingerprint))
+            elif match.is_conflict:
+                conflict_record = ChangeRecord(
+                    change_type=ChangeType.CONFLICT,
+                    resource_id=snap_entry.resource_id,
+                    category_id=cat, provider_id=prov,
+                    after=_snapshot_dict(snap_entry),
+                )
+                changes.append(conflict_record)
+                conflicts.append(conflict_record)
+                incoming_ids.add(snap_entry.resource_id)
+            else:
+                metadata = dict(snap_entry.metadata or {})
+                entry_key = (bool(metadata.get("is_dir")), snap_entry.path)
+                path_existing = existing_by_path.get(entry_key)
+                if (
+                    path_existing is not None
+                    and path_existing.resource_id not in identity_claimed_ids
+                ):
+                    preserved_id = path_existing.resource_id
+                    identity_claimed_ids.add(preserved_id)
+                    incoming_ids.add(preserved_id)
+                    canonical = replace(snap_entry, resource_id=preserved_id)
+                    current = existing_by_id.get(preserved_id)
+                    if current is not None and self._differs(current, canonical):
+                        changes.append(ChangeRecord(
+                            change_type=ChangeType.CHANGED,
+                            resource_id=preserved_id, category_id=cat,
+                            provider_id=prov,
+                            before=_entry_dict(current),
+                            after=_snapshot_dict(canonical),
+                        ))
+                        changed_entries.append(self._to_indexed(canonical, cat, prov))
+                    else:
+                        changes.append(ChangeRecord(
+                            change_type=ChangeType.UNCHANGED,
+                            resource_id=preserved_id, category_id=cat,
+                            provider_id=prov,
+                        ))
+                        to_touch.append(preserved_id)
+                    history_to_save.append((preserved_id, fingerprint))
+                else:
+                    new_id = snap_entry.resource_id
+                    incoming_ids.add(new_id)
+                    changes.append(ChangeRecord(
+                        change_type=ChangeType.ADDED,
+                        resource_id=new_id, category_id=cat,
+                        provider_id=prov, after=_snapshot_dict(snap_entry),
+                    ))
+                    added_entries.append(self._to_indexed(snap_entry, cat, prov))
+                    history_to_save.append((new_id, fingerprint))
+
+        for rid in existing_by_id:
+            if rid not in incoming_ids:
+                removed_ids.append(rid)
+                changes.append(ChangeRecord(
+                    change_type=ChangeType.REMOVED,
+                    resource_id=rid, category_id=cat, provider_id=prov,
+                    before=_entry_dict(existing_by_id[rid]),
+                ))
+
+        writes = WriteSummary()
+        suppressed = 0
+        shrink_suppressed = False
+
+        if added_entries or changed_entries:
+            await self._store.upsert(added_entries + changed_entries)
+            writes.added = len(added_entries)
+            writes.changed = len(changed_entries)
+
+        if to_touch:
+            writes.unchanged = await self._store.touch_unchanged(to_touch)
+
+        if removed_ids:
+            if snapshot.pagination_complete:
+                shrink_threshold = max(1, SHRINK_RATIO * len(existing_by_id))
+                if len(removed_ids) > shrink_threshold:
+                    logger.warning(
+                        "anomalous shrink detected: removed=%d existing=%d, "
+                        "suppressing destructive removal",
+                        len(removed_ids), len(existing_by_id),
+                    )
+                    suppressed = len(removed_ids)
+                    shrink_suppressed = True
+                else:
+                    writes.removed = await self._store.remove(removed_ids)
+            else:
+                suppressed = len(removed_ids)
+
+        identity_history_updated = False
+        if identity_repo is not None and history_to_save:
+            for rid, fp in history_to_save:
+                await identity_repo.save(rid, fp)
+            identity_history_updated = True
+
+        return ReconcileResult(
+            changes=changes,
+            writes=writes,
+            suppressed_removals=suppressed,
+            pagination_complete=snapshot.pagination_complete,
+            shrink_suppressed=shrink_suppressed,
+            conflicts=conflicts,
+            identity_history_updated=identity_history_updated,
         )
 
     @staticmethod

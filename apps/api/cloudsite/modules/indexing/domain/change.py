@@ -11,6 +11,9 @@ class ChangeType(str, Enum):
     REMOVED = 'removed'
     CHANGED = 'changed'
     UNCHANGED = 'unchanged'
+    RENAMED = 'renamed'
+    MOVED = 'moved'
+    CONFLICT = 'conflict'
 
 
 @dataclass(slots=True)
