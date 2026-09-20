@@ -12,6 +12,8 @@ Assertions use loose thresholds to avoid CI environment flakiness.
 from __future__ import annotations
 
 import asyncio
+import gc
+import statistics
 import time
 import tracemalloc
 from datetime import datetime, timezone
@@ -330,15 +332,39 @@ async def test_reconcile_time_proportional(
             entries=entries,
             pagination_complete=True,
         )
-        store = _InMemoryStore()
-        service = ReconcileService(store)
-        start = time.monotonic()
-        reconcile_result = await service.reconcile(snapshot)
-        reconcile_time = time.monotonic() - start
+
+        async def _one_sample() -> tuple[float, int]:
+            store = _InMemoryStore()
+            service = ReconcileService(store)
+            gc_was_enabled = gc.isenabled()
+            if gc_was_enabled:
+                gc.disable()
+            try:
+                start_ns = time.perf_counter_ns()
+                result = await service.reconcile(snapshot)
+                elapsed = (time.perf_counter_ns() - start_ns) / 1_000_000_000
+            finally:
+                if gc_was_enabled:
+                    gc.enable()
+            return elapsed, result.writes.added
+
+        # Warm the interpreter/code paths first. The measured operation is
+        # allocation-heavy but contains no intentional cyclic object graph;
+        # disabling cyclic GC during each sample avoids threshold-triggered GC
+        # pauses being misclassified as algorithmic super-linearity.
+        await _one_sample()
+
+        samples: list[float] = []
+        added = 0
+        for _ in range(5):
+            elapsed, added = await _one_sample()
+            samples.append(elapsed)
+
         return {
-            "reconcile_time": reconcile_time,
+            "reconcile_time": statistics.median(samples),
+            "reconcile_samples": samples,
             "entry_count": len(entries),
-            "added": reconcile_result.writes.added,
+            "added": added,
         }
 
     small = await _reconcile_time(_SmallFixture)
@@ -357,6 +383,9 @@ async def test_reconcile_time_proportional(
     print(f"  large:  entries={large['entry_count']:>5}  "
           f"reconcile_time={large['reconcile_time']:.6f}s  "
           f"added={large['added']}")
+    print(f"  small_samples:  {small['reconcile_samples']}")
+    print(f"  medium_samples: {medium['reconcile_samples']}")
+    print(f"  large_samples:  {large['reconcile_samples']}")
     if small["reconcile_time"] > 0:
         ratio_time = large["reconcile_time"] / small["reconcile_time"]
         ratio_entries = large["entry_count"] / small["entry_count"]

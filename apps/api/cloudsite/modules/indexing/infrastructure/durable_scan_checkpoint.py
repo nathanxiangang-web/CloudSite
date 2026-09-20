@@ -10,14 +10,13 @@ atomic unit of work (V2 section 14).
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
-from sqlalchemy import select, text, update
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cloudsite.models import IndexScanDir, IndexScanRun
 from cloudsite.modules.indexing.domain.snapshot import SnapshotEntry
 from cloudsite.modules.indexing.infrastructure.durable_scan_repository import (
     DurableScanRepository,
@@ -25,16 +24,34 @@ from cloudsite.modules.indexing.infrastructure.durable_scan_repository import (
 
 RESUME_MAX_AGE: timedelta = timedelta(minutes=60)
 
+_DIR_FIELDS = (
+    "id",
+    "scan_run_id",
+    "path",
+    "depth",
+    "status",
+    "started_at",
+    "finished_at",
+    "entry_count",
+    "error_message",
+)
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _ensure_aware(dt: datetime) -> datetime:
-    """SQLite may return offset-naive datetimes; assume UTC."""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt
+def _ensure_aware(value: datetime | str) -> datetime:
+    """Normalize SQLite/driver datetime values to timezone-aware UTC."""
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _dir_row(row) -> SimpleNamespace:
+    return SimpleNamespace(**{field: getattr(row, field) for field in _DIR_FIELDS})
 
 
 @dataclass(slots=True)
@@ -48,7 +65,7 @@ class ResumeResult:
     resumed: bool
     reason: str | None
     run_id: str
-    pending_dirs: list[IndexScanDir]
+    pending_dirs: list[SimpleNamespace]
 
 
 class ScanRunManager:
@@ -62,14 +79,16 @@ class ScanRunManager:
         self,
         root_mapping_id: int,
         fingerprint: str | None = None,
-    ) -> IndexScanRun:
+    ) -> SimpleNamespace:
         """Create a new run and mark it running immediately."""
         run = await self._repo.create_scan_run(
             root_mapping_id, fingerprint=fingerprint
         )
         await self._repo.update_scan_run_status(run.id, "running")
-        await self._session.refresh(run)
-        return run
+        refreshed = await self._repo.get_scan_run(run.id)
+        if refreshed is None:
+            raise RuntimeError(f"scan run disappeared after creation: {run.id}")
+        return refreshed
 
     async def complete_scan(self, run_id: str) -> None:
         await self._repo.update_scan_run_status(run_id, "completed")
@@ -88,23 +107,16 @@ class ScanRunManager:
     ) -> int:
         """Mark running runs older than ``max_age`` as expired; return count."""
         cutoff = _utcnow() - max_age
-        stmt = select(IndexScanRun.id).where(
-            IndexScanRun.status == "running",
-            IndexScanRun.started_at < cutoff,
+        result = await self._session.execute(
+            text(
+                "UPDATE index_scan_runs "
+                "SET status = 'expired', finished_at = :now "
+                "WHERE status = 'running' AND started_at < :cutoff"
+            ),
+            {"now": _utcnow(), "cutoff": cutoff},
         )
-        result = await self._session.execute(stmt)
-        stale_ids = [row[0] for row in result.all()]
-        if not stale_ids:
-            return 0
-        now = _utcnow()
-        upd = (
-            update(IndexScanRun)
-            .where(IndexScanRun.id.in_(stale_ids))
-            .values(status="expired", finished_at=now)
-        )
-        await self._session.execute(upd)
         await self._session.flush()
-        return len(stale_ids)
+        return max(int(result.rowcount or 0), 0)
 
 
 class DirCheckpoint:
@@ -114,17 +126,22 @@ class DirCheckpoint:
         self._session = session
         self._repo = DurableScanRepository(session)
 
-    async def _get_dir(self, run_id: str, dir_path: str) -> IndexScanDir | None:
-        stmt = (
-            select(IndexScanDir)
-            .where(
-                IndexScanDir.scan_run_id == run_id,
-                IndexScanDir.path == dir_path,
-            )
-            .limit(1)
+    async def _get_dir(
+        self,
+        run_id: str,
+        dir_path: str,
+    ) -> SimpleNamespace | None:
+        result = await self._session.execute(
+            text(
+                "SELECT id, scan_run_id, path, depth, status, started_at, "
+                "finished_at, entry_count, error_message "
+                "FROM index_scan_dirs "
+                "WHERE scan_run_id = :run AND path = :path LIMIT 1"
+            ),
+            {"run": run_id, "path": dir_path},
         )
-        result = await self._session.execute(stmt)
-        return result.scalars().first()
+        row = result.first()
+        return _dir_row(row) if row is not None else None
 
     async def checkpoint_dir(
         self,
@@ -133,17 +150,15 @@ class DirCheckpoint:
         entries: list[SnapshotEntry],
         child_dirs: list[tuple[str, int]],
     ) -> None:
-        """Single transaction: upsert entries + insert child_dirs as pending + mark dir done.
+        """Save entries/children before marking the current directory done.
 
-        Hard rule (V2 section 14): save entries and discovered child dirs
-        BEFORE marking the current dir done, so a crash never leaves a done
-        dir without its children. Idempotent: re-checkpointing an already
-        done dir is a no-op.
+        The caller owns the surrounding transaction. Re-checkpointing an
+        already completed directory is a no-op.
         """
         existing = await self._get_dir(run_id, dir_path)
         if existing is not None and existing.status == "done":
             return
-        # 1. upsert entries (delete-then-insert for this dir)
+
         if entries:
             await self._session.execute(
                 text(
@@ -153,23 +168,21 @@ class DirCheckpoint:
                 {"run": run_id, "path": dir_path},
             )
         await self._repo.add_entries(run_id, entries)
-        # 2. insert child_dirs as pending, skipping paths already present
+
         await self._add_child_dirs(run_id, child_dirs)
-        # 3. mark the dir done LAST (V2 section 14 hard rule)
-        if existing is not None:
-            await self._repo.complete_dir(existing.id, entry_count=len(entries))
-        else:
-            new_dir = IndexScanDir(
-                id=str(uuid.uuid4()),
-                scan_run_id=run_id,
-                path=dir_path,
-                depth=max(dir_path.count("/"), 0),
-                status="done",
-                finished_at=_utcnow(),
-                entry_count=len(entries),
+
+        if existing is None:
+            await self._repo.add_dirs(
+                run_id,
+                [(dir_path, max(dir_path.count("/"), 0))],
             )
-            self._session.add(new_dir)
-            await self._session.flush()
+            existing = await self._get_dir(run_id, dir_path)
+            if existing is None:
+                raise RuntimeError(
+                    f"checkpoint directory disappeared after creation: {dir_path}"
+                )
+
+        await self._repo.complete_dir(existing.id, entry_count=len(entries))
 
     async def _add_child_dirs(
         self,
@@ -178,14 +191,27 @@ class DirCheckpoint:
     ) -> None:
         if not child_dirs:
             return
-        paths = [p for p, _ in child_dirs]
-        stmt = select(IndexScanDir.path).where(
-            IndexScanDir.scan_run_id == run_id,
-            IndexScanDir.path.in_(paths),
+        paths = [path for path, _ in child_dirs]
+        placeholders = ", ".join(
+            f":path_{index}" for index in range(len(paths))
         )
-        result = await self._session.execute(stmt)
+        params = {"run": run_id}
+        params.update(
+            {f"path_{index}": path for index, path in enumerate(paths)}
+        )
+        result = await self._session.execute(
+            text(
+                "SELECT path FROM index_scan_dirs "
+                f"WHERE scan_run_id = :run AND path IN ({placeholders})"
+            ),
+            params,
+        )
         existing_paths = {row[0] for row in result.all()}
-        new_dirs = [(p, d) for p, d in child_dirs if p not in existing_paths]
+        new_dirs = [
+            (path, depth)
+            for path, depth in child_dirs
+            if path not in existing_paths
+        ]
         await self._repo.add_dirs(run_id, new_dirs)
 
     async def recover_interrupted(self, run_id: str) -> None:
@@ -193,15 +219,14 @@ class DirCheckpoint:
 
         Done dirs are never revisited; failed dirs are left for inspection.
         """
-        stmt = (
-            update(IndexScanDir)
-            .where(
-                IndexScanDir.scan_run_id == run_id,
-                IndexScanDir.status == "running",
-            )
-            .values(status="pending", started_at=None)
+        await self._session.execute(
+            text(
+                "UPDATE index_scan_dirs "
+                "SET status = 'pending', started_at = NULL "
+                "WHERE scan_run_id = :run AND status = 'running'"
+            ),
+            {"run": run_id},
         )
-        await self._session.execute(stmt)
         await self._session.flush()
 
     async def resume_scan(
@@ -209,50 +234,61 @@ class DirCheckpoint:
         run_id: str,
         fingerprint: str | None,
     ) -> ResumeResult:
-        """Validate fingerprint compatibility and return pending dirs.
-
-        V2 section 16: runs older than ``RESUME_MAX_AGE`` are expired and
-        refused. V2 section 17: a fingerprint mismatch refuses resume.
-        """
+        """Validate fingerprint compatibility and return pending dirs."""
         run = await self._repo.get_scan_run(run_id)
         if run is None:
             return ResumeResult(
-                resumed=False, reason="run_not_found",
-                run_id=run_id, pending_dirs=[],
+                resumed=False,
+                reason="run_not_found",
+                run_id=run_id,
+                pending_dirs=[],
             )
         if run.status == "expired":
             return ResumeResult(
-                resumed=False, reason="run_expired",
-                run_id=run_id, pending_dirs=[],
+                resumed=False,
+                reason="run_expired",
+                run_id=run_id,
+                pending_dirs=[],
             )
-        if run.started_at is not None and _ensure_aware(run.started_at) < _utcnow() - RESUME_MAX_AGE:
+        if (
+            run.started_at is not None
+            and _ensure_aware(run.started_at) < _utcnow() - RESUME_MAX_AGE
+        ):
             await self._repo.update_scan_run_status(run_id, "expired")
             return ResumeResult(
-                resumed=False, reason="run_expired_max_age",
-                run_id=run_id, pending_dirs=[],
+                resumed=False,
+                reason="run_expired_max_age",
+                run_id=run_id,
+                pending_dirs=[],
             )
         if run.fingerprint != fingerprint:
             return ResumeResult(
-                resumed=False, reason="fingerprint_mismatch",
-                run_id=run_id, pending_dirs=[],
+                resumed=False,
+                reason="fingerprint_mismatch",
+                run_id=run_id,
+                pending_dirs=[],
             )
-        stmt = (
-            select(IndexScanDir)
-            .where(
-                IndexScanDir.scan_run_id == run_id,
-                IndexScanDir.status == "pending",
-            )
-            .order_by(IndexScanDir.id)
+
+        result = await self._session.execute(
+            text(
+                "SELECT id, scan_run_id, path, depth, status, started_at, "
+                "finished_at, entry_count, error_message "
+                "FROM index_scan_dirs "
+                "WHERE scan_run_id = :run AND status = 'pending' "
+                "ORDER BY depth, id"
+            ),
+            {"run": run_id},
         )
-        result = await self._session.execute(stmt)
-        pending = list(result.scalars().all())
+        pending = [_dir_row(row) for row in result.all()]
         return ResumeResult(
-            resumed=True, reason=None,
-            run_id=run_id, pending_dirs=pending,
+            resumed=True,
+            reason=None,
+            run_id=run_id,
+            pending_dirs=pending,
         )
 
     async def is_scan_complete(self, run_id: str) -> bool:
-        """Complete gate (V2 section 18): pending==0 and running==0 and failed==0."""
+        """Complete gate: pending==0 and running==0 and failed==0."""
         pending = await self._repo.count_dirs(run_id, "pending")
         running = await self._repo.count_dirs(run_id, "running")
         failed = await self._repo.count_dirs(run_id, "failed")
