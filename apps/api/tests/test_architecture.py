@@ -669,6 +669,32 @@ class TestResourcesListRouterBoundary:
 
 
 
+class TestSharesVerificationBoundary:
+    """Share verification-attempt persistence belongs to the Shares module."""
+
+    def test_legacy_share_service_does_not_own_verification_attempt_orm(self):
+        legacy_file = CLOUDSITE / "shares" / "service.py"
+        source = legacy_file.read_text(encoding="utf-8")
+
+        assert "ShareVerifyAttempt" not in source
+        assert "_module_verify_attempt_failed" in source
+        assert "_module_challenge_required" in source
+        assert "_module_clear_verify_attempts" in source
+
+    def test_public_share_router_uses_module_verification_contract(self):
+        router_file = CLOUDSITE / "routers" / "shares.py"
+        source = router_file.read_text(encoding="utf-8")
+        legacy_import = source.split(
+            "from ..shares.service import (",
+            1,
+        )[1].split(")", 1)[0]
+
+        assert "challenge_required" not in legacy_import
+        assert "verify_attempt_failed" not in legacy_import
+        assert "clear_verify_attempts" not in legacy_import
+        assert "modules.shares.contracts.public" in source
+
+
 class TestModuleStructure:
     """Validate that each module has the required minimum structure."""
 
