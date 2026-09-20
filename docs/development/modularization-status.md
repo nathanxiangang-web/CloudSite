@@ -42,7 +42,7 @@ A module being `partial` does not by itself justify more refactoring.
 | Automation | `partial` | Parser and suggestion cores are module-owned and tracked module legacy-import debt is zero. Compatibility facades may remain while callers migrate. |
 | Delivery | `partial` | Download events, diagnostics and rate-limit ownership split are established. Continue only against verified legacy delivery-package callers. |
 | Notifications | `partial` | ORM, user/admin query/command paths are module-owned. Remaining work is producer/event convergence where direct legacy producers still exist. |
-| Shares | `partial` | CRUD plus verification-attempt persistence/cleanup are module-owned. Real production target/scope resolution remains the next verified compatibility edge. |
+| Shares | `partial` | CRUD, verification-attempt persistence/cleanup, and production target/scope orchestration are module-owned behind Resources/Collections contracts. Remaining legacy share services are compatibility surfaces subject to caller audit, not automatic migration. |
 | Users | `partial` | Account/auth/session/user-data/role ownership is substantially module-owned. Admin-session ownership is the main documented follow-up. |
 | Collections | `partial` | CRUD and reference resolution are module-owned. Topic/seed compatibility helpers remain follow-up only if still called. |
 | Submissions | `partial` | User-to-review-to-publish workflow is module-owned; only narrow compatibility surfaces should remain. |
@@ -57,7 +57,7 @@ The current backlog is tracked in issue #157. Indexing I2 and Search S2 have rea
 The intended order is now:
 
 1. keep documentation/current-state metadata reconciled;
-2. finish Shares only against verified production callers: P2a verification-attempt ownership first, then target/scope resolution as a separate slice;
+2. treat Shares P2a/P2b production ownership as converged; only reduce remaining legacy wrappers after caller-zero verification;
 3. inspect Users admin-session ownership and other `partial` modules only where a real production caller still crosses a legacy edge;
 4. preserve thin caller-zero compatibility facades when deleting them would not materially reduce risk;
 5. shift effort toward product/UI/E2E once the stop conditions are met.
