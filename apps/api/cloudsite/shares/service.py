@@ -323,7 +323,3 @@ async def cleanup_terminal_shares(now: datetime | None = None) -> int:
         return len(rows)
 
 
-async def captcha_token_valid(token: str | None) -> bool:
-    # The data model keeps the challenge state without Redis. Third-party
-    # Turnstile verification can be wired here when a site key/secret is added.
-    return bool(token)
