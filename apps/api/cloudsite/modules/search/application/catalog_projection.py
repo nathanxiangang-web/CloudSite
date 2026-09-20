@@ -40,6 +40,7 @@ async def consume_catalog_search_outbox(
     consumed = 0
     skipped = 0
     failed = 0
+    consumed_ids: list[str] = []
     consumed_at = datetime.now(timezone.utc)
 
     for row in pending:
@@ -53,11 +54,7 @@ async def consume_catalog_search_outbox(
                 and existing_revision >= row.revision
             ):
                 skipped += 1
-                await mark_catalog_search_outbox_consumed(
-                    state,
-                    outbox_id=row.outbox_id,
-                    consumed_at=consumed_at,
-                )
+                consumed_ids.append(row.outbox_id)
                 continue
 
             source = await catalog_search_projection_source(
@@ -76,11 +73,7 @@ async def consume_catalog_search_outbox(
                     updated_at=consumed_at,
                 )
                 consumed += 1
-                await mark_catalog_search_outbox_consumed(
-                    state,
-                    outbox_id=row.outbox_id,
-                    consumed_at=consumed_at,
-                )
+                consumed_ids.append(row.outbox_id)
                 continue
 
             if (
@@ -88,11 +81,7 @@ async def consume_catalog_search_outbox(
                 and source.revision > row.revision
             ):
                 skipped += 1
-                await mark_catalog_search_outbox_consumed(
-                    state,
-                    outbox_id=row.outbox_id,
-                    consumed_at=consumed_at,
-                )
+                consumed_ids.append(row.outbox_id)
                 continue
 
             if row.action == "delete":
@@ -112,15 +101,16 @@ async def consume_catalog_search_outbox(
                 updated_at=consumed_at,
             )
             consumed += 1
-            await mark_catalog_search_outbox_consumed(
-                state,
-                outbox_id=row.outbox_id,
-                consumed_at=consumed_at,
-            )
+            consumed_ids.append(row.outbox_id)
         except Exception:
             failed += 1
 
     await index.commit()
+    await mark_catalog_search_outbox_consumed(
+        state,
+        outbox_ids=consumed_ids,
+        consumed_at=consumed_at,
+    )
     await state.commit()
     return {
         "consumed": consumed,
