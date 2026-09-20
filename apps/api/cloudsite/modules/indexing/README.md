@@ -106,10 +106,15 @@ sessions and writes its progress payload without importing shared
 
 This removes all three tracked Indexing `module_legacy_import` debt IDs.
 
-Indexing remains **active**, not yet **isolated**: the compatibility production
-bridge still calls legacy `cloudsite.indexer.load_all_connections_and_roots`
-and `log_operation`. Those orchestration helpers should move behind Providers
-and observability contracts before the legacy bridge can be deleted.
+Indexing remains **active**, not yet **isolated**. I2a moves v2 production
+operation logging behind `platform/observability`; the bridge no longer calls
+legacy `cloudsite.indexer.log_operation` and preserves the historical
+per-write commit and 2000-character message cap.
+
+The remaining production compatibility edge is
+`cloudsite.indexer.load_all_connections_and_roots`. Provider loading should
+move behind a Providers-owned scan-source contract before the legacy bridge is
+deleted.
 
 ## I2 Frozen Legacy Sync Ownership
 
