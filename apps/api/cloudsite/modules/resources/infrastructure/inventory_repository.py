@@ -67,6 +67,8 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                 content_type=row.content_type,
                 root_mapping_id=row.root_mapping_id,
                 depth=row.depth,
+                child_folder_count=row.child_folder_count,
+                resource_count=row.resource_count,
                 indexed_at=row.indexed_at,
             )
             for row in folders
@@ -119,6 +121,8 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                             content_type=record.content_type or record.category_id,
                             root_mapping_id=record.root_mapping_id,
                             depth=record.depth,
+                            child_folder_count=record.child_folder_count,
+                            resource_count=record.resource_count,
                             modified_at=record.modified_at,
                             indexed_at=now,
                             status="active",
@@ -130,6 +134,9 @@ class SqlAlchemyResourceInventoryRepository(ResourceInventoryPort):
                     existing.parent_id = record.parent_id
                     existing.content_type = record.content_type or record.category_id
                     existing.root_mapping_id = record.root_mapping_id
+                    existing.depth = record.depth
+                    existing.child_folder_count = record.child_folder_count
+                    existing.resource_count = record.resource_count
                     existing.modified_at = record.modified_at
                     existing.indexed_at = now
                     existing.status = "active"
