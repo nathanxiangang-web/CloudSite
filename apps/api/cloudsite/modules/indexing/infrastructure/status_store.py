@@ -98,17 +98,29 @@ async def recover_interrupted_v2_sync(
 
     Returns True when a stale running row was recovered, False otherwise.
     """
-    from cloudsite.models import SystemSetting
-
-    row = await state.get(SystemSetting, "v2_sync_progress")
+    row = (
+        await state.execute(
+            text(
+                "SELECT value FROM system_settings "
+                "WHERE key = :key LIMIT 1"
+            ),
+            {"key": "v2_sync_progress"},
+        )
+    ).first()
     if row is None:
         return False
-    progress = _progress_payload(row.value)
+    progress = _progress_payload(row[0])
     if progress.get("status") != "running":
         return False
     progress["status"] = "failed"
     progress["error_message"] = "interrupted by process restart"
-    row.value = json.dumps(progress)
+    await state.execute(
+        text(
+            "UPDATE system_settings SET value = :value, updated_at = :now "
+            "WHERE key = :key"
+        ),
+        {"value": json.dumps(progress), "now": datetime.now(timezone.utc), "key": "v2_sync_progress"},
+    )
     await state.commit()
     return True
 

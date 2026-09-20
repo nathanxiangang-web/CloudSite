@@ -11,57 +11,68 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cloudsite.models import IndexScanDir, IndexScanEntry, IndexScanRun
 from cloudsite.modules.indexing.domain.snapshot import SnapshotEntry
 
 _RUN_TERMINAL_FIELDS = frozenset(
     {"finished_at", "total_dirs", "total_entries", "error_message", "fingerprint"}
 )
-_DIR_TERMINAL_FIELDS = frozenset({"finished_at", "error_message"})
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class DurableScanRepository:
-    """CRUD wrapper over the durable scan-progress tables.
+def _row_to_ns(row, fields):
+    return SimpleNamespace(**{f: getattr(row, f) for f in fields})
 
-    The repository does not open or commit transactions; every method
-    operates against the supplied AsyncSession and only flushes pending
-    changes. Callers control the transaction boundary so that scan logic
-    can batch multiple repository calls into one atomic unit of work.
-    """
+
+_RUN_FIELDS = ("id", "root_mapping_id", "status", "started_at", "finished_at",
+               "fingerprint", "total_dirs", "total_entries", "error_message")
+_DIR_FIELDS = ("id", "scan_run_id", "path", "depth", "status", "started_at",
+               "finished_at", "entry_count", "error_message")
+_ENTRY_FIELDS = ("id", "scan_run_id", "dir_path", "resource_id", "name",
+                 "is_dir", "modified", "metadata_hash")
+
+
+class DurableScanRepository:
+    """CRUD wrapper over the durable scan-progress tables."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    # ------------------------------------------------------------------
-    # index_scan_runs
-    # ------------------------------------------------------------------
     async def create_scan_run(
         self,
         root_mapping_id: int,
         fingerprint: str | None = None,
-    ) -> IndexScanRun:
-        run = IndexScanRun(
-            id=str(uuid.uuid4()),
-            root_mapping_id=root_mapping_id,
-            status="pending",
-            fingerprint=fingerprint,
+    ) -> SimpleNamespace:
+        run_id = str(uuid.uuid4())
+        await self._session.execute(
+            text(
+                "INSERT INTO index_scan_runs(id, root_mapping_id, status, fingerprint) "
+                "VALUES (:id, :rid, 'pending', :fp)"
+            ),
+            {"id": run_id, "rid": root_mapping_id, "fp": fingerprint},
         )
-        self._session.add(run)
         await self._session.flush()
-        await self._session.refresh(run)
-        return run
+        return await self.get_scan_run(run_id)
 
-    async def get_scan_run(self, run_id: str) -> IndexScanRun | None:
-        return await self._session.get(IndexScanRun, run_id)
+    async def get_scan_run(self, run_id: str) -> SimpleNamespace | None:
+        result = await self._session.execute(
+            text(
+                "SELECT id, root_mapping_id, status, started_at, finished_at, "
+                "fingerprint, total_dirs, total_entries, error_message "
+                "FROM index_scan_runs WHERE id = :id"
+            ),
+            {"id": run_id},
+        )
+        row = result.first()
+        return _row_to_ns(row, _RUN_FIELDS) if row else None
 
     async def update_scan_run_status(
         self,
@@ -72,55 +83,51 @@ class DurableScanRepository:
         values: dict[str, Any] = {"status": status}
         for key, value in fields.items():
             if key not in _RUN_TERMINAL_FIELDS:
-                raise ValueError(
-                    f"unsupported scan_run field: {key!r}"
-                )
+                raise ValueError(f"unsupported scan_run field: {key!r}")
             values[key] = value
         if status in {"completed", "failed", "cancelled", "expired"} and values.get(
             "finished_at"
         ) is None:
             values.setdefault("finished_at", _utcnow())
-        stmt = (
-            update(IndexScanRun)
-            .where(IndexScanRun.id == run_id)
-            .values(**values)
+        set_parts = [f"{k} = :{k}" for k in values]
+        await self._session.execute(
+            text(f"UPDATE index_scan_runs SET {', '.join(set_parts)} WHERE id = :id"),
+            {**values, "id": run_id},
         )
-        await self._session.execute(stmt)
         await self._session.flush()
 
     async def list_scan_runs(
         self,
         root_mapping_id: int,
         limit: int = 100,
-    ) -> list[IndexScanRun]:
-        stmt = (
-            select(IndexScanRun)
-            .where(IndexScanRun.root_mapping_id == root_mapping_id)
-            .order_by(IndexScanRun.started_at.desc())
-            .limit(limit)
+    ) -> list[SimpleNamespace]:
+        result = await self._session.execute(
+            text(
+                "SELECT id, root_mapping_id, status, started_at, finished_at, "
+                "fingerprint, total_dirs, total_entries, error_message "
+                "FROM index_scan_runs WHERE root_mapping_id = :rid "
+                "ORDER BY started_at DESC LIMIT :lim"
+            ),
+            {"rid": root_mapping_id, "lim": limit},
         )
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        return [_row_to_ns(r, _RUN_FIELDS) for r in result]
 
     async def get_active_scan_run(
         self,
         root_mapping_id: int,
-    ) -> IndexScanRun | None:
-        stmt = (
-            select(IndexScanRun)
-            .where(
-                IndexScanRun.root_mapping_id == root_mapping_id,
-                IndexScanRun.status == "running",
-            )
-            .order_by(IndexScanRun.started_at.desc())
-            .limit(1)
+    ) -> SimpleNamespace | None:
+        result = await self._session.execute(
+            text(
+                "SELECT id, root_mapping_id, status, started_at, finished_at, "
+                "fingerprint, total_dirs, total_entries, error_message "
+                "FROM index_scan_runs WHERE root_mapping_id = :rid AND status = 'running' "
+                "ORDER BY started_at DESC LIMIT 1"
+            ),
+            {"rid": root_mapping_id},
         )
-        result = await self._session.execute(stmt)
-        return result.scalars().first()
+        row = result.first()
+        return _row_to_ns(row, _RUN_FIELDS) if row else None
 
-    # ------------------------------------------------------------------
-    # index_scan_dirs
-    # ------------------------------------------------------------------
     async def add_dirs(
         self,
         run_id: str,
@@ -128,28 +135,17 @@ class DurableScanRepository:
     ) -> None:
         if not dirs:
             return
-        now = _utcnow()
-        objects = [
-            IndexScanDir(
-                id=str(uuid.uuid4()),
-                scan_run_id=run_id,
-                path=path,
-                depth=depth,
-                status="pending",
+        for path, depth in dirs:
+            await self._session.execute(
+                text(
+                    "INSERT INTO index_scan_dirs(id, scan_run_id, path, depth, status) "
+                    "VALUES (:id, :rid, :path, :depth, 'pending')"
+                ),
+                {"id": str(uuid.uuid4()), "rid": run_id, "path": path, "depth": depth},
             )
-            for path, depth in dirs
-        ]
-        self._session.add_all(objects)
         await self._session.flush()
 
-    async def claim_next_dir(self, run_id: str) -> IndexScanDir | None:
-        """Atomically claim one pending dir for ``run_id`` and mark it running.
-
-        Implemented as a single ``UPDATE ... WHERE id = (SELECT ... LIMIT 1)
-        RETURNING *`` statement so that two concurrent claims cannot pick the
-        same row: SQLite serializes the write and the subquery re-evaluates
-        under the write lock.
-        """
+    async def claim_next_dir(self, run_id: str) -> SimpleNamespace | None:
         stmt = text(
             "UPDATE index_scan_dirs "
             "SET status = 'running', started_at = :now "
@@ -163,44 +159,26 @@ class DurableScanRepository:
         )
         result = await self._session.execute(stmt, {"run": run_id, "now": _utcnow()})
         row = result.first()
-        if row is None:
-            return None
-        return IndexScanDir(
-            id=row.id,
-            scan_run_id=row.scan_run_id,
-            path=row.path,
-            depth=row.depth,
-            status=row.status,
-            started_at=row.started_at,
-            finished_at=row.finished_at,
-            entry_count=row.entry_count,
-            error_message=row.error_message,
-        )
+        return _row_to_ns(row, _DIR_FIELDS) if row else None
 
     async def complete_dir(self, dir_id: str, entry_count: int) -> None:
-        stmt = (
-            update(IndexScanDir)
-            .where(IndexScanDir.id == dir_id)
-            .values(
-                status="done",
-                finished_at=_utcnow(),
-                entry_count=entry_count,
-            )
+        await self._session.execute(
+            text(
+                "UPDATE index_scan_dirs SET status = 'done', finished_at = :now, "
+                "entry_count = :ec WHERE id = :id"
+            ),
+            {"now": _utcnow(), "ec": entry_count, "id": dir_id},
         )
-        await self._session.execute(stmt)
         await self._session.flush()
 
     async def fail_dir(self, dir_id: str, error_message: str) -> None:
-        stmt = (
-            update(IndexScanDir)
-            .where(IndexScanDir.id == dir_id)
-            .values(
-                status="failed",
-                finished_at=_utcnow(),
-                error_message=error_message,
-            )
+        await self._session.execute(
+            text(
+                "UPDATE index_scan_dirs SET status = 'failed', finished_at = :now, "
+                "error_message = :err WHERE id = :id"
+            ),
+            {"now": _utcnow(), "err": error_message, "id": dir_id},
         )
-        await self._session.execute(stmt)
         await self._session.flush()
 
     async def count_dirs(
@@ -208,17 +186,21 @@ class DurableScanRepository:
         run_id: str,
         status: str | None = None,
     ) -> int:
-        stmt = select(func.count()).select_from(IndexScanDir).where(
-            IndexScanDir.scan_run_id == run_id
-        )
         if status is not None:
-            stmt = stmt.where(IndexScanDir.status == status)
-        result = await self._session.execute(stmt)
+            result = await self._session.execute(
+                text(
+                    "SELECT COUNT(*) FROM index_scan_dirs "
+                    "WHERE scan_run_id = :rid AND status = :status"
+                ),
+                {"rid": run_id, "status": status},
+            )
+        else:
+            result = await self._session.execute(
+                text("SELECT COUNT(*) FROM index_scan_dirs WHERE scan_run_id = :rid"),
+                {"rid": run_id},
+            )
         return int(result.scalar_one())
 
-    # ------------------------------------------------------------------
-    # index_scan_entries
-    # ------------------------------------------------------------------
     async def add_entries(
         self,
         run_id: str,
@@ -226,43 +208,45 @@ class DurableScanRepository:
     ) -> None:
         if not entries:
             return
-        objects = [
-            IndexScanEntry(
-                id=str(uuid.uuid4()),
-                scan_run_id=run_id,
-                dir_path=entry.path,
-                resource_id=entry.resource_id,
-                name=entry.name,
-                is_dir=False,
-                modified=entry.modified_at,
-                metadata_hash=entry.content_hash,
+        for entry in entries:
+            await self._session.execute(
+                text(
+                    "INSERT INTO index_scan_entries(id, scan_run_id, dir_path, "
+                    "resource_id, name, is_dir, modified, metadata_hash) "
+                    "VALUES (:id, :rid, :dp, :resid, :name, 0, :mod, :hash)"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "rid": run_id,
+                    "dp": entry.path,
+                    "resid": entry.resource_id,
+                    "name": entry.name,
+                    "mod": entry.modified_at,
+                    "hash": entry.content_hash,
+                },
             )
-            for entry in entries
-        ]
-        self._session.add_all(objects)
         await self._session.flush()
 
     async def get_entries(
         self,
         run_id: str,
         dir_path: str,
-    ) -> list[IndexScanEntry]:
-        stmt = (
-            select(IndexScanEntry)
-            .where(
-                IndexScanEntry.scan_run_id == run_id,
-                IndexScanEntry.dir_path == dir_path,
-            )
-            .order_by(IndexScanEntry.id)
+    ) -> list[SimpleNamespace]:
+        result = await self._session.execute(
+            text(
+                "SELECT id, scan_run_id, dir_path, resource_id, name, is_dir, "
+                "modified, metadata_hash FROM index_scan_entries "
+                "WHERE scan_run_id = :rid AND dir_path = :dp ORDER BY id"
+            ),
+            {"rid": run_id, "dp": dir_path},
         )
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        return [_row_to_ns(r, _ENTRY_FIELDS) for r in result]
 
     async def count_entries(self, run_id: str) -> int:
-        stmt = select(func.count()).select_from(IndexScanEntry).where(
-            IndexScanEntry.scan_run_id == run_id
+        result = await self._session.execute(
+            text("SELECT COUNT(*) FROM index_scan_entries WHERE scan_run_id = :rid"),
+            {"rid": run_id},
         )
-        result = await self._session.execute(stmt)
         return int(result.scalar_one())
 
 

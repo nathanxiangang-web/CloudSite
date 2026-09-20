@@ -32,7 +32,7 @@ from cloudsite.modules.indexing.infrastructure.provider_adapter import (
 )
 from cloudsite.modules.indexing.infrastructure.repository import IndexedEntry
 from cloudsite.modules.providers.contracts.public import ProviderScanRoot
-from tests.fault_injection import (
+from fault_injection import (
     FaultInjector,
     ProviderDisconnectError,
     ProviderRateLimitError,

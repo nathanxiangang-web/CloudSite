@@ -34,7 +34,7 @@ from cloudsite.modules.indexing.infrastructure.alist_adapter import (
 from cloudsite.modules.indexing.infrastructure.repository import IndexedEntry
 from cloudsite.modules.providers.contracts.public import ProviderScanRoot
 
-from tests.fault_injection import FaultInjector
+from fault_injection import FaultInjector
 
 
 # ---------------------------------------------------------------------------

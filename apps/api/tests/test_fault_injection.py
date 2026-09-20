@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from tests.fault_injection import (
+from fault_injection import (
     FaultInjector,
     ProviderDisconnectError,
     ProviderRateLimitError,
