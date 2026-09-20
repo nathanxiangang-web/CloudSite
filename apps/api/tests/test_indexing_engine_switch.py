@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 
 from cloudsite.modules.indexing.domain.inspection import (
@@ -16,6 +15,7 @@ from cloudsite.modules.indexing.infrastructure.provider_adapter import (
     ProviderAdapter,
     ProviderCapabilities,
 )
+from cloudsite.modules.providers.contracts.public import ProviderScanRoot
 from cloudsite.modules.indexing.infrastructure.repository import (
     IndexedEntry,
     IndexingStore,
