@@ -33,9 +33,15 @@ export const test = base.extend<E2EFixtures>({
 
   apiAuth: async ({ apiHealth }, use) => {
     const ctx = await loginViaApi(apiHealth);
-    test.skip(ctx === null, 'Unable to authenticate via API for fixture');
-    await use(ctx as APIRequestContext);
-    await ctx?.dispose();
+    if (ctx === null) {
+      test.skip(true, 'Unable to authenticate via API for fixture');
+      return;
+    }
+    try {
+      await use(ctx);
+    } finally {
+      await ctx.dispose();
+    }
   },
 
   freshPage: async ({ browser }, use) => {
