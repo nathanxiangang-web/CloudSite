@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
@@ -7,6 +8,14 @@ from typing import Any
 from ..domain.change import ChangeRecord, ChangeType
 from ..domain.snapshot import CategorySnapshot
 from ..infrastructure.repository import IndexedEntry, IndexingStore
+
+logger = logging.getLogger(__name__)
+
+# When the fraction of existing entries a reconcile pass wants to remove
+# exceeds this ratio, the destructive removal is suppressed as a guard
+# against anomalous provider snapshots (e.g. empty AList responses that
+# would otherwise wipe the whole index). See R0 PR 02 / P0-1.
+SHRINK_RATIO = 0.1
 
 
 @dataclass(slots=True)
@@ -27,6 +36,7 @@ class ReconcileResult:
     writes: WriteSummary = field(default_factory=WriteSummary)
     suppressed_removals: int = 0
     pagination_complete: bool = True
+    shrink_suppressed: bool = False
 
     @property
     def removal_writes_blocked(self) -> bool:
@@ -166,15 +176,30 @@ class ReconcileService:
 
         if removed_ids:
             if snapshot.pagination_complete:
-                writes.removed = await self._store.remove(removed_ids)
+                shrink_threshold = max(1, SHRINK_RATIO * len(existing_by_id))
+                if len(removed_ids) > shrink_threshold:
+                    logger.warning(
+                        "anomalous shrink detected: removed=%d existing=%d, "
+                        "suppressing destructive removal",
+                        len(removed_ids), len(existing_by_id),
+                    )
+                    suppressed = len(removed_ids)
+                    shrink_suppressed = True
+                else:
+                    writes.removed = await self._store.remove(removed_ids)
+                    shrink_suppressed = False
             else:
                 suppressed = len(removed_ids)
+                shrink_suppressed = False
+        else:
+            shrink_suppressed = False
 
         return ReconcileResult(
             changes=changes,
             writes=writes,
             suppressed_removals=suppressed,
             pagination_complete=snapshot.pagination_complete,
+            shrink_suppressed=shrink_suppressed,
         )
 
     @staticmethod

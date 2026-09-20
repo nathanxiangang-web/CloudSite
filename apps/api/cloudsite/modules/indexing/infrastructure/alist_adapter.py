@@ -7,16 +7,20 @@ translates provider-neutral list/metadata operations into Indexing snapshots.
 from __future__ import annotations
 
 import hashlib
+import logging
 import mimetypes
 import re
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
 
+from ....alist import AListError
 from ...providers.contracts.public import ProviderScanPort, ProviderScanRoot
 from ..domain.inspection import InspectionRequest, InspectionResult
 from ..domain.snapshot import SnapshotEntry
 from .provider_adapter import ProviderCapabilities
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_path(value: str) -> str:
@@ -117,10 +121,19 @@ class AListProviderAdapter:
         }
 
         queue: list[tuple[str, int]] = [(root_path, 0)]
+        pagination_complete = True
         while queue:
             current_path, current_depth = queue.pop(0)
             parent_entry = folders_by_path[current_path]
-            items = await self._provider.list_path(current_path)
+            try:
+                items = await self._provider.list_path(current_path)
+            except AListError as exc:
+                logger.error(
+                    "alist list_path failed for %s: %s, marking scan incomplete",
+                    current_path, exc,
+                )
+                pagination_complete = False
+                continue
             if on_progress:
                 await on_progress(current_path, len(entries))
             for item in items:
@@ -158,7 +171,7 @@ class AListProviderAdapter:
                     folders_by_path[item_path] = entry
                     queue.append((item_path, item_depth))
 
-        return entries, None, True
+        return entries, None, pagination_complete
 
     async def inspect(self, request: InspectionRequest) -> InspectionResult:
         info = await self._provider.get_metadata(request.path)

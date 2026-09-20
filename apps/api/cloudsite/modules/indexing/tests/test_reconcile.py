@@ -151,7 +151,10 @@ async def test_change_records_include_all_types():
     assert ChangeType.REMOVED in types
 
 
-async def test_empty_snapshot_complete_removes_all():
+async def test_empty_snapshot_complete_triggers_shrink_guard():
+    # An empty snapshot with pagination_complete=True is the exact P0-1
+    # scenario: AList returned nothing but claimed the page was complete.
+    # The shrink guard must suppress the destructive mass delete.
     existing = [_indexed('a'), _indexed('b')]
     store = FakeIndexingStore(existing=existing)
     service = ReconcileService(store)
@@ -162,8 +165,10 @@ async def test_empty_snapshot_complete_removes_all():
     )
     result = await service.reconcile(snapshot)
 
-    assert result.writes.removed == 2
-    assert len(store.remove_calls) == 1
+    assert result.writes.removed == 0
+    assert store.remove_calls == []
+    assert result.suppressed_removals == 2
+    assert result.shrink_suppressed is True
 
 
 async def test_empty_snapshot_incomplete_removes_nothing():
