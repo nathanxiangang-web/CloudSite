@@ -56,24 +56,31 @@ def _canonicalize_entries(
     snapshot: CategorySnapshot,
 ) -> list[Any]:
     """Keep existing IDs for unchanged paths while allowing new scoped IDs."""
-    existing_id_by_path = {entry.path: entry.resource_id for entry in existing}
-    canonical_id_by_path = {
-        entry.path: existing_id_by_path.get(entry.path, entry.resource_id)
+    existing_id_by_key = {
+        (bool((entry.metadata or {}).get("is_dir")), entry.path): entry.resource_id
+        for entry in existing
+    }
+    canonical_id_by_key = {
+        (bool((entry.metadata or {}).get("is_dir")), entry.path): existing_id_by_key.get(
+            (bool((entry.metadata or {}).get("is_dir")), entry.path),
+            entry.resource_id,
+        )
         for entry in snapshot.entries
     }
     result = []
     for entry in snapshot.entries:
         metadata = dict(entry.metadata or {})
+        entry_key = (bool(metadata.get("is_dir")), entry.path)
         parent_path = metadata.get("parent_path")
         if parent_path:
-            metadata["parent_id"] = canonical_id_by_path.get(
-                str(parent_path),
+            metadata["parent_id"] = canonical_id_by_key.get(
+                (True, str(parent_path)),
                 metadata.get("parent_id"),
             )
         result.append(
             replace(
                 entry,
-                resource_id=canonical_id_by_path[entry.path],
+                resource_id=canonical_id_by_key[entry_key],
                 metadata=metadata,
             )
         )
