@@ -116,6 +116,7 @@ async def _log_operation(
         )
         await session.commit()
 
+
 async def run_indexing_v2_production(
     *,
     store_factory: Callable[[Any], IndexingStore],
