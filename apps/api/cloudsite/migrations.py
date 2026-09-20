@@ -1809,6 +1809,40 @@ async def state_v31_to_v32_upgrade(conn: AsyncConnection) -> None:
         "ON index_root_states (connection_id)"
     )
 
+    # index_dirty_scopes (V2 doc section 29)
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS index_dirty_scopes("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "root_mapping_id INTEGER NOT NULL REFERENCES content_root_mappings(id) ON DELETE CASCADE,"
+        "path TEXT NOT NULL,"
+        "reason TEXT NOT NULL DEFAULT 'verification_mismatch',"
+        "priority INTEGER NOT NULL DEFAULT 0,"
+        "status TEXT NOT NULL DEFAULT 'pending',"
+        "attempts INTEGER NOT NULL DEFAULT 0,"
+        "detected_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        "updated_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        "last_error_code TEXT,"
+        "last_error_message TEXT,"
+        "UNIQUE(root_mapping_id, path),"
+        "CHECK (status IN ('pending', 'processing', 'resolved', 'failed', 'escalated')))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_dirty_scopes_root_mapping_id "
+        "ON index_dirty_scopes (root_mapping_id)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_dirty_scopes_status "
+        "ON index_dirty_scopes (status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_dirty_scopes_root_status "
+        "ON index_dirty_scopes (root_mapping_id, status)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_dirty_scopes_priority "
+        "ON index_dirty_scopes (priority)"
+    )
+
 
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
