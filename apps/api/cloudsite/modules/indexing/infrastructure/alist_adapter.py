@@ -293,12 +293,9 @@ class AListProviderAdapter:
         """
         from sqlalchemy import select
 
+        from cloudsite.models import IndexScanDir, IndexScanEntry
         from .durable_scan_checkpoint import DirCheckpoint, ScanRunManager
-        from .durable_scan_repository import (
-            DurableScanRepository,
-            IndexScanDir,
-            IndexScanEntry,
-        )
+        from .durable_scan_repository import DurableScanRepository
 
         repo = DurableScanRepository(session)
         mgr = ScanRunManager(session)
@@ -563,12 +560,9 @@ class AListProviderAdapter:
         """
         from sqlalchemy import select
 
+        from cloudsite.models import IndexScanDir, IndexScanEntry
         from .durable_scan_checkpoint import DirCheckpoint, ScanRunManager
-        from .durable_scan_repository import (
-            DurableScanRepository,
-            IndexScanDir,
-            IndexScanEntry,
-        )
+        from .durable_scan_repository import DurableScanRepository
 
         repo = DurableScanRepository(session)
         mgr = ScanRunManager(session)
