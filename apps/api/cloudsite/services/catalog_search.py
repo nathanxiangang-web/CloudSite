@@ -25,7 +25,7 @@ from ..models import (
     CatalogTag,
     CatalogTagAssignment,
 )
-from .catalog_search_projection import (
+from ..modules.search.contracts.public import (
     catalog_search_fts_match,
     consume_catalog_search_outbox,
 )
