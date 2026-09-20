@@ -159,15 +159,17 @@ class DirCheckpoint:
         if existing is not None and existing.status == "done":
             return
 
-        if entries:
-            await self._session.execute(
-                text(
-                    "DELETE FROM index_scan_entries "
-                    "WHERE scan_run_id = :run AND dir_path = :path"
-                ),
-                {"run": run_id, "path": dir_path},
-            )
-        await self._repo.add_entries(run_id, entries)
+        # Replace the checkpoint scope unconditionally. A directory that
+        # previously contained entries can legitimately become empty; keeping
+        # old rows would turn absence into stale data on retry.
+        await self._session.execute(
+            text(
+                "DELETE FROM index_scan_entries "
+                "WHERE scan_run_id = :run AND dir_path = :path"
+            ),
+            {"run": run_id, "path": dir_path},
+        )
+        await self._repo.add_entries(run_id, entries, dir_path=dir_path)
 
         await self._add_child_dirs(run_id, child_dirs)
 
