@@ -1,73 +1,64 @@
 import { test, expect } from './fixtures';
-import { navigateTo, waitForApiResponse } from './helpers';
+import { navigateTo } from './helpers';
 
 /**
- * B5-04 Search flow.
- *
- * Covers: search query -> filter results -> open a result.
- * Tests skip when the API is not running.
+ * Deterministic search flow backed by the guarded E2E content seed.
  */
 
 test.describe('04 - Search', () => {
-  test('search page has a search input', async ({ loggedInPage }) => {
+  test('search page exposes the query input', async ({ loggedInPage }) => {
     await navigateTo(loggedInPage, '/search');
-    const searchInput = loggedInPage.locator('input[placeholder*="搜索"], input[type="search"], input[name="q"], input[placeholder*="search" i]').first();
-    await expect(searchInput).toBeVisible();
+    await expect(
+      loggedInPage.getByPlaceholder('搜索软件、图库、视频、教程和文件'),
+    ).toBeVisible();
   });
 
-  test('entering a query shows results', async ({ loggedInPage }) => {
+  test('seeded query finds the exact resource and opens detail', async ({
+    loggedInPage,
+    e2eSeed,
+  }) => {
     await navigateTo(loggedInPage, '/search');
-    const searchInput = loggedInPage.locator('input[placeholder*="搜索"], input[type="search"], input[name="q"], input[placeholder*="search" i]').first();
-    await searchInput.fill('test');
-    await searchInput.press('Enter');
-    await waitForApiResponse(loggedInPage, /\/api\/.*search/i);
-    await loggedInPage.waitForTimeout(2000);
-    const resultsArea = loggedInPage.locator('[data-testid="search-results"], .results, main').first();
-    await expect(resultsArea).toBeVisible();
-  });
 
-  test('search with no results shows empty state', async ({ loggedInPage }) => {
-    await navigateTo(loggedInPage, '/search');
-    const searchInput = loggedInPage.locator('input[placeholder*="搜索"], input[type="search"], input[name="q"], input[placeholder*="search" i]').first();
-    await searchInput.fill('zzz_no_match_xyz_12345');
+    const searchInput = loggedInPage.getByPlaceholder(
+      '搜索软件、图库、视频、教程和文件',
+    );
+    await searchInput.fill(e2eSeed.search_query);
     await searchInput.press('Enter');
-    await waitForApiResponse(loggedInPage, /\/api\/.*search/i);
-    await loggedInPage.waitForTimeout(2000);
-    const resultLinks = loggedInPage.locator('a[href*="/resource/"]');
-    const emptyMsg = loggedInPage.locator('text=/no results|nothing found|empty|无结果|没有找到/i');
-    const linkCount = await resultLinks.count();
-    const hasEmptyMsg = (await emptyMsg.count()) > 0;
-    expect(linkCount === 0 || hasEmptyMsg).toBe(true);
-  });
 
-  test('filter search results by category', async ({ loggedInPage }) => {
-    await navigateTo(loggedInPage, '/search');
-    const searchInput = loggedInPage.locator('input[placeholder*="搜索"], input[type="search"], input[name="q"], input[placeholder*="search" i]').first();
-    await searchInput.fill('test');
-    await searchInput.press('Enter');
-    await waitForApiResponse(loggedInPage, /\/api\/.*search/i);
-    await loggedInPage.waitForTimeout(1000);
-    const filterControl = loggedInPage.locator('select, input[type="checkbox"], a[href*="category"], a[href*="type"]').first();
-    const filterCount = await filterControl.count();
-    test.skip(filterCount === 0, 'no filter controls available');
-    await filterControl.click().catch(() => {});
-    await loggedInPage.waitForTimeout(1500);
-    const body = loggedInPage.locator('body');
-    await expect(body).toBeVisible();
-  });
+    const resultLink = loggedInPage.locator(
+      `a.search-result-card[href="/resource/${e2eSeed.resource_id}"]`,
+    );
+    await expect(resultLink).toBeVisible();
+    await expect(resultLink).toContainText(e2eSeed.resource_name);
 
-  test('open a search result navigates to detail', async ({ loggedInPage }) => {
-    await navigateTo(loggedInPage, '/search');
-    const searchInput = loggedInPage.locator('input[placeholder*="搜索"], input[type="search"], input[name="q"], input[placeholder*="search" i]').first();
-    await searchInput.fill('test');
-    await searchInput.press('Enter');
-    await waitForApiResponse(loggedInPage, /\/api\/.*search/i);
-    await loggedInPage.waitForTimeout(2000);
-    const resultLink = loggedInPage.locator('a[href*="/resource/"]').first();
-    const linkCount = await resultLink.count();
-    test.skip(linkCount === 0, 'no search results to open');
     await resultLink.click();
-    await loggedInPage.waitForLoadState('networkidle').catch(() => {});
-    expect(loggedInPage.url()).toMatch(/\/resource\//);
+    await expect(loggedInPage).toHaveURL(
+      new RegExp(`/resource/${e2eSeed.resource_id}$`),
+    );
+    await expect(loggedInPage.getByRole('heading', {
+      level: 1,
+      name: e2eSeed.resource_name,
+    })).toBeVisible();
+  });
+
+  test('no-match query renders the real empty state', async ({
+    loggedInPage,
+    e2eSeed,
+  }) => {
+    void e2eSeed;
+    await navigateTo(loggedInPage, '/search');
+
+    const query = 'zzz_cloudsite_e2e_no_match_987654321';
+    const searchInput = loggedInPage.getByPlaceholder(
+      '搜索软件、图库、视频、教程和文件',
+    );
+    await searchInput.fill(query);
+    await searchInput.press('Enter');
+
+    await expect(
+      loggedInPage.locator('.empty.search-state').filter({
+        hasText: `没有找到“${query}”`,
+      }),
+    ).toBeVisible();
   });
 });
