@@ -112,7 +112,7 @@ async def test_run_indexing_v2_skipped_without_adapter_or_store() -> None:
 
 
 async def test_run_indexing_v2_uses_new_services_for_added_entries() -> None:
-    adapter = FakeProviderAdapter({"cat-a": [_entry("r1"), _entry("r2")]})
+    adapter = FakeProviderAdapter({"cat-a": [_entry("r1", "f1"), _entry("r2", "f2")]})
     store = FakeIndexingStore()
 
     result = await run_indexing_v2(
@@ -279,3 +279,44 @@ async def test_alist_adapter_calculates_folder_depth_and_direct_counts() -> None
     assert by_path["/library/nested"].metadata["child_folder_count"] == 0
     assert by_path["/library/nested"].metadata["resource_count"] == 1
     assert by_path["/library/nested/child.zip"].metadata["depth"] == 2
+
+
+async def test_alist_adapter_namespaces_same_path_ids_by_root_mapping() -> None:
+    class SamePathAListClient:
+        async def list_path(self, path: str):
+            return [
+                {
+                    "name": "package.zip",
+                    "is_dir": False,
+                    "size": 42,
+                }
+            ]
+
+        async def get_file_info(self, path: str):
+            return {"name": path.rsplit("/", 1)[-1]}
+
+    roots = [
+        SimpleNamespace(
+            id=31,
+            content_type="software",
+            alist_path="/shared",
+            display_name="Shared A",
+        ),
+        SimpleNamespace(
+            id=32,
+            content_type="software",
+            alist_path="/shared",
+            display_name="Shared B",
+        ),
+    ]
+    adapter = AListProviderAdapter(SamePathAListClient(), roots)
+
+    first, _, _ = await adapter.scan_category("root:31")
+    second, _, _ = await adapter.scan_category("root:32")
+
+    assert first[0].path == second[0].path == "/shared"
+    assert first[0].resource_id != second[0].resource_id
+    assert first[1].path == second[1].path == "/shared/package.zip"
+    assert first[1].resource_id != second[1].resource_id
+    assert first[1].metadata["parent_id"] == first[0].resource_id
+    assert second[1].metadata["parent_id"] == second[0].resource_id
