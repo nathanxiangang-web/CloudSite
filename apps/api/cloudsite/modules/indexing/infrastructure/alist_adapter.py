@@ -27,11 +27,11 @@ def _normalize_path(value: str) -> str:
     return path.rstrip("/") or "/"
 
 
-def _stable_id(kind: str, path: str) -> str:
+def _stable_id(kind: str, path: str, root_mapping_id: int) -> str:
     normalized = _normalize_path(path)
     prefix = "f_" if kind == "folder" else "r_"
     digest = hashlib.sha256(
-        f"{kind}:{normalized}".encode("utf-8")
+        f"{root_mapping_id}:{kind}:{normalized}".encode("utf-8")
     ).hexdigest()[:32]
     return prefix + digest
 
@@ -100,7 +100,7 @@ class AListProviderAdapter:
 
         entries: list[SnapshotEntry] = []
         root_path = _normalize_path(root.alist_path)
-        root_id = _stable_id("folder", root_path)
+        root_id = _stable_id("folder", root_path, root.id)
         root_entry = self._make_entry(
             resource_id=root_id,
             path=root_path,
@@ -139,7 +139,7 @@ class AListProviderAdapter:
                 kind = "folder" if is_dir else "resource"
                 item_depth = current_depth + 1
                 entry = self._make_entry(
-                    resource_id=_stable_id(kind, item_path),
+                    resource_id=_stable_id(kind, item_path, root.id),
                     path=item_path,
                     name=name,
                     is_dir=is_dir,
@@ -200,7 +200,11 @@ class AListProviderAdapter:
                 "child_folder_count": 0,
                 "resource_count": 0,
                 "parent_path": parent_path,
-                "parent_id": _stable_id("folder", parent_path) if parent_path else None,
+                "parent_id": (
+                    _stable_id("folder", parent_path, root.id)
+                    if parent_path
+                    else None
+                ),
                 "extension": ext,
                 "mime_type": mime,
                 "thumbnail": str(item.get("thumb") or item.get("thumbnail") or ""),
