@@ -5,6 +5,14 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from ..api.queries import resource_queries
+from ..application.publication import (
+    folder_publication_target,
+    resource_publication_target,
+)
+from ..domain.publication import (
+    PublicationFolderView,
+    PublicationResourceView,
+)
 from ..domain.errors import (
     ResourceInactiveError,
     ResourceNotAvailableError,
@@ -114,4 +122,8 @@ __all__ = [
     "ResourceNotAvailableError",
     "ResourceNotFoundError",
     "ResourceReferenceView",
+    "PublicationFolderView",
+    "PublicationResourceView",
+    "folder_publication_target",
+    "resource_publication_target",
 ]
