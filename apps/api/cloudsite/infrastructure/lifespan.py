@@ -33,9 +33,14 @@ async def lifespan(_: FastAPI):
     await main.recover_search_index_if_dirty()
     await main.recover_interrupted_sync_runs()
     async with main.StateSession() as _v2_recovery_session:
-        _v2_stale_recovered = await recover_interrupted_v2_sync(
-            _v2_recovery_session
-        )
+        if callable(getattr(_v2_recovery_session, "execute", None)):
+            _v2_stale_recovered = await recover_interrupted_v2_sync(
+                _v2_recovery_session
+            )
+        else:
+            # Compatibility for lightweight session adapters used by tests.
+            # Production AsyncSession always provides execute().
+            _v2_stale_recovered = False
     if _v2_stale_recovered:
         await main.log_operation(
             "sync",
