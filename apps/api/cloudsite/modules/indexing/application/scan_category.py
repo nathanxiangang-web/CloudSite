@@ -12,6 +12,10 @@ class ScanCategoryResult:
     snapshot: CategorySnapshot
     pages_fetched: int
     cursor_exhausted: bool
+    active_workers: int = 0
+    dirs_done: int = 0
+    dirs_pending: int = 0
+    entries_discovered: int = 0
 
 
 class ScanCategoryService:
@@ -46,6 +50,12 @@ class ScanCategoryService:
         pages = 0
         fully_complete = True
         last_cursor: str | None = None
+        metrics: dict[str, int] = {
+            "active_workers": 0,
+            "dirs_done": 0,
+            "dirs_pending": 0,
+            "entries_discovered": 0,
+        }
 
         while pages < max_pages:
             limit = page_size or caps.max_page_size
@@ -58,6 +68,15 @@ class ScanCategoryService:
 
             if not page_complete:
                 fully_complete = False
+
+            page_metrics = getattr(self._adapter, "last_scan_metrics", {})
+            if page_metrics:
+                metrics["active_workers"] = page_metrics.get("active_workers", 0)
+                metrics["dirs_pending"] = page_metrics.get("dirs_pending", 0)
+                metrics["dirs_done"] += page_metrics.get("dirs_done", 0)
+                metrics["entries_discovered"] += page_metrics.get(
+                    "entries_discovered", 0
+                )
 
             if next_cursor is None:
                 break
@@ -73,6 +92,10 @@ class ScanCategoryService:
             snapshot=snapshot,
             pages_fetched=pages,
             cursor_exhausted=last_cursor is None,
+            active_workers=metrics["active_workers"],
+            dirs_done=metrics["dirs_done"],
+            dirs_pending=metrics["dirs_pending"],
+            entries_discovered=metrics["entries_discovered"],
         )
 
 

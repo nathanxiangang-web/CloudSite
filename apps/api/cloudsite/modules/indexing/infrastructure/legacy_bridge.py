@@ -196,10 +196,11 @@ async def run_indexing_v2_production(
             )
             root_failed = False
             try:
-                async def _on_progress(path: str, count: int) -> None:
+                async def _on_progress(recent_paths: list[str], count: int) -> None:
+                    current = recent_paths[-1] if recent_paths else ""
                     await _update_v2_sync_status(
                         "running", categories_done, total_categories,
-                        int(time.time() - t0), path, entries_scanned + count,
+                        int(time.time() - t0), current, entries_scanned + count,
                     )
                 async with index_session() as session:
                     store = store_factory(session)
