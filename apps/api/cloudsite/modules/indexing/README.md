@@ -111,10 +111,15 @@ operation logging behind `platform/observability`; the bridge no longer calls
 legacy `cloudsite.indexer.log_operation` and preserves the historical
 per-write commit and 2000-character message cap.
 
-The remaining production compatibility edge is
-`cloudsite.indexer.load_all_connections_and_roots`. Provider loading should
-move behind a Providers-owned scan-source contract before the legacy bridge is
-deleted.
+I2b moves production provider loading behind the Providers public scan-source
+contract. Indexing now receives only a provider-neutral scan port and root DTOs;
+it no longer imports `AListClient`, receives Provider ORM rows, or calls
+`cloudsite.indexer.load_all_connections_and_roots`.
+
+The compatibility-named `AListProviderAdapter` remains inside Indexing only as
+the translation layer from provider-neutral list/metadata operations to
+Indexing snapshots. Stable IDs, root scoping, and the historical
+`generic_alist` provider persistence key are unchanged.
 
 ## I2 Frozen Legacy Sync Ownership
 
