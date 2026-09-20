@@ -361,3 +361,83 @@ async def test_reject_pending_submission_succeeds(monkeypatch):
         assert reject.json()["published_resource_id"] is None
     await state_engine.dispose()
     await index_engine.dispose()
+
+
+async def test_user_submission_end_to_end_publish_flow(monkeypatch):
+    """User create -> admin approve -> publish -> user sees published binding."""
+    state_engine, index_engine, user_token = await _publish_store(monkeypatch)
+    admin_cookies = _admin_cookies()
+    user_cookies = {USER_SESSION_COOKIE: user_token}
+    transport = httpx.ASGITransport(app=main.app)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
+        created = await client.post(
+            "/api/submissions",
+            json={
+                "resource_name": "new app",
+                "resource_type": "software",
+                "description": "submitted by user",
+                "source_url": "https://example.com/new-app",
+                "download_url": "https://example.com/new-app.zip",
+                "copyright_note": "",
+                "note": "",
+            },
+            cookies=user_cookies,
+        )
+        assert created.status_code == 200, created.text
+        submission_id = created.json()["id"]
+        assert created.json()["resource_type"] == "software"
+        assert created.json()["status"] == "pending"
+
+        approve = await client.patch(
+            f"/api/admin/submissions/{submission_id}",
+            json={"action": "approve", "admin_note": "looks good"},
+            cookies=admin_cookies,
+        )
+        assert approve.status_code == 200, approve.text
+        assert approve.json()["status"] == "approved"
+
+        publish = await client.patch(
+            f"/api/admin/submissions/{submission_id}",
+            json={
+                "action": "publish",
+                "resource_id": "r_enabled",
+                "admin_note": "published",
+            },
+            cookies=admin_cookies,
+        )
+        assert publish.status_code == 200, publish.text
+        assert publish.json()["status"] == "published"
+        assert publish.json()["published_resource_id"] == "r_enabled"
+
+        mine = await client.get(
+            "/api/submissions/mine",
+            cookies=user_cookies,
+        )
+        assert mine.status_code == 200, mine.text
+        row = next(
+            item
+            for item in mine.json()["items"]
+            if item["id"] == submission_id
+        )
+        assert row["resource_type"] == "software"
+        assert row["status"] == "published"
+        assert row["published_resource_id"] == "r_enabled"
+        assert row["admin_note"] == "published"
+
+        legacy_type = await client.post(
+            "/api/submissions",
+            json={
+                "resource_name": "legacy type",
+                "resource_type": "软件",
+                "description": "invalid machine value",
+            },
+            cookies=user_cookies,
+        )
+        assert legacy_type.status_code == 422
+
+    await state_engine.dispose()
+    await index_engine.dispose()
