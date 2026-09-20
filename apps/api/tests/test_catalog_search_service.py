@@ -14,9 +14,9 @@ from cloudsite.models import (
     Resource,
 )
 from cloudsite.services.catalog_search import search_published_catalog
-from cloudsite.services.catalog_search_projection import (
+from cloudsite.modules.catalog.contracts.public import enqueue_catalog_search_outbox
+from cloudsite.modules.search.contracts.public import (
     consume_catalog_search_outbox,
-    enqueue_catalog_search_outbox,
     rebuild_catalog_search_index,
 )
 
