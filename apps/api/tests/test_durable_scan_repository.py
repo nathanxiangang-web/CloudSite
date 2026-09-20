@@ -289,13 +289,19 @@ async def test_add_and_get_entries(tmp_path):
             entries = [
                 SnapshotEntry(
                     resource_id=f"res-{i}",
-                    path="/docs",
+                    path=f"/docs/file-{i}",
                     name=f"file-{i}",
+                    size=100 + i,
                     content_hash=f"hash-{i}",
+                    metadata={
+                        "is_dir": i == 2,
+                        "parent_path": "/docs",
+                        "custom": f"value-{i}",
+                    },
                 )
                 for i in range(3)
             ]
-            await repo.add_entries(run.id, entries)
+            await repo.add_entries(run.id, entries, dir_path="/docs")
             await session.commit()
 
             assert await repo.count_entries(run.id) == 3
@@ -306,7 +312,40 @@ async def test_add_and_get_entries(tmp_path):
             assert len(fetched) == 3
             assert {e.resource_id for e in fetched} == {"res-0", "res-1", "res-2"}
             assert all(e.dir_path == "/docs" for e in fetched)
-            assert all(e.metadata_hash is not None for e in fetched)
+            assert {e.path for e in fetched} == {
+                "/docs/file-0",
+                "/docs/file-1",
+                "/docs/file-2",
+            }
+            assert all(e.parent_path == "/docs" for e in fetched)
+            assert {e.size for e in fetched} == {100, 101, 102}
+            assert {bool(e.is_dir) for e in fetched} == {False, True}
+            assert all(e.content_hash == e.metadata_hash for e in fetched)
+            assert all('"custom"' in e.metadata_json for e in fetched)
+
+            # Re-adding the same resource must update in place rather than
+            # append a duplicate staging row.
+            await repo.add_entries(
+                run.id,
+                [
+                    SnapshotEntry(
+                        resource_id="res-0",
+                        path="/docs/file-0-renamed",
+                        name="file-0-renamed",
+                        size=999,
+                        content_hash="hash-new",
+                        metadata={"is_dir": False, "parent_path": "/docs"},
+                    )
+                ],
+                dir_path="/docs",
+            )
+            await session.commit()
+            assert await repo.count_entries(run.id) == 3
+            updated = await repo.get_entries(run.id, "/docs")
+            row0 = next(row for row in updated if row.resource_id == "res-0")
+            assert row0.path == "/docs/file-0-renamed"
+            assert row0.size == 999
+            assert row0.content_hash == "hash-new"
 
             empty = await repo.get_entries(run.id, "/nonexistent")
             assert empty == []
