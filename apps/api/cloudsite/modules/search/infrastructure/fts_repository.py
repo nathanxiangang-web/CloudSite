@@ -112,6 +112,20 @@ async def rebuild_search_index(
     return len(rows)
 
 
+async def search_index_is_dirty(state: AsyncSession) -> bool:
+    """Return whether the resource FTS index is marked dirty."""
+    value = (
+        await state.execute(
+            text(
+                "SELECT value FROM system_settings "
+                "WHERE key = :key"
+            ),
+            {"key": SEARCH_INDEX_DIRTY_KEY},
+        )
+    ).scalar_one_or_none()
+    return value == "true"
+
+
 async def set_search_index_dirty(
     state: AsyncSession,
     dirty: bool,
@@ -140,5 +154,6 @@ __all__ = [
     "SEARCH_INDEX_DIRTY_KEY",
     "search_candidates",
     "rebuild_search_index",
+    "search_index_is_dirty",
     "set_search_index_dirty",
 ]
