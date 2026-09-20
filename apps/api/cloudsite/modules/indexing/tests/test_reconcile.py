@@ -204,3 +204,188 @@ async def test_no_changes_when_snapshot_matches_existing():
     assert result.writes.removed == 0
     assert result.writes.unchanged == 2
     assert store.remove_calls == []
+
+async def test_reconcile_preserves_existing_id_when_snapshot_id_changes_for_same_path():
+    existing = [
+        IndexedEntry(
+            resource_id="legacy-id",
+            category_id="root:1",
+            provider_id="prov",
+            path="/same/file.zip",
+            name="file.zip",
+            size=10,
+            metadata={
+                "parent_id": "legacy-parent",
+                "content_type": "file",
+                "root_mapping_id": 1,
+                "depth": 2,
+                "child_folder_count": 0,
+                "resource_count": 0,
+                "extension": "zip",
+                "mime_type": "application/zip",
+                "thumbnail": "",
+            },
+        )
+    ]
+    store = FakeIndexingStore(existing=existing)
+    service = ReconcileService(store)
+    snapshot = CategorySnapshot(
+        category_id="root:1",
+        provider_id="prov",
+        entries=[
+            SnapshotEntry(
+                resource_id="new-root-scoped-id",
+                path="/same/file.zip",
+                name="file.zip",
+                size=10,
+                metadata={
+                    "parent_id": "legacy-parent",
+                    "content_type": "file",
+                    "root_mapping_id": 1,
+                    "depth": 2,
+                    "child_folder_count": 0,
+                    "resource_count": 0,
+                    "extension": "zip",
+                    "mime_type": "application/zip",
+                    "thumbnail": "",
+                },
+            )
+        ],
+        pagination_complete=True,
+    )
+
+    result = await service.reconcile(snapshot)
+
+    assert result.writes.added == 0
+    assert result.writes.removed == 0
+    assert result.writes.unchanged == 1
+    assert store.touch_calls == [["legacy-id"]]
+    assert store.remove_calls == []
+
+
+async def test_reconcile_remaps_new_child_parent_to_existing_folder_id():
+    existing = [
+        IndexedEntry(
+            resource_id="legacy-folder",
+            category_id="root:1",
+            provider_id="prov",
+            path="/same",
+            name="same",
+            metadata={
+                "parent_id": None,
+                "content_type": "file",
+                "root_mapping_id": 1,
+                "depth": 0,
+                "child_folder_count": 0,
+                "resource_count": 1,
+                "extension": "",
+                "mime_type": "",
+                "thumbnail": "",
+            },
+        )
+    ]
+    store = FakeIndexingStore(existing=existing)
+    service = ReconcileService(store)
+    snapshot = CategorySnapshot(
+        category_id="root:1",
+        provider_id="prov",
+        entries=[
+            SnapshotEntry(
+                resource_id="new-folder-id",
+                path="/same",
+                name="same",
+                metadata={
+                    "parent_id": None,
+                    "content_type": "file",
+                    "root_mapping_id": 1,
+                    "depth": 0,
+                    "child_folder_count": 0,
+                    "resource_count": 1,
+                    "extension": "",
+                    "mime_type": "",
+                    "thumbnail": "",
+                },
+            ),
+            SnapshotEntry(
+                resource_id="new-child-id",
+                path="/same/new.zip",
+                name="new.zip",
+                size=5,
+                metadata={
+                    "parent_path": "/same",
+                    "parent_id": "new-folder-id",
+                    "content_type": "file",
+                    "root_mapping_id": 1,
+                    "depth": 1,
+                    "child_folder_count": 0,
+                    "resource_count": 0,
+                    "extension": "zip",
+                    "mime_type": "application/zip",
+                    "thumbnail": "",
+                },
+            ),
+        ],
+        pagination_complete=True,
+    )
+
+    result = await service.reconcile(snapshot)
+
+    assert result.writes.added == 1
+    assert len(store.upsert_calls) == 1
+    added = store.upsert_calls[0][0]
+    assert added.resource_id == "new-child-id"
+    assert added.metadata["parent_id"] == "legacy-folder"
+
+
+async def test_reconcile_writes_metadata_only_changes():
+    existing = [
+        IndexedEntry(
+            resource_id="folder",
+            category_id="root:1",
+            provider_id="prov",
+            path="/folder",
+            name="folder",
+            metadata={
+                "parent_id": None,
+                "content_type": "file",
+                "root_mapping_id": 1,
+                "depth": 0,
+                "child_folder_count": 0,
+                "resource_count": 0,
+                "extension": "",
+                "mime_type": "",
+                "thumbnail": "",
+            },
+        )
+    ]
+    store = FakeIndexingStore(existing=existing)
+    service = ReconcileService(store)
+    snapshot = CategorySnapshot(
+        category_id="root:1",
+        provider_id="prov",
+        entries=[
+            SnapshotEntry(
+                resource_id="folder",
+                path="/folder",
+                name="folder",
+                metadata={
+                    "parent_id": None,
+                    "content_type": "file",
+                    "root_mapping_id": 1,
+                    "depth": 0,
+                    "child_folder_count": 1,
+                    "resource_count": 2,
+                    "extension": "",
+                    "mime_type": "",
+                    "thumbnail": "",
+                },
+            )
+        ],
+        pagination_complete=True,
+    )
+
+    result = await service.reconcile(snapshot)
+
+    assert result.writes.changed == 1
+    assert store.upsert_calls[0][0].metadata["child_folder_count"] == 1
+    assert store.upsert_calls[0][0].metadata["resource_count"] == 2
