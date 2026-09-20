@@ -125,7 +125,16 @@ S2c moves Catalog projection ownership behind module contracts:
 - `services/catalog_search_projection.py` is now a compatibility re-export
   with no projection implementation.
 
-Still transitional after S2c:
+S2d runtime audit closes the remaining Search-only migration item without
+adding a queue dependency that the default deployment cannot consume:
 
-- rebuild remains synchronous for compatibility even though the target design
-  is task-driven.
+- the DB-backed task platform and standalone worker exist;
+- the base `docker-compose.yml` starts only API + web, while the worker is an
+  optional `docker-compose.worker.yml` overlay;
+- the API lifespan does not start an in-process `Worker`;
+- changing admin rebuild endpoints to enqueue-only behavior would therefore
+  allow accepted tasks to remain unprocessed on a default install.
+
+Task-driven rebuild should be reconsidered only when worker availability becomes
+a guaranteed deployment invariant. Until then, no further Search S2 refactor is
+required.
