@@ -306,14 +306,62 @@ async def _update_v2_sync_status(
     removed: int = 0,
     unchanged: int = 0,
     *,
-    active_workers: int = 0,
-    directories_done: int = 0,
-    known_pending: int = 0,
+    active_workers: int | None = None,
+    directories_done: int | None = None,
+    known_pending: int | None = None,
     entries_discovered: int | None = None,
     recent_paths: list[str] | None = None,
 ) -> None:
-    """Persist truthful concurrent-scan progress for the Admin status API."""
+    """Persist V2 progress while preserving the historical storage contract.
+
+    Legacy-only calls keep the exact historical payload for compatibility.
+    Concurrent scanner calls opt into the V2 runtime fields explicitly; the
+    Admin API normalizes both shapes to the new truthful status contract.
+    """
+    import json
+
     from cloudsite.platform.db import state_session
+    from sqlalchemy import text
+
+    has_concurrent_metrics = any(
+        value is not None
+        for value in (
+            active_workers,
+            directories_done,
+            known_pending,
+            entries_discovered,
+            recent_paths,
+        )
+    )
+
+    if not has_concurrent_metrics:
+        payload = json.dumps({
+            "status": status,
+            "categories_done": categories_done,
+            "categories_total": categories_total,
+            "elapsed_seconds": elapsed_seconds,
+            "current_path": current_path,
+            "entries_scanned": entries_scanned,
+            "added": added,
+            "changed": changed,
+            "removed": removed,
+            "unchanged": unchanged,
+        })
+        async with state_session() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO system_settings(key, value, value_type, updated_at) "
+                    "VALUES (:key, :value, 'string', CURRENT_TIMESTAMP) "
+                    "ON CONFLICT(key) DO UPDATE SET "
+                    "value = excluded.value, "
+                    "value_type = excluded.value_type, "
+                    "updated_at = CURRENT_TIMESTAMP"
+                ),
+                {"key": "v2_sync_progress", "value": payload},
+            )
+            await session.commit()
+        return
+
     from .status_store import write_v2_sync_progress
 
     if entries_discovered is None:
@@ -328,9 +376,9 @@ async def _update_v2_sync_status(
             categories_done=categories_done,
             categories_total=categories_total,
             elapsed_seconds=elapsed_seconds,
-            active_workers=active_workers,
-            directories_done=directories_done,
-            known_pending=known_pending,
+            active_workers=active_workers or 0,
+            directories_done=directories_done or 0,
+            known_pending=known_pending or 0,
             entries_discovered=entries_discovered,
             recent_paths=recent_paths,
             added=added,
