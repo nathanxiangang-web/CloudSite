@@ -32,7 +32,6 @@ const statusCopy: Record<string, [string, string]> = {
 export default function SharePage() {
   const { token } = useParams<{ token: string }>();
   const [code, setCode] = useState("");
-  const [captchaRequired, setCaptchaRequired] = useState(false);
   const appearance = useQuery({ queryKey: ["share-page-settings"], queryFn: () => api<SharePageSettings>("/api/public/share-page"), retry: false });
   const frame = { siteName: appearance.data?.site_name || "CloudSite", imageUrl: appearance.data?.share_image_url || "" };
 
@@ -41,12 +40,9 @@ export default function SharePage() {
   const verify = useMutation({
     mutationFn: () => api<{ ok: boolean }>(`/s/${token}/verify`, {
       method: "POST",
-      body: JSON.stringify({ code, captcha_token: captchaRequired ? "manual-challenge-completed" : null }),
+      body: JSON.stringify({ code }),
     }),
     onSuccess: () => content.refetch(),
-    onError: (error: Error & { code?: string }) => {
-      if (error.code === "SHARE_CAPTCHA_REQUIRED" || error.message.includes("captcha_required")) setCaptchaRequired(true);
-    },
   });
 
   useEffect(() => {
@@ -105,7 +101,6 @@ export default function SharePage() {
         />
         <button className="primary" disabled={verify.isPending || code.trim().length !== 4}>{verify.isPending ? "正在验证..." : "提取文件"}</button>
       </form>
-      {captchaRequired && <p className="share-note">请完成验证码挑战后重试。</p>}
       {verify.error && <p className="form-error">{verify.error.message}</p>}
       <p className="share-code-help">提取码由分享者提供</p>
     </section> : <section className="share-resource-grid">{resources.length ? resources.map((item) => <ShareResourceCard key={item.id} item={item} token={token} single={content.data.share.object_type === "resource"} />) : <div className="empty">分享内容为空。</div>}</section>}
