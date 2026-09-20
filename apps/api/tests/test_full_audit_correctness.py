@@ -410,11 +410,11 @@ async def test_audit_default_no_silent_repair():
     """
     golden = [
         _snap("r1", "/a/file1.zip"),
-        _snap("r2", "/a/file2.zip"),
+        _snap("r2", "/a/file2.zip", content_hash="ch-r2"),
     ]
     polluted_inventory = [
         _entry("r1", "/a/file1.zip"),
-        _entry("rx", "/a/extra.zip"),
+        _entry("rx", "/a/extra.zip", content_hash="ch-rx"),
     ]
     store = _FakeIndexingStore(existing=polluted_inventory)
     audit = FullAudit(store)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
@@ -24,12 +25,15 @@ SHRINK_RATIO = 0.1
 class WriteSummary:
     added: int = 0
     changed: int = 0
+    renamed: int = 0
+    moved: int = 0
     removed: int = 0
     unchanged: int = 0
+    conflict: int = 0
 
     @property
     def total_writes(self) -> int:
-        return self.added + self.changed + self.removed
+        return self.added + self.changed + self.renamed + self.moved + self.removed
 
 
 @dataclass(slots=True)
@@ -50,6 +54,14 @@ class ReconcileResult:
     def has_conflicts(self) -> bool:
         return bool(self.conflicts)
 
+    @property
+    def change_type_counts(self) -> dict[ChangeType, int]:
+        """Per-type counts for all 7 change types (V2 doc section 21)."""
+        counts: dict[ChangeType, int] = {ct: 0 for ct in ChangeType}
+        for record in self.changes:
+            counts[record.change_type] = counts.get(record.change_type, 0) + 1
+        return counts
+
 
 _ENTRY_FIELDS: tuple[str, ...] = ('path', 'name', 'size', 'modified_at', 'content_hash')
 _COMMON_METADATA_FIELDS: tuple[str, ...] = (
@@ -69,9 +81,24 @@ def _snapshot_dict(entry: Any) -> dict[str, Any]:
     return {f: getattr(entry, f) for f in _ENTRY_FIELDS}
 
 
+def _identity_key(entry: Any) -> tuple[str, int, str] | None:
+    '''Content identity for rename/move detection (V2 doc section 21).
+
+    Returns a hashable identity key when the entry has a reliable content
+    identity, otherwise ''None''. Directories and entries without a content
+    hash have no content identity and are skipped by rename/move detection.
+    '''
+    metadata = getattr(entry, 'metadata', None) or {}
+    if metadata.get('is_dir'):
+        return None
+    content_hash = getattr(entry, 'content_hash', None)
+    if not content_hash:
+        return None
+    return ('content', int(metadata.get('root_mapping_id', 0) or 0), content_hash)
+
+
 def _parent_dir(path: str) -> str:
-    if not path:
-        return ""
+    '''Parent directory of a posix-style path. '/a/b.zip' -> '/a'.'''
     idx = path.rfind('/')
     if idx <= 0:
         return "/"
@@ -104,8 +131,6 @@ def _entry_fingerprint(
         root_mapping_id=_root_mapping_id(entry),
         path=getattr(entry, "path", None),
     )
-
-
 def _canonicalize_entries(
     existing: list[IndexedEntry],
     snapshot: CategorySnapshot,
@@ -166,16 +191,104 @@ class ReconcileService:
         canonical_entries = _canonicalize_entries(existing, snapshot)
         incoming_by_id = {e.resource_id: e for e in canonical_entries}
 
+        cat = snapshot.category_id
+        prov = snapshot.provider_id
+
+        # ------------------------------------------------------------------
+        # Phase 1: exact match by resource_id (after path-based canonicalization)
+        # ------------------------------------------------------------------
+        matched_existing_ids: set[str] = set()
+        matched_incoming_ids: set[str] = set()
+        for rid in incoming_by_id:
+            if rid in existing_by_id:
+                matched_existing_ids.add(rid)
+                matched_incoming_ids.add(rid)
+
+        # ------------------------------------------------------------------
+        # Phase 2: identity-based rename/move/conflict detection on the
+        # unmatched sets (V2 doc section 21). An entry that is not matched
+        # by resource_id may still be the same content at a new path.
+        # ------------------------------------------------------------------
+        unmatched_existing = [
+            e for e in existing if e.resource_id not in matched_existing_ids
+        ]
+        unmatched_incoming = [
+            e for e in canonical_entries if e.resource_id not in matched_incoming_ids
+        ]
+
+        existing_by_identity: dict[tuple[str, int, str], list[IndexedEntry]] = defaultdict(list)
+        for entry in unmatched_existing:
+            key = _identity_key(entry)
+            if key is not None:
+                existing_by_identity[key].append(entry)
+
+        incoming_by_identity: dict[tuple[str, int, str], list[Any]] = defaultdict(list)
+        for entry in unmatched_incoming:
+            key = _identity_key(entry)
+            if key is not None:
+                incoming_by_identity[key].append(entry)
+
+        # An identity with more than one candidate on either side is ambiguous
+        # and is reported as CONFLICT rather than silently resolved.
+        conflict_keys: set[tuple[str, int, str]] = set()
+        for key, candidates in existing_by_identity.items():
+            if len(candidates) > 1:
+                conflict_keys.add(key)
+        for key, candidates in incoming_by_identity.items():
+            if len(candidates) > 1:
+                conflict_keys.add(key)
+
+        rename_pairs: dict[str, str] = {}  # incoming_id -> existing_id
+        conflict_incoming_ids: set[str] = set()
+        conflict_existing_ids: set[str] = set()
+
+        shared_keys = set(existing_by_identity) & set(incoming_by_identity)
+        for key in shared_keys:
+            existing_list = existing_by_identity[key]
+            incoming_list = incoming_by_identity[key]
+            if key in conflict_keys:
+                for e in existing_list:
+                    conflict_existing_ids.add(e.resource_id)
+                for e in incoming_list:
+                    conflict_incoming_ids.add(e.resource_id)
+            elif len(existing_list) == 1 and len(incoming_list) == 1:
+                rename_pairs[incoming_list[0].resource_id] = existing_list[0].resource_id
+
+        # ------------------------------------------------------------------
+        # Phase 3: classify every entry into one of the 7 change types.
+        # ------------------------------------------------------------------
         changes: list[ChangeRecord] = []
         added_entries: list[IndexedEntry] = []
         changed_entries: list[IndexedEntry] = []
         to_touch: list[str] = []
         removed_ids: list[str] = []
 
-        cat = snapshot.category_id
-        prov = snapshot.provider_id
-
         for rid, incoming in incoming_by_id.items():
+            if rid in conflict_incoming_ids:
+                changes.append(ChangeRecord(
+                    change_type=ChangeType.CONFLICT,
+                    resource_id=rid, category_id=cat, provider_id=prov,
+                    after=_snapshot_dict(incoming),
+                ))
+                continue
+
+            if rid in rename_pairs:
+                existing_rid = rename_pairs[rid]
+                current = existing_by_id[existing_rid]
+                same_parent = _parent_dir(current.path) == _parent_dir(incoming.path)
+                change_type = ChangeType.RENAMED if same_parent else ChangeType.MOVED
+                changes.append(ChangeRecord(
+                    change_type=change_type,
+                    resource_id=existing_rid, category_id=cat, provider_id=prov,
+                    before=_entry_dict(current),
+                    after=_snapshot_dict(incoming),
+                ))
+                changed_entries.append(
+                    self._to_indexed(incoming, cat, prov, resource_id=existing_rid)
+                )
+                matched_existing_ids.add(existing_rid)
+                continue
+
             current = existing_by_id.get(rid)
             if current is None:
                 changes.append(ChangeRecord(
@@ -200,24 +313,40 @@ class ReconcileService:
                 to_touch.append(rid)
 
         for rid in existing_by_id:
-            if rid not in incoming_by_id:
-                removed_ids.append(rid)
+            if rid in matched_existing_ids:
+                continue
+            if rid in conflict_existing_ids:
                 changes.append(ChangeRecord(
-                    change_type=ChangeType.REMOVED,
+                    change_type=ChangeType.CONFLICT,
                     resource_id=rid, category_id=cat, provider_id=prov,
                     before=_entry_dict(existing_by_id[rid]),
                 ))
+                continue
+            removed_ids.append(rid)
+            changes.append(ChangeRecord(
+                change_type=ChangeType.REMOVED,
+                resource_id=rid, category_id=cat, provider_id=prov,
+                before=_entry_dict(existing_by_id[rid]),
+            ))
 
         writes = WriteSummary()
         suppressed = 0
 
         if added_entries or changed_entries:
             await self._store.upsert(added_entries + changed_entries)
-            writes.added = len(added_entries)
-            writes.changed = len(changed_entries)
+        writes.added = len(added_entries)
+        for record in changes:
+            if record.change_type is ChangeType.CHANGED:
+                writes.changed += 1
+            elif record.change_type is ChangeType.RENAMED:
+                writes.renamed += 1
+            elif record.change_type is ChangeType.MOVED:
+                writes.moved += 1
 
         if to_touch:
             writes.unchanged = await self._store.touch_unchanged(to_touch)
+
+        writes.conflict = len(conflict_incoming_ids) + len(conflict_existing_ids)
 
         if removed_ids:
             if snapshot.pagination_complete:
@@ -448,9 +577,15 @@ class ReconcileService:
         )
 
     @staticmethod
-    def _to_indexed(entry: Any, category_id: str, provider_id: str) -> IndexedEntry:
+    def _to_indexed(
+        entry: Any,
+        category_id: str,
+        provider_id: str,
+        *,
+        resource_id: str | None = None,
+    ) -> IndexedEntry:
         return IndexedEntry(
-            resource_id=entry.resource_id,
+            resource_id=resource_id or entry.resource_id,
             category_id=category_id,
             provider_id=provider_id,
             path=entry.path,
