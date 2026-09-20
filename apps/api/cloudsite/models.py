@@ -698,3 +698,53 @@ class RootState(StateBase):
             name="ck_index_root_states_status",
         ),
     )
+
+
+class DirtyScope(StateBase):
+    """Persistent dirty-scope record (V2 doc section 29).
+
+    One row per (root_mapping_id, path) verification mismatch detected during
+    indexing. Persisted so pending dirty scopes survive process restarts and
+    can be reprocessed by a reconciliation worker. status transitions:
+    pending -> processing -> resolved/failed/escalated. attempts tracks
+    reprocessing attempts; last_error_code/message capture the most recent
+    failure for diagnostics. This table is written by future verify/reconcile
+    logic; the schema and repository are introduced ahead of that logic in
+    this PR.
+    """
+
+    __tablename__ = "index_dirty_scopes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    root_mapping_id: Mapped[int] = mapped_column(
+        ForeignKey("content_root_mappings.id", ondelete="CASCADE"), index=True
+    )
+    path: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(
+        Text, default="verification_mismatch", server_default="verification_mismatch"
+    )
+    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(
+        Text, default="pending", server_default="pending", index=True
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    detected_at: Mapped[str] = mapped_column(
+        Text, default=lambda: datetime.now(timezone.utc).isoformat(),
+        server_default=text("datetime('now')"),
+    )
+    updated_at: Mapped[str] = mapped_column(
+        Text, default=lambda: datetime.now(timezone.utc).isoformat(),
+        server_default=text("datetime('now')"),
+    )
+    last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "root_mapping_id", "path", name="uq_index_dirty_scopes_root_path"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'resolved', 'failed', 'escalated')",
+            name="ck_index_dirty_scopes_status",
+        ),
+        Index("ix_index_dirty_scopes_root_status", "root_mapping_id", "status"),
+        Index("ix_index_dirty_scopes_priority", "priority"),
+    )
