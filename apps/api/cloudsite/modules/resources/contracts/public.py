@@ -54,6 +54,8 @@ class ResourceInventoryRecord:
     content_type: str | None = None
     root_mapping_id: int | None = None
     depth: int = 0
+    child_folder_count: int = 0
+    resource_count: int = 0
     extension: str = ""
     mime_type: str = ""
     thumbnail: str = ""
