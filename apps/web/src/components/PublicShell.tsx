@@ -1,14 +1,13 @@
 "use client";
 
-import { CloudDownload, Search, Upload } from "lucide-react";
+import { Search, Upload } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "./Brand";
-import { StorageInfoCard } from "./StorageInfoCard";
 import { AuthMenu } from "./AuthMenu";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./NotificationBell";
-import { MobilePrimaryNavigation, useVisibleNavItems } from "./PublicNavigation";
+import { MobilePrimaryNavigation } from "./PublicNavigation";
 import { useSite } from "@/lib/site";
 import { CLOUD_DOWNLOAD_HREF, CLOUD_DOWNLOAD_LABEL, mapLegacyBrowseToCloudDownload } from "@/lib/navigation";
 
@@ -18,7 +17,6 @@ const TOPBAR_NAV = [
   ["/catalog", "\u76ee\u5f55"],
   ["/collections", "\u7cbe\u9009"],
   [CLOUD_DOWNLOAD_HREF, CLOUD_DOWNLOAD_LABEL],
-  ["/about", "\u4f7f\u7528\u6307\u5357"],
 ] as const;
 
 function TopbarActions() {
@@ -32,11 +30,13 @@ function TopbarActions() {
 
 export function PublicShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const navItems = useVisibleNavItems();
   const site = useSite();
   const presentation = site.presentation;
   const topbarNav = presentation && presentation.enabled && presentation.navigation.length
-    ? [...presentation.navigation].sort((a, b) => a.sort_order - b.sort_order).map((item) => mapLegacyBrowseToCloudDownload(item))
+    ? [...presentation.navigation]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((item) => mapLegacyBrowseToCloudDownload(item))
+        .filter((item) => item.href !== "/about")
     : TOPBAR_NAV.map(([href, label]) => ({ href, label }));
   return <div className={`app-shell${pathname === "/" ? " home-shell" : ""}`}>
     <header className="public-topbar">
@@ -47,15 +47,6 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       <TopbarActions />
       <AuthMenu />
     </header>
-    <aside className="sidebar">
-      <nav>
-        {navItems.slice(0, 1).map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}><Icon size={18} />{label}</Link>)}
-        <span className="nav-section-label">{"\u8d44\u6e90\u5e93"}</span>
-        {navItems.slice(1).map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "active" : ""}><Icon size={18} />{label}</Link>)}
-        <Link href={CLOUD_DOWNLOAD_HREF} className={pathname === CLOUD_DOWNLOAD_HREF ? "active" : ""}><CloudDownload size={18} />{CLOUD_DOWNLOAD_LABEL}</Link>
-      </nav>
-      <StorageInfoCard />
-    </aside>
     <main className="content">
       <header className="mobile-header"><Brand /><div className="mobile-header-right"><TopbarActions /><AuthMenu /></div></header>
       {pathname !== "/" && <MobilePrimaryNavigation />}
