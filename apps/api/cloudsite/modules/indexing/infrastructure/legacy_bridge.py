@@ -125,6 +125,10 @@ async def run_indexing_v2(
                 )
                 continue
             scan_result = scan_results[category_id]
+            if not scan_result.snapshot.pagination_complete:
+                summary.errors.append(
+                    f"{category_id}: scan incomplete; destructive removals suppressed"
+                )
             reconcile_result: ReconcileResult = await reconcile_service.reconcile(
                 scan_result.snapshot
             )
