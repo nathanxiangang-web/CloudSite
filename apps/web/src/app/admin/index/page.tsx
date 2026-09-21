@@ -25,6 +25,20 @@ type SyncRun = {
   roots_total?: number;
 };
 type IndexSummary = { folders: number; resources: number; syncing: boolean; latest_sync: SyncRun | null };
+type SyncProgress = {
+  engine_version: string;
+  status: string;
+  roots_completed: number;
+  roots_total: number;
+  categories_done: number;
+  elapsed_seconds: number;
+  active_workers: number;
+  directories_done: number;
+  known_pending: number;
+  entries_discovered: number;
+  recent_paths: string[];
+  current_path: string;
+};
 type Mapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
 
 const typeNames: Record<string, string> = { software: "软件", image: "图库", video: "视频", document: "教程", file: "普通文件" };
@@ -52,11 +66,12 @@ export default function IndexPage() {
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const summary = useQuery({ queryKey: ["index-summary"], queryFn: () => api<IndexSummary>("/api/admin/index/summary"), refetchInterval: (query) => query.state.data?.syncing ? 2000 : false });
+  const summary = useQuery({ queryKey: ["index-summary"], queryFn: () => api<IndexSummary>("/api/admin/index/summary"), refetchInterval: 2000 });
+  const progress = useQuery({ queryKey: ["sync-progress"], queryFn: () => api<SyncProgress>("/api/admin/sync/status"), refetchInterval: 1000 });
   const folders = useQuery({ queryKey: ["admin-folders"], queryFn: () => api<{ items: FolderType[] }>("/api/admin/index/folders") });
   const mappings = useQuery({ queryKey: ["mappings"], queryFn: () => api<{ items: Mapping[] }>("/api/admin/root-mappings") });
   const detail = useQuery({ queryKey: ["admin-folder", selectedId], queryFn: () => api<FolderType & { direct_resource_count: number }>(`/api/admin/index/folders/${selectedId}`), enabled: Boolean(selectedId) });
-  const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["admin-folder"] }); };
+  const refresh = () => { client.invalidateQueries({ queryKey: ["index-summary"] }); client.invalidateQueries({ queryKey: ["sync-progress"] }); client.invalidateQueries({ queryKey: ["admin-folders"] }); client.invalidateQueries({ queryKey: ["admin-folder"] }); };
   const sync = useMutation({ mutationFn: (full: boolean) => api("/api/admin/sync", { method: "POST", body: JSON.stringify({ full }) }), onSuccess: refresh });
   const cancelSync = useMutation({ mutationFn: () => api("/api/admin/sync/cancel", { method: "POST" }), onSuccess: refresh });
   const wasSyncing = useRef(false);
@@ -83,7 +98,16 @@ export default function IndexPage() {
   const roots = childrenByParent.get(null) ?? [];
   const filtered = (folders.data?.items ?? []).filter((item) => `${item.name} ${item.path}`.toLowerCase().includes(filter.toLowerCase()));
   const latest = summary.data?.latest_sync;
-  const syncing = summary.data?.syncing ?? false;
+  const syncing = progress.data?.status === "running" || (summary.data?.syncing ?? false);
+  const rootsCompleted = progress.data?.roots_completed ?? latest?.roots_completed ?? 0;
+  const rootsTotal = progress.data?.roots_total ?? latest?.roots_total ?? 0;
+  const directoriesDone = progress.data?.directories_done ?? latest?.folders_scanned ?? 0;
+  const knownPending = progress.data?.known_pending ?? 0;
+  const activeWorkers = progress.data?.active_workers ?? 0;
+  const entriesDiscovered = progress.data?.entries_discovered ?? latest?.resources_scanned ?? 0;
+  const currentPath = progress.data?.current_path || latest?.current_path || "";
+  const elapsedSeconds = progress.data?.elapsed_seconds ?? Math.round((latest?.duration_ms ?? 0) / 1000);
+  const rootProgressPercent = rootsTotal > 0 ? Math.min(100, Math.max(0, (rootsCompleted / rootsTotal) * 100)) : 0;
   const summaryLoading = summary.isLoading && !summary.data;
   const summaryUnavailable = Boolean(summary.error) && !summary.data;
   const resourceCountText = summary.data ? String(summary.data.resources) : summaryLoading ? "…" : "不可用";
@@ -94,7 +118,7 @@ export default function IndexPage() {
 
   const syncStatusIcon = summaryLoading ? <Loader2 className="spin" /> : summaryUnavailable ? <AlertTriangle className="warn" /> : syncing ? <Loader2 className="spin" /> : latest?.status === "success" ? <CheckCircle2 className="ok" /> : latest?.status === "failed" ? <AlertTriangle className="warn" /> : <Database />;
   const syncStatusText = summaryLoading ? "读取中" : summaryUnavailable ? "不可用" : syncing ? "进行中" : latest ? labelOf(runStatusLabel, latest.status) : "未运行";
-  const syncDetail = summaryUnavailable ? "索引摘要请求失败" : latest?.status === "failed" && latest.error_message ? latest.error_message : latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing && latest ? `${latest.roots_completed} / ${latest.roots_total} 根目录 · ${latest.resources_scanned} 资源 · ${(latest.duration_ms / 1000).toFixed(0)}s` : "";
+  const syncDetail = summaryUnavailable ? "索引摘要请求失败" : latest?.status === "failed" && latest.error_message ? latest.error_message : latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing ? `${rootsCompleted} / ${rootsTotal || "?"} 根目录 · ${directoriesDone} 目录 · ${entriesDiscovered} 条目 · ${elapsedSeconds}s` : "";
 
   return <AdminShell title="内容索引"><div className="admin-page index-admin-page">
     {summary.error && <p className="form-error">索引摘要加载失败：{summary.error.message} <button type="button" onClick={() => summary.refetch()}>重试</button></p>}
@@ -113,7 +137,23 @@ export default function IndexPage() {
             : <button type="button" className="primary" disabled={sync.isPending || mappings.isLoading || Boolean(mappings.error)} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>}
       </div>
       {(sync.error || cancelSync.error) && <p className="form-error">{(sync.error || cancelSync.error)?.message}</p>}
-      {syncing && latest && <div className="sync-progress-bar"><div className="sync-progress-info"><span>{latest.current_path ? `扫描中：${latest.current_path}` : "处理中…"}</span><span>{latest.roots_completed} / {latest.roots_total} 根目录 · {latest.resources_scanned} 资源</span></div></div>}
+      {syncing && <div className="sync-progress-bar">
+        <div className="sync-progress-head">
+          <span className="sync-current-path"><Loader2 className="spin" />{currentPath ? `扫描中：${currentPath}` : rootsTotal > 0 ? "正在进入根目录…" : "正在读取 Provider 根目录…"}</span>
+          <span>{elapsedSeconds}s</span>
+        </div>
+        <div className="sync-live-metrics">
+          <span><strong>{rootsCompleted} / {rootsTotal || "?"}</strong><small>根目录</small></span>
+          <span><strong>{directoriesDone}</strong><small>已完成目录</small></span>
+          <span><strong>{knownPending}</strong><small>待处理目录</small></span>
+          <span><strong>{activeWorkers}</strong><small>活跃 Worker</small></span>
+          <span><strong>{entriesDiscovered}</strong><small>已发现条目</small></span>
+        </div>
+        <div className={rootsTotal > 0 ? "sync-progress-track" : "sync-progress-track indeterminate"} aria-label="同步活动进度">
+          <i style={rootsTotal > 0 ? { width: `${rootProgressPercent}%` } : undefined} />
+        </div>
+        <p className="sync-progress-note">目录总量会在遍历过程中动态增长，因此不显示虚假的目录完成百分比；上方数值会实时更新。</p>
+      </div>}
     </section>
     <section className="index-workspace">
       <article className="panel folder-tree-panel">
