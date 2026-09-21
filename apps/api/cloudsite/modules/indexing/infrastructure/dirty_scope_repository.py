@@ -100,6 +100,21 @@ class DirtyScopeRepository:
         row = result.first()
         return _row_to_record(row) if row else None
 
+    async def get_by_path(
+        self,
+        root_mapping_id: int,
+        path: str,
+    ) -> DirtyScopeRecord | None:
+        result = await self._session.execute(
+            text(
+                f"SELECT {_SELECT_COLS} FROM index_dirty_scopes "
+                "WHERE root_mapping_id = :rid AND path = :path"
+            ),
+            {"rid": root_mapping_id, "path": path},
+        )
+        row = result.first()
+        return _row_to_record(row) if row else None
+
     async def find_pending(self, root_mapping_id: int) -> list[DirtyScopeRecord]:
         result = await self._session.execute(
             text(
