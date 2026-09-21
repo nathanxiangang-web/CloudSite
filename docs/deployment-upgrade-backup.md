@@ -25,6 +25,37 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 Complete the AList connection, initial synchronization, search, preview, download, share, and collection checks before treating the deployment as accepted.
 
+## Indexing V2 Durable Scan rollout
+
+Durable Scan is feature-gated and remains disabled by default. Do not enable it in production only because the containers are healthy; first pass the deployment resume E2E against a real provider-backed test root.
+
+Set the flag in the test deployment:
+
+```dotenv
+CLOUDSITE_DURABLE_SCAN_ENABLED=true
+```
+
+Restart the API and verify the flag is actually present inside the container:
+
+```bash
+docker compose up -d --wait api
+docker compose exec -T api sh -lc 'test "$CLOUDSITE_DURABLE_SCAN_ENABLED" = "true"'
+```
+
+Then run the destructive deployment E2E only on the dedicated test environment:
+
+```bash
+CLOUDSITE_E2E_ALLOW_RESTART=1 \
+CLOUDSITE_E2E_COMPOSE_FILE=docker-compose.dev.yml \
+bash scripts/e2e-durable-resume.sh
+```
+
+The gate intentionally restarts the API container. It refuses to start if another durable scan is already running, verifies the durable staging schema, requires an actually unfinished scan to be caught, resumes the same scan run after restart, requires zero pending/running/failed directories, and compares the final production inventory fingerprint with a clean-scan baseline.
+
+A PASS from the browser smoke suite is not a substitute for this test: the browser E2E seed writes CloudSite-owned local data and does not exercise a real provider scan/checkpoint/resume path.
+
+Keep `CLOUDSITE_DURABLE_SCAN_ENABLED=false` for normal deployment until this gate passes on the target deployment topology. If the E2E fails, leave the flag off and preserve `state.db` / `index.db` for diagnosis; do not delete scan rows or run `docker compose down -v` to make the test pass.
+
 ## Backup
 
 ```bash
