@@ -218,3 +218,43 @@ async def test_failed_verification_advances_cadence_to_avoid_retry_storm(monkeyp
     assert first == "verification_failed"
     assert second == "idle"
     assert calls == 1
+
+
+async def test_full_sync_failure_isolated_without_falling_through_to_verification(monkeypatch):
+    _wire_state(monkeypatch)
+    logged: list[tuple[tuple, dict]] = []
+    verification_calls = 0
+
+    async def full_due(_state, _interval):
+        return True
+
+    async def failed_full_sync():
+        assert main.manual_sync_task is asyncio.current_task()
+        raise RuntimeError("full sync boom")
+
+    async def verification():
+        nonlocal verification_calls
+        verification_calls += 1
+        return {"status": "success", "roots": [], "errors": []}
+
+    async def fake_log(*args, **kwargs):
+        logged.append((args, kwargs))
+
+    monkeypatch.setattr(scheduler, "v2_sync_due", full_due)
+    monkeypatch.setattr(scheduler, "run_indexing_v2_production", failed_full_sync)
+    monkeypatch.setattr(main, "_run_rolling_verification_job", verification)
+    monkeypatch.setattr(main, "log_operation", fake_log)
+
+    main.manual_sync_task = None
+    main._last_rolling_verification_at = 0.0
+
+    result = await scheduler._run_sync_or_verification_tick(9999.0)
+
+    assert result == "full_sync_failed"
+    assert main.manual_sync_task is None
+    assert verification_calls == 0
+    assert any(
+        args[1] == "scheduler_failed"
+        and kwargs.get("level") == "ERROR"
+        for args, kwargs in logged
+    )
