@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from cloudsite.alist import AListError
 from cloudsite.modules.indexing.infrastructure.alist_adapter import (
     AListProviderAdapter,
+    _stable_id,
 )
 from cloudsite.modules.indexing.infrastructure.durable_provider_scan import (
     _fingerprint,
@@ -194,7 +195,7 @@ async def test_durable_scan_resumes_without_rescanning_done_dirs(tmp_path):
             assert claimed is not None
 
             child = adapter._make_entry(
-                resource_id="folder-a",
+                resource_id=_stable_id("folder", "/root/a", root.root_mapping_id),
                 path="/root/a",
                 name="a",
                 is_dir=True,
