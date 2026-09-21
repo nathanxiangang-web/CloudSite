@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { Archive, ArrowRight, Clapperboard, Download, File, FileText, Image, PanelsTopLeft, ShieldCheck } from "lucide-react";
+import { Archive, ArrowRight, BookOpen, Clapperboard, Download, File, FileText, FolderTree, Image, PanelsTopLeft, ShieldCheck } from "lucide-react";
 import { MobilePrimaryNavigation } from "./PublicNavigation";
 import { HomeSearch } from "./HomeSearch";
 import { FeaturedCollections } from "./FeaturedCollections";
 import { FeaturedTopics, TopicEntry } from "./FeaturedTopics";
 import { ContinueSection } from "./ContinueSection";
-import { HeroIllustration } from "./hero/HeroIllustration";
+import { redesignStyles } from "@/features/public-redesign";
 import { Collection, formatBytes, Resource } from "@/lib/api";
 
 type BlockType = "featured" | "recent" | "topic" | "category" | "continue";
@@ -122,9 +122,6 @@ export async function HomeContent() {
   const popular = data.popular.length ? data.popular.slice(0, 6) : null;
   const recent = data.recent ?? [];
   const topics = data.topics ?? [];
-  const accent = "资源网站";
-  const titleLead = site.home_title.endsWith(accent) ? site.home_title.slice(0, -accent.length) : site.home_title;
-  const titleAccent = site.home_title.endsWith(accent) ? accent : "";
 
   const presentation = data.presentation;
   const useBlocks = presentation && presentation.enabled && presentation.ordered_blocks && presentation.ordered_blocks.length > 0;
@@ -153,24 +150,33 @@ export async function HomeContent() {
 
   return (
     <>
-      <section className="hero">
-        <div className="hero-copy">
-          <h1><span>{titleLead}</span>{titleAccent && <em>{titleAccent}</em>}</h1>
-          <p>{site.hero_subtitle || site.description}</p>
+      <section className={redesignStyles.homeHero}>
+        <div className={redesignStyles.homeHeroMain}>
+          <span className={redesignStyles.eyebrow}>CloudSite 资源平台</span>
+          <h1>查找和获取资源</h1>
+          <p>{site.hero_subtitle || site.description || "从整理后的资源条目与 CloudSite 文件索引中快速找到需要的内容。"}</p>
           <HomeSearch recent={recent} />
         </div>
-        <div className="hero-art">
-          <HeroIllustration />
-        </div>
+        <aside className={redesignStyles.homeHeroAside} aria-label="CloudSite 内容说明">
+          <Link href="/catalog" className={redesignStyles.identityCard}>
+            <BookOpen />
+            <span><strong>已整理的资源条目</strong><small>包含说明、版本、平台与可下载文件，适合确认资源后再选择版本。</small></span>
+          </Link>
+          <Link href="/resources/software" className={redesignStyles.identityCard}>
+            <FolderTree />
+            <span><strong>文件与目录索引</strong><small>来自 CloudSite 已完成的资源索引，用于快速浏览刚同步的文件与目录。</small></span>
+          </Link>
+        </aside>
       </section>
 
       <MobilePrimaryNavigation />
 
+      <div className={redesignStyles.homeSectionStack}>
       {useBlocks
         ? presentation!.ordered_blocks.map((block) => renderBlock(block))
         : <>
-            <CategoryGrid counts={data.counts} title="资源分类" />
             <FeaturedCollections collections={collections} />
+            <CategoryGrid counts={data.counts} title="资源分类" />
             <SectionTitle title="最近更新" href="/browse" />
             <section className="recent-table">
               {recent.length ? recent.slice(0, 6).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}
@@ -180,6 +186,7 @@ export async function HomeContent() {
               {popular ? popular.map((item) => <PopularCard key={item.id} item={item} />) : <div className="empty">暂无热门资源。</div>}
             </section>
           </>}
+      </div>
 
       <WhySection />
     </>
@@ -189,13 +196,17 @@ export async function HomeContent() {
 export function HomeSkeleton() {
   return (
     <>
-      <section className="hero">
-        <div className="hero-copy">
-          <h1 style={{ background: "#eef1f6", color: "transparent", borderRadius: 8, width: "70%" }}>把网盘变成好看的资源网站</h1>
+      <section className={redesignStyles.homeHero}>
+        <div className={redesignStyles.homeHeroMain}>
+          <span className={redesignStyles.eyebrow}>CloudSite 资源平台</span>
+          <h1 style={{ background: "#eef1f6", color: "transparent", borderRadius: 8, width: "70%" }}>查找和获取资源</h1>
           <p style={{ background: "#eef1f6", color: "transparent", borderRadius: 6, width: "90%", height: 18 }}>软件、图库、视频、教程、文件</p>
           <div className="hero-search" style={{ visibility: "hidden" }}><input /></div>
         </div>
-        <div className="hero-art" style={{ background: "#eef1f6", borderRadius: 12 }} />
+        <div className={redesignStyles.homeHeroAside}>
+          <div className={redesignStyles.identityCard} />
+          <div className={redesignStyles.identityCard} />
+        </div>
       </section>
       <section className="category-grid">
         {Array.from({ length: 4 }).map((_, i) => <div key={i} className="category-card" style={{ background: "#f3f5f9" }} />)}
