@@ -151,7 +151,8 @@ async def test_presentation_apply_preset(monkeypatch):
             assert tutorial.status_code == 200, tutorial.text
             tu_cfg = tutorial.json()["config"]
             assert tu_cfg["preset"] == "tutorial"
-            assert tu_cfg["home_blocks"][0]["type"] == "topic"
+            assert tu_cfg["home_blocks"][0]["type"] == "featured"
+            assert all(block["type"] != "topic" for block in tu_cfg["home_blocks"])
 
             unknown = await admin.post(
                 "/api/admin/presentation/apply-preset",
