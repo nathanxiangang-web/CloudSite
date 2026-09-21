@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { Archive, ArrowRight, BookOpen, Clapperboard, Download, File, FileText, FolderTree, Image, PanelsTopLeft, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpen, Clapperboard, File, FileText, FolderTree, Image, PanelsTopLeft } from "lucide-react";
 import { MobilePrimaryNavigation } from "./PublicNavigation";
 import { HomeSearch } from "./HomeSearch";
 import { FeaturedCollections } from "./FeaturedCollections";
@@ -92,23 +92,6 @@ function CategoryGrid({ counts, title }: { counts: Record<string, number>; title
   </>;
 }
 
-function WhySection() {
-  return <section className="why">
-    <h2>为什么选择 CloudSite？</h2>
-    <p>让网盘资源管理和分享变得更简单、更高效</p>
-    <div>
-      {([
-        [Download, "直接下载", "下载请求送入 AList 原生下载链路", "CloudSite 负责校验与跳转", "blue"],
-        [Archive, "数据在网盘", "文件存储在您的网盘中", "CloudSite 只负责整理与展示", "green"],
-        [PanelsTopLeft, "可视化整理", "管理所选的目录结构", "清晰分类，快速找到需要的资源", "cyan"],
-        [ShieldCheck, "安全可靠", "不存储您的文件内容", "保障您的数据隐私与安全", "orange"],
-      ] as const).map(([Icon, title, line1, line2, tone]) => (
-        <article key={String(title)}><Icon className={`why-icon ${tone}`} /><span><strong>{String(title)}</strong><small>{String(line1)}<br />{String(line2)}</small></span></article>
-      ))}
-    </div>
-  </section>;
-}
-
 export async function HomeContent() {
   const apiBase = process.env.API_INTERNAL_URL || "http://127.0.0.1:8000";
   const headerList = await headers();
@@ -188,7 +171,7 @@ export async function HomeContent() {
           </>}
       </div>
 
-      <WhySection />
+
     </>
   );
 }
