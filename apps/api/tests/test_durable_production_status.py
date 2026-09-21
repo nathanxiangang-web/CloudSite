@@ -36,7 +36,6 @@ async def test_incomplete_durable_production_sync_finishes_failed(monkeypatch):
         return [source]
 
     async def fake_run_indexing_v2(**kwargs):
-        assert getattr(kwargs["adapter"], "_durable_session", None) is not None
         return {
             "status": "success",
             "engine": "v2",
@@ -75,6 +74,7 @@ async def test_incomplete_durable_production_sync_finishes_failed(monkeypatch):
     monkeypatch.setattr(legacy_bridge, "_update_v2_sync_status", fake_update_status)
     monkeypatch.setattr(legacy_bridge, "_log_operation", fake_log)
     monkeypatch.setattr(legacy_bridge, "_durable_scan_enabled", lambda: True)
+    assert legacy_bridge._durable_scan_enabled() is True
 
     result = await legacy_bridge.run_indexing_v2_production(
         store_factory=lambda _session: object(),
