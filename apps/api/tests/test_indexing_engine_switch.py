@@ -160,7 +160,7 @@ async def test_run_indexing_v2_detects_removals_when_pagination_complete() -> No
     assert store.remove_calls == 1
 
 
-async def test_run_indexing_v2_reports_incomplete_scan_as_partial() -> None:
+async def test_run_indexing_v2_reports_incomplete_scan_signal() -> None:
     class IncompleteAdapter(FakeProviderAdapter):
         async def scan_category(
             self,
@@ -196,12 +196,13 @@ async def test_run_indexing_v2_reports_incomplete_scan_as_partial() -> None:
         category_ids=["cat-a"],
     )
 
-    assert result["status"] == "partial"
+    assert result["status"] == "success"
+    assert result["scan_complete"] is False
     assert result["writes"]["added"] == 1
     assert result["writes"]["removed"] == 0
     assert result["suppressed_removals"] == 1
     assert store.remove_calls == 0
-    assert any("scan incomplete" in error for error in result["errors"])
+    assert result["errors"] == []
 
 
 async def test_run_indexing_v2_isolates_per_category_errors() -> None:
