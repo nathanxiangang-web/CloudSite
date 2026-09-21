@@ -142,6 +142,55 @@ class DurableScanRepository:
         row = result.first()
         return _row_to_ns(row, _RUN_FIELDS) if row else None
 
+    async def list_dirs(
+        self,
+        run_id: str,
+        status: str | None = None,
+    ) -> list[SimpleNamespace]:
+        """List durable directory rows for one run in breadth-first order."""
+        if status is None:
+            result = await self._session.execute(
+                text(
+                    "SELECT id, scan_run_id, path, depth, status, started_at, "
+                    "finished_at, entry_count, error_message "
+                    "FROM index_scan_dirs WHERE scan_run_id = :rid "
+                    "ORDER BY depth, id"
+                ),
+                {"rid": run_id},
+            )
+        else:
+            result = await self._session.execute(
+                text(
+                    "SELECT id, scan_run_id, path, depth, status, started_at, "
+                    "finished_at, entry_count, error_message "
+                    "FROM index_scan_dirs "
+                    "WHERE scan_run_id = :rid AND status = :status "
+                    "ORDER BY depth, id"
+                ),
+                {"rid": run_id, "status": status},
+            )
+        return [_row_to_ns(r, _DIR_FIELDS) for r in result]
+
+    async def claim_dir(
+        self,
+        run_id: str,
+        path: str,
+    ) -> SimpleNamespace | None:
+        """Atomically claim one specific pending directory for scanning."""
+        result = await self._session.execute(
+            text(
+                "UPDATE index_scan_dirs "
+                "SET status = 'running', started_at = :now "
+                "WHERE scan_run_id = :run AND path = :path AND status = 'pending' "
+                "RETURNING id, scan_run_id, path, depth, status, "
+                "started_at, finished_at, entry_count, error_message"
+            ),
+            {"run": run_id, "path": path, "now": _utcnow()},
+        )
+        row = result.first()
+        await self._session.flush()
+        return _row_to_ns(row, _DIR_FIELDS) if row else None
+
     async def add_dirs(
         self,
         run_id: str,
@@ -298,6 +347,22 @@ class DurableScanRepository:
                 "WHERE scan_run_id = :rid AND dir_path = :dp ORDER BY id"
             ),
             {"rid": run_id, "dp": dir_path},
+        )
+        return [_row_to_ns(r, _ENTRY_FIELDS) for r in result]
+
+    async def list_entries(
+        self,
+        run_id: str,
+    ) -> list[SimpleNamespace]:
+        """Return all staged entries for a scan run in stable insertion order."""
+        result = await self._session.execute(
+            text(
+                "SELECT id, scan_run_id, dir_path, path, parent_path, "
+                "resource_id, name, is_dir, size, modified, content_hash, "
+                "metadata_json, metadata_hash FROM index_scan_entries "
+                "WHERE scan_run_id = :rid ORDER BY id"
+            ),
+            {"rid": run_id},
         )
         return [_row_to_ns(r, _ENTRY_FIELDS) for r in result]
 
