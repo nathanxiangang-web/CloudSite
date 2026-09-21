@@ -45,14 +45,20 @@ async def _seed_root(session, root_id: int = 7001) -> None:
     )
 
 
-async def _seed_run(session, *, status: str = "completed", root_id: int = 7001) -> None:
+async def _seed_run(
+    session,
+    *,
+    status: str = "completed",
+    root_id: int = 7001,
+    finished_at: str = "2026-09-21T06:30:00+00:00",
+) -> None:
     await session.execute(
         text(
             "INSERT INTO index_scan_runs "
             "(id, root_mapping_id, status, started_at, finished_at) "
-            "VALUES ('run-1', :rid, :status, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            "VALUES ('run-1', :rid, :status, CURRENT_TIMESTAMP, :finished_at)"
         ),
-        {"rid": root_id, "status": status},
+        {"rid": root_id, "status": status, "finished_at": finished_at},
     )
 
 
@@ -62,7 +68,7 @@ async def test_completed_run_promotes_full_directory_baseline(tmp_path):
     try:
         async with factory() as session:
             await _seed_root(session)
-            await _seed_run(session)
+            await _seed_run(session, finished_at=verified_at)
             await session.execute(
                 text(
                     "INSERT INTO index_scan_dirs "
@@ -97,7 +103,6 @@ async def test_completed_run_promotes_full_directory_baseline(tmp_path):
                 session,
                 root_mapping_id=7001,
                 run_id="run-1",
-                verified_at=verified_at,
             )
             await session.commit()
 
