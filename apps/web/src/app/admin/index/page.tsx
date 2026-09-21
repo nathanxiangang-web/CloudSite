@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, Database, Folder, RefreshCw, Search, CheckCi
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
-import progressStyles from "@/features/admin-index/styles/live-progress.module.css";
+import { progressStyles } from "@/features/admin-index";
 import { api, Folder as FolderType } from "@/lib/api";
 
 type SyncRun = {
