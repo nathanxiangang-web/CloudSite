@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from cloudsite.modules.indexing.infrastructure import alist_adapter, legacy_bridge
+from cloudsite.modules.indexing.infrastructure import legacy_bridge
 from cloudsite.modules.providers.contracts import public as providers_public
+from cloudsite.modules.providers.contracts.public import ProviderScanRoot
 from cloudsite.platform import db as platform_db
 
 
@@ -22,22 +23,12 @@ class _AsyncContext:
         return False
 
 
-class _FakeAdapter:
-    def __init__(self, provider, roots) -> None:
-        self.provider = provider
-        self.roots = roots
-        self.last_scan_metrics = {}
-        self.durable_session = None
-
-    def set_durable_session(self, session) -> None:
-        self.durable_session = session
-
-
 async def test_incomplete_durable_production_sync_finishes_failed(monkeypatch):
-    root = SimpleNamespace(
+    root = ProviderScanRoot(
         root_mapping_id=7,
         storage_path="/provider-root",
         content_type="software",
+        display_name="Provider Root",
     )
     source = SimpleNamespace(provider=object(), roots=(root,))
 
@@ -45,7 +36,7 @@ async def test_incomplete_durable_production_sync_finishes_failed(monkeypatch):
         return [source]
 
     async def fake_run_indexing_v2(**kwargs):
-        assert kwargs["adapter"].durable_session is not None
+        assert getattr(kwargs["adapter"], "_durable_session", None) is not None
         return {
             "status": "success",
             "engine": "v2",
@@ -80,7 +71,6 @@ async def test_incomplete_durable_production_sync_finishes_failed(monkeypatch):
     )
     monkeypatch.setattr(platform_db, "state_session", lambda: _AsyncContext())
     monkeypatch.setattr(platform_db, "index_session", lambda: _AsyncContext())
-    monkeypatch.setattr(alist_adapter, "AListProviderAdapter", _FakeAdapter)
     monkeypatch.setattr(legacy_bridge, "run_indexing_v2", fake_run_indexing_v2)
     monkeypatch.setattr(legacy_bridge, "_update_v2_sync_status", fake_update_status)
     monkeypatch.setattr(legacy_bridge, "_log_operation", fake_log)
@@ -91,7 +81,7 @@ async def test_incomplete_durable_production_sync_finishes_failed(monkeypatch):
     )
 
     assert result["status"] == "partial"
-    assert result["scan_complete"] is False
+    assert result["scan_complete"] is False, result
     assert result["errors"]
     assert "durable scan incomplete" in result["errors"][0]
     assert status_calls[0] == "running"
