@@ -122,6 +122,7 @@ async def test_durable_incomplete_scan_finishes_as_failed_admin_status(monkeypat
     assert result["status"] == "partial"
     assert result["scan_complete"] is False
     assert result["writes"]["removed"] == 0
+    assert result["suppressed_removals"] == 1
     assert result["errors"] == [
         "/apps(software): durable scan incomplete; removals suppressed"
     ]
