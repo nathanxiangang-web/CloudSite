@@ -233,6 +233,66 @@ async def test_durable_scan_resumes_without_rescanning_done_dirs(tmp_path):
         await engine.dispose()
 
 
+async def test_durable_scan_recovers_after_unexpected_interruption(tmp_path):
+    class CrashingProvider(FakeProvider):
+        async def list_path(self, path: str, refresh=False, strict=False):
+            self.list_calls.append(path)
+            raise RuntimeError("process-like interruption")
+
+    engine, factory = await _make_factory(tmp_path)
+    try:
+        async with factory() as session:
+            await _seed_root(session)
+            first = AListProviderAdapter(
+                CrashingProvider(_tree()),
+                [_root()],
+                durable_session=session,
+            )
+
+            try:
+                await first.scan_category("root:1", concurrency=2)
+            except RuntimeError as exc:
+                assert "interruption" in str(exc)
+            else:
+                raise AssertionError("unexpected interruption must propagate")
+
+            repo = DurableScanRepository(session)
+            runs = await repo.list_scan_runs(1)
+            assert len(runs) == 1
+            run_id = runs[0].id
+            assert runs[0].status == "running"
+            assert await repo.count_dirs(run_id, "running") == 1
+
+            provider = FakeProvider(_tree())
+            resumed = AListProviderAdapter(
+                provider,
+                [_root()],
+                durable_session=session,
+            )
+            entries, _, complete = await resumed.scan_category(
+                "root:1",
+                concurrency=2,
+            )
+
+            assert complete is True
+            assert "/root" in provider.list_calls
+            assert {entry.path for entry in entries} == {
+                "/root",
+                "/root/a",
+                "/root/a/a.txt",
+                "/root/a/sub",
+                "/root/a/sub/deep.zip",
+                "/root/b",
+                "/root/b/b.txt",
+                "/root/root.bin",
+            }
+            refreshed = await repo.get_scan_run(run_id)
+            assert refreshed is not None
+            assert refreshed.status == "completed"
+    finally:
+        await engine.dispose()
+
+
 async def test_durable_scan_failure_is_partial_and_terminal(tmp_path):
     engine, factory = await _make_factory(tmp_path)
     try:
