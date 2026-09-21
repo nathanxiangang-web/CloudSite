@@ -8,7 +8,6 @@ import { FormEvent } from "react";
 
 import { PublicShell } from "@/components/PublicShell";
 import { SiteFooter } from "@/components/SiteFooter";
-import { LibraryTabs, redesignStyles } from "@/features/public-redesign";
 
 import { fetchCatalogEntries, fetchCatalogSearch, fetchCatalogTags } from "../api";
 import {
@@ -88,21 +87,17 @@ export function CatalogListView() {
     navigate({ q: String(form.get("q") || ""), page: 1 });
   };
 
-  return <PublicShell><div className={`page ${styles.page} ${redesignStyles.libraryPage}`}>
-    <div className={redesignStyles.libraryBreadcrumb}>资源库 <span>›</span> 资源条目</div>
-    <section className={redesignStyles.libraryIntro}>
-      <span className={redesignStyles.libraryIntroIcon}><BookOpen /></span>
+  return <PublicShell><div className={`page ${styles.page}`}>
+    <section className="library-hero">
+      <span className="library-folder type-document"><BookOpen /></span>
       <div>
-        <h1>资源条目</h1>
-        <p>经过整理的内容条目，可包含说明、标签、多个版本以及对应的下载文件。</p>
-      </div>
-      <div className={redesignStyles.libraryIntroMeta}>
-        <span className={redesignStyles.metricChip}>{countText}</span>
+        <h1>资源目录</h1>
+        <p>按版本与平台整理的资源条目，每个条目可包含多个版本与下载位置。</p>
+        <div className="meta">{countText}</div>
       </div>
     </section>
-    <LibraryTabs active="catalog" />
 
-    <form className={`catalog-search-form ${redesignStyles.searchForm}`} onSubmit={submitSearch}>
+    <form className="catalog-search-form" onSubmit={submitSearch}>
       <Search />
       <input key={submittedQuery} name="q" defaultValue={submittedQuery}
         placeholder="搜索资源条目（标题、别名、标签、平台）" aria-label="搜索资源条目" />
@@ -110,7 +105,7 @@ export function CatalogListView() {
       {submittedQuery && <button type="button" onClick={() => navigate({ q: "", page: 1 })}>清除</button>}
     </form>
 
-    <div className={redesignStyles.catalogToolbar}>
+    <div className={styles.toolbar}>
       <div className={styles.filter}>
         <Filter size={15} />
         <select value={contentType} onChange={(event) => navigate({ contentType: event.target.value, page: 1 })} aria-label="按类型筛选">
@@ -136,19 +131,18 @@ export function CatalogListView() {
           {searching ? "搜索暂时不可用" : "目录暂时不可用"}：{searchError.message}
           <button type="button" onClick={() => searching ? searchResults.refetch() : entries.refetch()}>重试</button>
         </div>
-      : items.length ? <section className={redesignStyles.catalogGrid}>{items.map((entry) =>
-          <Link key={entry.entry_id} href={catalogEntryHref(entry.entry_id)} className={redesignStyles.catalogCard}>
-            <span className={`${redesignStyles.catalogCardIcon} type-${entry.content_type}`}><Boxes /></span>
-            <div className={redesignStyles.catalogCardBody}>
+      : items.length ? <section className={styles.grid}>{items.map((entry) =>
+          <Link key={entry.entry_id} href={catalogEntryHref(entry.entry_id)} className={styles.card}>
+            <span className={`${styles.icon} type-${entry.content_type}`}><Boxes /></span>
+            <div className={styles.body}>
               <strong>{entry.title}</strong>
-              <span className={redesignStyles.catalogCardSummary}>{entry.summary || "暂无简介"}</span>
-              <div className={redesignStyles.catalogCardMeta}>
-                <span className={redesignStyles.catalogPill}>{contentTypeLabel(entry.content_type)}</span>
-                <span className={entry.availability === "available" ? redesignStyles.availablePill : redesignStyles.unavailablePill}>
-                  {entry.availability === "available" ? "可用" : "暂不可用"}
-                </span>
+              <span className={styles.summary}>{entry.summary || "暂无简介"}</span>
+              <div className={styles.meta}>
+                <span className={styles.type}>{contentTypeLabel(entry.content_type)}</span>
+                {entry.availability === "unavailable" &&
+                  <span className={styles.unavailable}>暂不可用</span>}
                 {entry.tags.slice(0, 3).map((tagItem) =>
-                  <span key={tagItem.tag_id} className={redesignStyles.catalogPill}>{tagItem.display_name}</span>)}
+                  <span key={tagItem.tag_id} className={styles.tag}>{tagItem.display_name}</span>)}
               </div>
             </div>
           </Link>)}</section>
