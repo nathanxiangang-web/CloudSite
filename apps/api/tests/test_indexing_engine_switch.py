@@ -160,6 +160,51 @@ async def test_run_indexing_v2_detects_removals_when_pagination_complete() -> No
     assert store.remove_calls == 1
 
 
+async def test_run_indexing_v2_reports_incomplete_scan_signal() -> None:
+    class IncompleteAdapter(FakeProviderAdapter):
+        async def scan_category(
+            self,
+            category_id,
+            *,
+            cursor=None,
+            limit=None,
+            on_progress=None,
+        ):
+            entries, next_cursor, _ = await super().scan_category(
+                category_id,
+                cursor=cursor,
+                limit=limit,
+            )
+            return entries, next_cursor, False
+
+    seeded = [
+        IndexedEntry(
+            resource_id="old",
+            category_id="cat-a",
+            provider_id="fake-provider",
+            path="/old",
+            name="old",
+            size=1,
+        )
+    ]
+    adapter = IncompleteAdapter({"cat-a": [_entry("r1")]})
+    store = FakeIndexingStore(seeded=seeded)
+
+    result = await run_indexing_v2(
+        adapter=adapter,
+        store=store,
+        category_ids=["cat-a"],
+    )
+
+    assert result["status"] == "success"
+    assert result["scan_complete"] is False
+    assert result["writes"]["added"] == 1
+    assert result["writes"]["removed"] == 0
+    assert result["suppressed_removals"] == 1
+    assert store.remove_calls == 0
+    assert result["errors"] == []
+
+
 async def test_run_indexing_v2_isolates_per_category_errors() -> None:
     class ExplodingAdapter(FakeProviderAdapter):
         async def scan_category(self, category_id, *, cursor=None, limit=None, on_progress=None):
@@ -177,6 +222,7 @@ async def test_run_indexing_v2_isolates_per_category_errors() -> None:
     )
 
     assert result["status"] == "partial"
+    assert result["scan_complete"] is False
     assert result["categories_scanned"] == 1
     assert len(result["errors"]) == 1
     assert "bad" in result["errors"][0]

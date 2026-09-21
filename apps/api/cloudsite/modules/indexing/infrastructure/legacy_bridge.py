@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -27,12 +28,23 @@ GLOBAL_SCAN_CONCURRENCY = 16  # global scan concurrency
 RECONCILE_CONCURRENCY = 1     # production reconcile concurrency
 
 
+def _durable_scan_enabled() -> bool:
+    """Return whether production scanning should use durable checkpoints."""
+    return os.environ.get("CLOUDSITE_DURABLE_SCAN_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 @dataclass(slots=True)
 class V2IndexingSummary:
     status: str = "success"
     engine: str = "v2"
     categories_scanned: int = 0
     pages_fetched: int = 0
+    scan_complete: bool = True
     writes: WriteSummary = field(default_factory=WriteSummary)
     suppressed_removals: int = 0
     errors: list[str] = field(default_factory=list)
@@ -43,6 +55,7 @@ class V2IndexingSummary:
             "engine": self.engine,
             "categories_scanned": self.categories_scanned,
             "pages_fetched": self.pages_fetched,
+            "scan_complete": self.scan_complete,
             "writes": {
                 "added": self.writes.added,
                 "changed": self.writes.changed,
@@ -112,8 +125,11 @@ async def run_indexing_v2(
                 summary.errors.append(
                     f"{category_id}: {type(exc).__name__}: {exc}"
                 )
+                summary.scan_complete = False
                 continue
             scan_result = scan_results[category_id]
+            if not scan_result.snapshot.pagination_complete:
+                summary.scan_complete = False
             reconcile_result: ReconcileResult = await reconcile_service.reconcile(
                 scan_result.snapshot
             )
@@ -231,19 +247,41 @@ async def run_indexing_v2_production(
                         entries_discovered=entries_scanned + count,
                         recent_paths=recent_paths,
                     )
-                async with index_session() as session:
-                    store = store_factory(session)
-                    result = await run_indexing_v2(
-                        adapter=adapter,
-                        store=store,
-                        category_ids=[f"root:{root.root_mapping_id}"],
-                        on_progress=_on_progress,
+
+                async def _execute_root() -> dict[str, Any]:
+                    async with index_session() as session:
+                        store = store_factory(session)
+                        root_result = await run_indexing_v2(
+                            adapter=adapter,
+                            store=store,
+                            category_ids=[f"root:{root.root_mapping_id}"],
+                            on_progress=_on_progress,
+                        )
+                        if root_result.get("status") != "partial":
+                            await session.commit()
+                        return root_result
+
+                if _durable_scan_enabled():
+                    async with state_session() as durable_state:
+                        adapter.set_durable_session(durable_state)
+                        try:
+                            result = await _execute_root()
+                        finally:
+                            adapter.set_durable_session(None)
+                else:
+                    result = await _execute_root()
+
+                if not result.get("scan_complete", True):
+                    total_summary.scan_complete = False
+
+                if result.get("status") == "partial":
+                    root_failed = True
+                    total_summary.errors.extend(result.get("errors", []))
+                elif _durable_scan_enabled() and not result.get("scan_complete", True):
+                    root_failed = True
+                    total_summary.errors.append(
+                        f"{root_label}: durable scan incomplete; removals suppressed"
                     )
-                    if result.get("status") == "partial":
-                        root_failed = True
-                        total_summary.errors.extend(result.get("errors", []))
-                    if not root_failed:
-                        await session.commit()
             except asyncio.CancelledError:
                 await _update_v2_sync_status(
                     "cancelled", categories_done, total_categories,

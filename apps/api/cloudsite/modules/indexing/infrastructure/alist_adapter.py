@@ -72,8 +72,11 @@ class AListProviderAdapter:
         self,
         provider: ProviderScanPort,
         roots: list[ProviderScanRoot] | tuple[ProviderScanRoot, ...],
+        *,
+        durable_session: Any = None,
     ) -> None:
         self._provider = provider
+        self._durable_session = durable_session
         self._roots = {
             f"root:{root.root_mapping_id}": root
             for root in roots
@@ -84,6 +87,10 @@ class AListProviderAdapter:
             "dirs_pending": 0,
             "entries_discovered": 0,
         }
+
+    def set_durable_session(self, session: Any) -> None:
+        """Attach the state.db session used by the durable production scanner."""
+        self._durable_session = session
 
     @property
     def provider_id(self) -> str:
@@ -118,6 +125,17 @@ class AListProviderAdapter:
                 "entries_discovered": 0,
             }
             return [], None, True
+
+        if self._durable_session is not None:
+            from .durable_provider_scan import scan_category_durable
+
+            return await scan_category_durable(
+                self,
+                root,
+                self._durable_session,
+                on_progress=on_progress,
+                concurrency=concurrency,
+            )
 
         entries: list[SnapshotEntry] = []
         root_path = _normalize_path(root.storage_path)
