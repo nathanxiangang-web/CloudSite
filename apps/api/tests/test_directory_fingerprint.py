@@ -6,6 +6,8 @@ correctly reports matching and mismatched fingerprints.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from cloudsite.modules.indexing.domain.directory_fingerprint import (
     DirectoryFingerprint,
     compare_fingerprints,
@@ -121,3 +123,32 @@ def test_compare_mismatch() -> None:
     current = generate_fingerprint("/dir", [_entry("a.txt", size=10)])
     stored = generate_fingerprint("/dir", [_entry("a.txt", size=20)])
     assert compare_fingerprints(current, stored) is False
+
+
+def test_modified_timestamp_formats_are_normalized() -> None:
+    iso_z = generate_fingerprint(
+        "/dir",
+        [_entry("a.txt", modified="2026-09-20T00:00:00Z")],
+    )
+    iso_offset = generate_fingerprint(
+        "/dir",
+        [_entry("a.txt", modified="2026-09-20T00:00:00+00:00")],
+    )
+    sqlite_style = generate_fingerprint(
+        "/dir",
+        [_entry("a.txt", modified="2026-09-20 00:00:00+00:00")],
+    )
+    datetime_value = generate_fingerprint(
+        "/dir",
+        [_entry(
+            "a.txt",
+            modified=datetime(2026, 9, 20, 0, 0, tzinfo=timezone.utc),
+        )],
+    )
+
+    assert (
+        iso_z.hash
+        == iso_offset.hash
+        == sqlite_style.hash
+        == datetime_value.hash
+    )
