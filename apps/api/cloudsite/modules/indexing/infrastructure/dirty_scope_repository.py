@@ -167,6 +167,28 @@ class DirtyScopeRepository:
             )
         await self._session.flush()
 
+    async def reopen(
+        self,
+        dirty_scope_id: int,
+        *,
+        reason: str = "verification_mismatch",
+        priority: int = 0,
+    ) -> None:
+        await self._session.execute(
+            text(
+                "UPDATE index_dirty_scopes SET status = 'pending', "
+                "reason = :reason, priority = MAX(priority, :priority), "
+                "last_error_code = NULL, last_error_message = NULL, "
+                "updated_at = datetime('now') WHERE id = :id"
+            ),
+            {
+                "id": dirty_scope_id,
+                "reason": reason,
+                "priority": priority,
+            },
+        )
+        await self._session.flush()
+
     async def increment_attempts(self, dirty_scope_id: int) -> None:
         await self._session.execute(
             text(
