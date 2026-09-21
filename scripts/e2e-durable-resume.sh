@@ -62,8 +62,8 @@ from cloudsite.tasks.sync import run_indexing_v2_production
 
 result = asyncio.run(run_indexing_v2_production())
 print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-if result.get("status") not in {"success", "partial"}:
-    raise SystemExit(f"sync returned unexpected status: {result!r}")
+if result.get("status") != "success":
+    raise SystemExit(f"sync was not fully successful: {result!r}")
 if not result.get("scan_complete", True):
     raise SystemExit(f"sync did not complete: {result!r}")
 PY
