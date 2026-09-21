@@ -41,6 +41,8 @@ apps/api/venv/
 开发文档/
 开发进度/
 .arts/
+测试账号.txt
+*.执行指令.md
 
 # Local backup/scratch
 *.bak.fix
