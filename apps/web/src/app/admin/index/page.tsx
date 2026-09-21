@@ -23,6 +23,11 @@ type SyncRun = {
   current_path?: string;
   roots_completed?: number;
   roots_total?: number;
+  directories_done?: number;
+  known_pending?: number;
+  active_workers?: number;
+  entries_discovered?: number;
+  recent_paths?: string[];
 };
 type IndexSummary = { folders: number; resources: number; syncing: boolean; latest_sync: SyncRun | null };
 type SyncProgress = {
@@ -42,7 +47,7 @@ type SyncProgress = {
 type Mapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
 
 const typeNames: Record<string, string> = { software: "软件", image: "图库", video: "视频", document: "教程", file: "普通文件" };
-const runStatusLabel: Record<string, string> = { success: "已完成", failed: "失败", running: "进行中", pending: "等待中", partial: "部分完成", cancelled: "已取消", skipped: "已跳过" };
+const runStatusLabel: Record<string, string> = { success: "已完成", completed: "已完成", failed: "失败", running: "进行中", pending: "等待中", partial: "部分完成", cancelled: "已取消", skipped: "已跳过" };
 function labelOf(map: Record<string, string>, value: string) { return map[value] ?? value; }
 
 function TreeNode({ node, childrenByParent, expanded, selectedId, toggle, select }: {
@@ -101,10 +106,10 @@ export default function IndexPage() {
   const syncing = progress.data?.status === "running" || (summary.data?.syncing ?? false);
   const rootsCompleted = progress.data?.roots_completed ?? latest?.roots_completed ?? 0;
   const rootsTotal = progress.data?.roots_total ?? latest?.roots_total ?? 0;
-  const directoriesDone = progress.data?.directories_done ?? latest?.folders_scanned ?? 0;
-  const knownPending = progress.data?.known_pending ?? 0;
-  const activeWorkers = progress.data?.active_workers ?? 0;
-  const entriesDiscovered = progress.data?.entries_discovered ?? latest?.resources_scanned ?? 0;
+  const directoriesDone = progress.data?.directories_done ?? latest?.directories_done ?? latest?.folders_scanned ?? 0;
+  const knownPending = progress.data?.known_pending ?? latest?.known_pending ?? 0;
+  const activeWorkers = progress.data?.active_workers ?? latest?.active_workers ?? 0;
+  const entriesDiscovered = progress.data?.entries_discovered ?? latest?.entries_discovered ?? latest?.resources_scanned ?? 0;
   const currentPath = progress.data?.current_path || latest?.current_path || "";
   const elapsedSeconds = progress.data?.elapsed_seconds ?? Math.round((latest?.duration_ms ?? 0) / 1000);
   const rootProgressPercent = rootsTotal > 0 ? Math.min(100, Math.max(0, (rootsCompleted / rootsTotal) * 100)) : 0;
@@ -144,8 +149,8 @@ export default function IndexPage() {
         </div>
         <div className="sync-live-metrics">
           <span><strong>{rootsCompleted} / {rootsTotal || "?"}</strong><small>根目录</small></span>
-          <span><strong>{directoriesDone}</strong><small>已完成目录</small></span>
-          <span><strong>{knownPending}</strong><small>待处理目录</small></span>
+          <span><strong>{directoriesDone}</strong><small>当前 Root 已完成目录</small></span>
+          <span><strong>{knownPending}</strong><small>当前 Root 待处理</small></span>
           <span><strong>{activeWorkers}</strong><small>活跃 Worker</small></span>
           <span><strong>{entriesDiscovered}</strong><small>已发现条目</small></span>
         </div>
