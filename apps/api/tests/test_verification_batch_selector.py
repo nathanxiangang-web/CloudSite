@@ -72,7 +72,12 @@ def test_top_level_priority():
 
 def test_recently_changed_priority():
     changed = _NOW - timedelta(hours=12)
-    c = _candidate(path='/a/b', depth=2, last_changed_at=changed)
+    c = _candidate(
+        path='/a/b',
+        depth=2,
+        last_verified_at=_NOW - timedelta(days=10),
+        last_changed_at=changed,
+    )
     assert c.compute_priority(_NOW) == VerificationPriority.RECENTLY_CHANGED
 
 
