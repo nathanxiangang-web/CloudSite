@@ -1,6 +1,8 @@
 """Production durable-scan integration regression tests."""
 from __future__ import annotations
 
+import asyncio
+
 from typing import Any
 
 from sqlalchemy import event, text
@@ -123,9 +125,9 @@ async def test_durable_scan_checkpoints_and_completes(tmp_path):
                 durable_session=session,
             )
 
-            entries, cursor, complete = await adapter.scan_category(
-                "root:1",
-                concurrency=4,
+            entries, cursor, complete = await asyncio.wait_for(
+                adapter.scan_category("root:1", concurrency=4),
+                timeout=5,
             )
 
             assert cursor is None
@@ -212,9 +214,9 @@ async def test_durable_scan_resumes_without_rescanning_done_dirs(tmp_path):
             )
             await session.commit()
 
-            entries, _, complete = await adapter.scan_category(
-                "root:1",
-                concurrency=2,
+            entries, _, complete = await asyncio.wait_for(
+                adapter.scan_category("root:1", concurrency=2),
+                timeout=5,
             )
 
             assert complete is True
@@ -250,7 +252,10 @@ async def test_durable_scan_recovers_after_unexpected_interruption(tmp_path):
             )
 
             try:
-                await first.scan_category("root:1", concurrency=2)
+                await asyncio.wait_for(
+                    first.scan_category("root:1", concurrency=2),
+                    timeout=5,
+                )
             except RuntimeError as exc:
                 assert "interruption" in str(exc)
             else:
@@ -269,9 +274,9 @@ async def test_durable_scan_recovers_after_unexpected_interruption(tmp_path):
                 [_root()],
                 durable_session=session,
             )
-            entries, _, complete = await resumed.scan_category(
-                "root:1",
-                concurrency=2,
+            entries, _, complete = await asyncio.wait_for(
+                resumed.scan_category("root:1", concurrency=2),
+                timeout=5,
             )
 
             assert complete is True
@@ -311,9 +316,9 @@ async def test_durable_scan_failure_is_partial_and_terminal(tmp_path):
                 durable_session=session,
             )
 
-            entries, _, complete = await adapter.scan_category(
-                "root:1",
-                concurrency=2,
+            entries, _, complete = await asyncio.wait_for(
+                adapter.scan_category("root:1", concurrency=2),
+                timeout=5,
             )
 
             assert complete is False
