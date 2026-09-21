@@ -207,3 +207,21 @@ def test_same_priority_rotates_oldest_verified_first():
     older.last_verified_at = _NOW
     second = selector.select([newer, older], now=_NOW)
     assert [item.path for item in second] == ["/b"]
+
+
+def test_recently_checked_top_level_rejoins_normal_rotation():
+    selector = VerificationBatchSelector(batch_size=1)
+    fresh_top = _candidate(
+        path="/top",
+        depth=0,
+        last_verified_at=_NOW - timedelta(hours=1),
+    )
+    deeper_older = _candidate(
+        path="/top/a/b",
+        depth=2,
+        last_verified_at=_NOW - timedelta(days=3),
+    )
+
+    result = selector.select([fresh_top, deeper_older], now=_NOW)
+
+    assert [item.path for item in result] == ["/top/a/b"]
