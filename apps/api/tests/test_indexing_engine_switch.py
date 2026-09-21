@@ -222,6 +222,7 @@ async def test_run_indexing_v2_isolates_per_category_errors() -> None:
     )
 
     assert result["status"] == "partial"
+    assert result["scan_complete"] is False
     assert result["categories_scanned"] == 1
     assert len(result["errors"]) == 1
     assert "bad" in result["errors"][0]
