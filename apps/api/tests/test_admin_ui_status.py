@@ -264,6 +264,28 @@ async def test_active_workers_zero_when_idle(monkeypatch):
         await ie.dispose()
 
 
+async def test_failed_status_is_not_misreported_as_success(monkeypatch):
+    progress = {
+        "status": "failed",
+        "active_workers": 3,
+        "directories_done": 11,
+        "known_pending": 0,
+        "entries_discovered": 250,
+        "recent_paths": ["/provider-root/a"],
+    }
+    client, _, se, ie = await _setup(monkeypatch, progress=progress)
+    try:
+        data = await _status(client)
+        assert data["status"] == "failed"
+        assert data["active_workers"] == 0
+        assert data["directories_done"] == 11
+        assert data["entries_discovered"] == 250
+    finally:
+        await client.aclose()
+        await se.dispose()
+        await ie.dispose()
+
+
 async def test_active_workers_positive_when_running(monkeypatch):
     progress = {
         "status": "running",
