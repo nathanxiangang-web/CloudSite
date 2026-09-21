@@ -11,7 +11,7 @@
 It turns selected storage directories into a searchable resource platform with accounts, previews, collections, sharing, administration, local indexing, and direct-download delivery. CloudSite is the presentation, index, policy, and authorization layer; the underlying storage provider remains responsible for large-file transfer.
 
 > **Stable line:** `v1.0.0`  
-> **Current development line:** `v2.0.0-alpha.3`  
+> **Current development line:** `v2.0.0-alpha.4`  
 > **Live site:** [cloud.netioi.com](https://cloud.netioi.com/)
 
 > `main` and the default `docker-compose.yml` currently track the 2.0 alpha line. For production deployments that require the stable line, pin `CLOUDSITE_IMAGE_TAG=v1.0.0`.
@@ -144,7 +144,7 @@ The repository must not contain production credentials, access tokens, `.env` fi
 
 Published versions and offline deployment assets are available from [GitHub Releases](https://github.com/nathanxiangang-web/CloudSite/releases).
 
-`v2.0.0-alpha.3` is an alpha development release. Use the stable `v1.0.0` line when you do not want development-line changes.
+`v2.0.0-alpha.4` is an alpha development release. Use the stable `v1.0.0` line when you do not want development-line changes.
 
 ## License
 
