@@ -54,6 +54,61 @@ print("durable flag: enabled")
 PY
 }
 
+check_durable_schema() {
+  api_python <<'PY'
+import sqlite3
+
+db = sqlite3.connect("/data/state.db")
+tables = {
+    row[0]
+    for row in db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+    )
+}
+required_tables = {"index_scan_runs", "index_scan_dirs", "index_scan_entries"}
+missing_tables = sorted(required_tables - tables)
+if missing_tables:
+    raise SystemExit(f"durable scan tables missing: {missing_tables}")
+
+entry_columns = {
+    row[1] for row in db.execute("PRAGMA table_info(index_scan_entries)")
+}
+required_columns = {"dir_path", "path", "parent_path", "resource_id", "metadata_json"}
+missing_columns = sorted(required_columns - entry_columns)
+if missing_columns:
+    raise SystemExit(
+        f"durable scan staging schema is not current: missing {missing_columns}"
+    )
+print("durable schema: ready")
+PY
+}
+
+assert_no_running_scans() {
+  api_python <<'PY'
+import sqlite3
+
+db = sqlite3.connect("/data/state.db")
+rows = db.execute(
+    """
+    SELECT id, root_mapping_id, started_at
+    FROM index_scan_runs
+    WHERE status = 'running'
+    ORDER BY started_at
+    """
+).fetchall()
+if rows:
+    details = ", ".join(
+        f"id={run_id} root={root_id} started={started_at}"
+        for run_id, root_id, started_at in rows
+    )
+    raise SystemExit(
+        "refusing to start E2E while durable scans are already running: "
+        + details
+    )
+print("durable preflight: no pre-existing running scans")
+PY
+}
+
 run_sync() {
   api_python <<'PY'
 import asyncio
@@ -110,12 +165,12 @@ print(hashlib.sha256(encoded).hexdigest())
 PY
 }
 
-latest_running_run() {
+running_run_info() {
   api_python <<'PY'
 import sqlite3
 
 db = sqlite3.connect("/data/state.db")
-row = db.execute(
+rows = db.execute(
     """
     SELECT r.id, r.root_mapping_id,
            SUM(CASE WHEN d.status = 'done' THEN 1 ELSE 0 END) AS done_count,
@@ -126,11 +181,15 @@ row = db.execute(
     WHERE r.status = 'running'
     GROUP BY r.id, r.root_mapping_id, r.started_at
     ORDER BY r.started_at DESC
-    LIMIT 1
     """
-).fetchone()
-if row:
-    print("|".join(str(value or 0) for value in row))
+).fetchall()
+if len(rows) > 1:
+    raise SystemExit(
+        "multiple durable scan runs are active; refusing ambiguous restart E2E: "
+        + ", ".join(str(row[0]) for row in rows)
+    )
+if rows:
+    print("|".join(str(value or 0) for value in rows[0]))
 PY
 }
 
@@ -184,17 +243,25 @@ echo "compose file: $COMPOSE_FILE"
 
 compose up -d --wait api
 check_durable_flag
+check_durable_schema
+assert_no_running_scans
 
 echo
 echo "1/5 clean scan"
 run_sync
+assert_no_running_scans
 baseline_fingerprint="$(inventory_fingerprint)"
 echo "baseline inventory: $baseline_fingerprint"
 
 echo
 echo "2/5 start a second scan and wait for an active durable run"
 interrupt_log="$(mktemp)"
+sync_pid=""
 cleanup() {
+  if [[ -n "${sync_pid:-}" ]] && kill -0 "$sync_pid" 2>/dev/null; then
+    kill "$sync_pid" 2>/dev/null || true
+    wait "$sync_pid" 2>/dev/null || true
+  fi
   rm -f "$interrupt_log"
 }
 trap cleanup EXIT
@@ -207,15 +274,26 @@ sync_pid=$!
 
 run_info=""
 for _ in $(seq 1 "$POLL_ATTEMPTS"); do
-  run_info="$(latest_running_run || true)"
+  if ! run_info="$(running_run_info)"; then
+    wait "$sync_pid" || true
+    sync_pid=""
+    echo "Durable scan state became ambiguous while waiting for interruption." >&2
+    echo "--- sync output ---" >&2
+    cat "$interrupt_log" >&2
+    exit 3
+  fi
   if [[ -n "$run_info" ]]; then
-    break
+    IFS='|' read -r _run_id _root_mapping_id _done_count _running_count _pending_count <<<"$run_info"
+    if (( _running_count + _pending_count > 0 )); then
+      break
+    fi
   fi
   sleep "$POLL_SECONDS"
 done
 
 if [[ -z "$run_info" ]]; then
   wait "$sync_pid" || true
+  sync_pid=""
   echo "Could not catch a running durable scan." >&2
   echo "Use a larger provider fixture/root or reduce CLOUDSITE_E2E_POLL_SECONDS." >&2
   echo "--- sync output ---" >&2
@@ -230,6 +308,7 @@ echo
 echo "3/5 interrupt by restarting API"
 compose restart api
 wait "$sync_pid" || true
+sync_pid=""
 compose up -d --wait api
 check_durable_flag
 
@@ -237,6 +316,7 @@ echo
 echo "4/5 resume"
 run_sync
 assert_resumed_run_complete "$run_id"
+assert_no_running_scans
 
 echo
 echo "5/5 inventory equivalence"
