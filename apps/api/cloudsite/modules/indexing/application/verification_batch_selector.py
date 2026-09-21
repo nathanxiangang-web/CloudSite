@@ -47,7 +47,13 @@ class VerificationCandidate:
             self.verification_priority = VerificationPriority.HIGH_RISK
         elif self.last_changed_at and (now - self.last_changed_at) < timedelta(hours=24):
             self.verification_priority = VerificationPriority.RECENTLY_CHANGED
-        elif self.depth <= 1:
+        elif (
+            self.depth <= 1
+            and self.last_verified_at
+            and (now - self.last_verified_at) > timedelta(days=1)
+        ):
+            # Top-level paths get a daily boost, not a permanent one. Once
+            # checked they rejoin normal rotation so deeper paths still move.
             self.verification_priority = VerificationPriority.TOP_LEVEL
         elif self.last_verified_at and (now - self.last_verified_at) < timedelta(days=7):
             # Recently verified paths stay eligible but deliberately rank
