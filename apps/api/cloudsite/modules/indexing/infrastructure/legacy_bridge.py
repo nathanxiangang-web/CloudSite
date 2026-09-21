@@ -125,6 +125,7 @@ async def run_indexing_v2(
                 summary.errors.append(
                     f"{category_id}: {type(exc).__name__}: {exc}"
                 )
+                summary.scan_complete = False
                 continue
             scan_result = scan_results[category_id]
             if not scan_result.snapshot.pagination_complete:
@@ -269,6 +270,9 @@ async def run_indexing_v2_production(
                             adapter.set_durable_session(None)
                 else:
                     result = await _execute_root()
+
+                if not result.get("scan_complete", True):
+                    total_summary.scan_complete = False
 
                 if result.get("status") == "partial":
                     root_failed = True
