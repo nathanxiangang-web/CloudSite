@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -25,6 +26,16 @@ logger = logging.getLogger(__name__)
 
 GLOBAL_SCAN_CONCURRENCY = 16  # global scan concurrency
 RECONCILE_CONCURRENCY = 1     # production reconcile concurrency
+
+def _durable_scan_enabled() -> bool:
+    """Return whether production scanning should use durable checkpoints."""
+    return os.environ.get("CLOUDSITE_DURABLE_SCAN_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
 
 
 @dataclass(slots=True)
@@ -231,19 +242,32 @@ async def run_indexing_v2_production(
                         entries_discovered=entries_scanned + count,
                         recent_paths=recent_paths,
                     )
-                async with index_session() as session:
-                    store = store_factory(session)
-                    result = await run_indexing_v2(
-                        adapter=adapter,
-                        store=store,
-                        category_ids=[f"root:{root.root_mapping_id}"],
-                        on_progress=_on_progress,
-                    )
-                    if result.get("status") == "partial":
-                        root_failed = True
-                        total_summary.errors.extend(result.get("errors", []))
-                    if not root_failed:
-                        await session.commit()
+                async def _execute_root() -> dict[str, Any]:
+                    async with index_session() as session:
+                        store = store_factory(session)
+                        root_result = await run_indexing_v2(
+                            adapter=adapter,
+                            store=store,
+                            category_ids=[f"root:{root.root_mapping_id}"],
+                            on_progress=_on_progress,
+                        )
+                        if root_result.get("status") != "partial":
+                            await session.commit()
+                        return root_result
+
+                if _durable_scan_enabled():
+                    async with state_session() as durable_state:
+                        adapter.set_durable_session(durable_state)
+                        try:
+                            result = await _execute_root()
+                        finally:
+                            adapter.set_durable_session(None)
+                else:
+                    result = await _execute_root()
+
+                if result.get("status") == "partial":
+                    root_failed = True
+                    total_summary.errors.extend(result.get("errors", []))
             except asyncio.CancelledError:
                 await _update_v2_sync_status(
                     "cancelled", categories_done, total_categories,
