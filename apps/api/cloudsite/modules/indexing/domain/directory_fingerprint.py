@@ -52,6 +52,19 @@ def _entry_signature(entry: dict) -> tuple:
     modified = entry.get("modified", "")
     if modified is None:
         modified = ""
+    elif isinstance(modified, datetime):
+        if modified.tzinfo is None:
+            modified = modified.replace(tzinfo=timezone.utc)
+        modified = modified.astimezone(timezone.utc).isoformat()
+    elif isinstance(modified, str) and modified:
+        try:
+            parsed = datetime.fromisoformat(modified.replace("Z", "+00:00"))
+        except ValueError:
+            modified = modified.strip()
+        else:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            modified = parsed.astimezone(timezone.utc).isoformat()
     provider_object_id = entry.get("provider_object_id", "")
     if provider_object_id is None:
         provider_object_id = ""

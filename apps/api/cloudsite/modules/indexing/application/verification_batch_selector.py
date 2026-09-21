@@ -12,12 +12,12 @@ class VerificationPriority(IntEnum):
     """
 
     PREVIOUSLY_FAILED = 0
-    HIGH_RISK = 1
-    TOP_LEVEL = 2
+    LONG_UNVERIFIED = 1
+    HIGH_RISK = 2
     RECENTLY_CHANGED = 3
-    RECENTLY_ACTIVE = 4
-    LONG_UNVERIFIED = 5
-    NORMAL = 6
+    TOP_LEVEL = 4
+    NORMAL = 5
+    RECENTLY_ACTIVE = 6
 
 
 @dataclass(slots=True)
@@ -38,16 +38,27 @@ class VerificationCandidate:
         now = now or datetime.now(timezone.utc)
         if self.previously_failed:
             self.verification_priority = VerificationPriority.PREVIOUSLY_FAILED
+        elif self.last_verified_at is None or (now - self.last_verified_at) > timedelta(days=30):
+            # Coverage must be starvation-safe: a never/long-unverified
+            # directory outranks permanently "important" paths such as
+            # top-level directories.
+            self.verification_priority = VerificationPriority.LONG_UNVERIFIED
         elif self.is_high_risk:
             self.verification_priority = VerificationPriority.HIGH_RISK
-        elif self.depth <= 1:
-            self.verification_priority = VerificationPriority.TOP_LEVEL
         elif self.last_changed_at and (now - self.last_changed_at) < timedelta(hours=24):
             self.verification_priority = VerificationPriority.RECENTLY_CHANGED
+        elif (
+            self.depth <= 1
+            and self.last_verified_at
+            and (now - self.last_verified_at) > timedelta(days=1)
+        ):
+            # Top-level paths get a daily boost, not a permanent one. Once
+            # checked they rejoin normal rotation so deeper paths still move.
+            self.verification_priority = VerificationPriority.TOP_LEVEL
         elif self.last_verified_at and (now - self.last_verified_at) < timedelta(days=7):
+            # Recently verified paths stay eligible but deliberately rank
+            # below older normal paths so the batch rotates.
             self.verification_priority = VerificationPriority.RECENTLY_ACTIVE
-        elif self.last_verified_at is None or (now - self.last_verified_at) > timedelta(days=30):
-            self.verification_priority = VerificationPriority.LONG_UNVERIFIED
         else:
             self.verification_priority = VerificationPriority.NORMAL
         return self.verification_priority
@@ -74,9 +85,19 @@ class VerificationBatchSelector:
         now = now or datetime.now(timezone.utc)
         for c in candidates:
             c.compute_priority(now)
+        def _last_verified_key(candidate: VerificationCandidate) -> float:
+            if candidate.last_verified_at is None:
+                return float("-inf")
+            return candidate.last_verified_at.timestamp()
+
         ranked = sorted(
             candidates,
-            key=lambda c: (c.verification_priority, c.depth, c.path),
+            key=lambda c: (
+                c.verification_priority,
+                _last_verified_key(c),
+                c.depth,
+                c.path,
+            ),
         )
         return ranked[: self.batch_size]
 

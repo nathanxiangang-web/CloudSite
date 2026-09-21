@@ -100,6 +100,21 @@ class DirtyScopeRepository:
         row = result.first()
         return _row_to_record(row) if row else None
 
+    async def get_by_path(
+        self,
+        root_mapping_id: int,
+        path: str,
+    ) -> DirtyScopeRecord | None:
+        result = await self._session.execute(
+            text(
+                f"SELECT {_SELECT_COLS} FROM index_dirty_scopes "
+                "WHERE root_mapping_id = :rid AND path = :path"
+            ),
+            {"rid": root_mapping_id, "path": path},
+        )
+        row = result.first()
+        return _row_to_record(row) if row else None
+
     async def find_pending(self, root_mapping_id: int) -> list[DirtyScopeRecord]:
         result = await self._session.execute(
             text(
@@ -150,6 +165,28 @@ class DirtyScopeRepository:
                 ),
                 {"status": status, "id": dirty_scope_id},
             )
+        await self._session.flush()
+
+    async def reopen(
+        self,
+        dirty_scope_id: int,
+        *,
+        reason: str = "verification_mismatch",
+        priority: int = 0,
+    ) -> None:
+        await self._session.execute(
+            text(
+                "UPDATE index_dirty_scopes SET status = 'pending', "
+                "reason = :reason, priority = MAX(priority, :priority), "
+                "last_error_code = NULL, last_error_message = NULL, "
+                "updated_at = datetime('now') WHERE id = :id"
+            ),
+            {
+                "id": dirty_scope_id,
+                "reason": reason,
+                "priority": priority,
+            },
+        )
         await self._session.flush()
 
     async def increment_attempts(self, dirty_scope_id: int) -> None:
