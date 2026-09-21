@@ -160,6 +160,8 @@ async def scan_category_durable(
         await repo.add_dirs(run_id, [(root_path, 0)])
         await session.commit()
 
+    adapter.last_scan_run_id = run_id
+
     staged_rows = await repo.list_entries(run_id)
     entries_by_id: dict[str, SnapshotEntry] = {
         row.resource_id: _restore_entry(row, root)
