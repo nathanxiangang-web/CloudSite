@@ -60,12 +60,13 @@ async def test_admin_sync_status_exposes_truthful_live_root_and_directory_metric
 
         assert payload["status"] == "running"
         assert payload["roots_completed"] == 1
-        assert payload["roots_total"] == 4
+        assert payload["roots_configured"] == 4
+        assert "roots_total" not in payload
         assert payload["directories_done"] == 37
         assert payload["known_pending"] == 12
         assert payload["active_workers"] == 8
         assert payload["entries_discovered"] == 120
-        assert payload["current_path"] == "/软件/开发/Python"
+        assert payload["current_path"] == ["/软件/开发", "/软件/开发/Python"]
         assert payload["recent_paths"][-1] == "/软件/开发/Python"
     finally:
         main.manual_sync_task = None
