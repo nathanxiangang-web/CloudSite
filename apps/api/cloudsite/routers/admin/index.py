@@ -36,7 +36,6 @@ def sync_run_dict(row) -> dict:
 
 @router.get("/api/admin/index/summary")
 async def admin_index_summary():
-    from ... import main as _main
     from ...main import IndexSession, StateSession
 
     async with IndexSession() as index:
