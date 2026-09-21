@@ -710,6 +710,51 @@ class RootState(StateBase):
     )
 
 
+class VerificationState(StateBase):
+    """Per-directory rolling verification fact state (V2 doc sections 32-34).
+
+    This is intentionally smaller than a work queue. It records the last
+    provider fingerprint and verification/change timestamps for one directory
+    so rolling batch selection can advance durably across restarts. Mismatches
+    are still queued in index_dirty_scopes.
+    """
+
+    __tablename__ = "index_verification_states"
+    root_mapping_id: Mapped[int] = mapped_column(
+        ForeignKey("content_root_mappings.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    path: Mapped[str] = mapped_column(Text, primary_key=True)
+    fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    child_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_verified_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_changed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(
+        Text,
+        default=text("datetime('now')"),
+        server_default=text("datetime('now')"),
+    )
+    updated_at: Mapped[str] = mapped_column(
+        Text,
+        default=text("datetime('now')"),
+        server_default=text("datetime('now')"),
+        onupdate=text("datetime('now')"),
+    )
+    __table_args__ = (
+        Index(
+            "ix_index_verification_states_root_verified",
+            "root_mapping_id",
+            "last_verified_at",
+        ),
+        Index(
+            "ix_index_verification_states_last_changed",
+            "last_changed_at",
+        ),
+    )
+
+
 class DirtyScope(StateBase):
     """Persistent dirty-scope record (V2 doc section 29).
 
