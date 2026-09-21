@@ -44,6 +44,7 @@ class V2IndexingSummary:
     engine: str = "v2"
     categories_scanned: int = 0
     pages_fetched: int = 0
+    scan_complete: bool = True
     writes: WriteSummary = field(default_factory=WriteSummary)
     suppressed_removals: int = 0
     errors: list[str] = field(default_factory=list)
@@ -54,6 +55,7 @@ class V2IndexingSummary:
             "engine": self.engine,
             "categories_scanned": self.categories_scanned,
             "pages_fetched": self.pages_fetched,
+            "scan_complete": self.scan_complete,
             "writes": {
                 "added": self.writes.added,
                 "changed": self.writes.changed,
@@ -126,9 +128,7 @@ async def run_indexing_v2(
                 continue
             scan_result = scan_results[category_id]
             if not scan_result.snapshot.pagination_complete:
-                summary.errors.append(
-                    f"{category_id}: scan incomplete; destructive removals suppressed"
-                )
+                summary.scan_complete = False
             reconcile_result: ReconcileResult = await reconcile_service.reconcile(
                 scan_result.snapshot
             )
@@ -273,6 +273,11 @@ async def run_indexing_v2_production(
                 if result.get("status") == "partial":
                     root_failed = True
                     total_summary.errors.extend(result.get("errors", []))
+                elif _durable_scan_enabled() and not result.get("scan_complete", True):
+                    root_failed = True
+                    total_summary.errors.append(
+                        f"{root_label}: durable scan incomplete; removals suppressed"
+                    )
             except asyncio.CancelledError:
                 await _update_v2_sync_status(
                     "cancelled", categories_done, total_categories,
