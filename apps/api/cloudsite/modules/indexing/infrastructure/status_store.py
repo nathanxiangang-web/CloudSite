@@ -150,25 +150,26 @@ async def write_v2_sync_progress(
     changed: int = 0,
     removed: int = 0,
     unchanged: int = 0,
-    # Compatibility-only inputs from the pre-concurrent status writer.
-    # They are accepted so older call sites do not break, but are not persisted
-    # as fake-total/current-position fields.
+    # Root totals are known before the scan starts and are truthful. Directory
+    # totals are intentionally not persisted because BFS discovers them lazily.
     categories_total: int | None = None,
     current_path: str | list[str] | None = None,
     entries_scanned: int | None = None,
 ) -> None:
     """Persist truthful V2 concurrent-scan progress.
 
-    V2 does not know the future directory total during BFS, so no total or
-    percentage field is stored. recent_paths is bounded and represents
-    recently observed work, not one canonical current directory.
+    Root totals are known up front, while the future directory total is not.
+    Persist the root total and expose recent paths plus live queue/worker
+    metrics instead of manufacturing a directory percentage.
     """
-    del categories_total
 
     if recent_paths is None:
         recent_paths = _bounded_recent_paths(current_path)
     else:
         recent_paths = _bounded_recent_paths(recent_paths)
+
+    roots_total = max(int(categories_total or 0), 0)
+    latest_path = recent_paths[-1] if recent_paths else ""
 
     if entries_scanned is not None and entries_discovered == 0:
         entries_discovered = max(int(entries_scanned), 0)
@@ -177,12 +178,17 @@ async def write_v2_sync_progress(
         {
             "status": status,
             "categories_done": max(int(categories_done), 0),
+            "categories_total": roots_total,
             "elapsed_seconds": max(int(elapsed_seconds), 0),
             "active_workers": max(int(active_workers), 0),
             "directories_done": max(int(directories_done), 0),
             "known_pending": max(int(known_pending), 0),
             "entries_discovered": max(int(entries_discovered), 0),
             "recent_paths": recent_paths,
+            # Compatibility field for old admin clients. Under concurrent
+            # scanning this means "most recently observed path", not a single
+            # authoritative worker position.
+            "current_path": latest_path,
             "added": max(int(added), 0),
             "changed": max(int(changed), 0),
             "removed": max(int(removed), 0),

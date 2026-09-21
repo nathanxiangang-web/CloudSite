@@ -89,11 +89,18 @@ async def admin_sync_status():
     if status != "running":
         active_workers = 0
 
+    recent_paths = _recent_paths(progress)
+    roots_completed = _count(progress, "categories_done")
+    roots_configured = _count(progress, "categories_total")
     return {
         "engine_version": "v2",
         "manual_sync_running": manual_running,
         "status": status,
-        "categories_done": _count(progress, "categories_done"),
+        # Root configuration count is known up front and is not the unknown
+        # BFS directory total. Keep it semantically separate from *_total.
+        "categories_done": roots_completed,
+        "roots_completed": roots_completed,
+        "roots_configured": roots_configured,
         "elapsed_seconds": _count(progress, "elapsed_seconds"),
         "active_workers": active_workers,
         "directories_done": _count(progress, "directories_done", "dirs_done"),
@@ -101,7 +108,10 @@ async def admin_sync_status():
         "entries_discovered": _count(
             progress, "entries_discovered", "entries_scanned"
         ),
-        "recent_paths": _recent_paths(progress),
+        "recent_paths": recent_paths,
+        # Back-compat alias remains a list under concurrent scanning; there is
+        # deliberately no single authoritative current_path.
+        "current_path": recent_paths,
     }
 
 

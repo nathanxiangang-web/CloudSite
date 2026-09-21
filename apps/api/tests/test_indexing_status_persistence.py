@@ -125,3 +125,43 @@ async def test_v2_sync_due_uses_progress_updated_at_as_schedule_clock():
         assert await v2_sync_due(state, 180, now=now) is False
 
     await engine.dispose()
+
+
+async def test_concurrent_v2_progress_keeps_known_root_total_and_recent_path(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(StateBase.metadata.create_all)
+
+    monkeypatch.setattr(database, "StateSession", factory)
+
+    await _update_v2_sync_status(
+        "running",
+        1,
+        4,
+        23,
+        "",
+        120,
+        active_workers=8,
+        directories_done=37,
+        known_pending=12,
+        entries_discovered=120,
+        recent_paths=["/软件/开发", "/软件/开发/Python"],
+    )
+
+    async with factory() as session:
+        row = await session.get(SystemSetting, "v2_sync_progress")
+        assert row is not None
+        payload = json.loads(row.value)
+
+    assert payload["status"] == "running"
+    assert payload["categories_done"] == 1
+    assert payload["categories_total"] == 4
+    assert payload["directories_done"] == 37
+    assert payload["known_pending"] == 12
+    assert payload["active_workers"] == 8
+    assert payload["entries_discovered"] == 120
+    assert payload["recent_paths"] == ["/软件/开发", "/软件/开发/Python"]
+    assert payload["current_path"] == "/软件/开发/Python"
+
+    await engine.dispose()
