@@ -9,6 +9,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PublicShell } from "@/components/PublicShell";
 import { CatalogFollowButton } from "@/components/catalog/CatalogFollowButton";
+import { redesignStyles } from "@/features/public-redesign";
 import {
   assetDimensionLabel,
   assetKindLabel,
@@ -37,30 +38,48 @@ export default function CatalogEntryPage() {
   const data = entry.data;
   const publishedReleases = data.releases.filter(releaseIsPublished);
 
-  return <PublicShell><div className="page catalog-detail-page">
-    <nav className="breadcrumb"><Link href="/">资源库</Link><span>›</span><Link href="/catalog">资源目录</Link><span>›</span>{data.title}</nav>
-    <header className="catalog-detail-heading">
-      <Link className="resource-back" href="/catalog"><ChevronLeft />资源目录</Link>
-      <span className={`detail-icon type-${data.content_type}`}><Boxes /></span>
-      <h1>{data.title}</h1>
-      <div className="catalog-detail-meta">
-        <span className="catalog-detail-kind">{contentTypeLabel(data.content_type)}</span>
-        {data.availability === "unavailable" && <span className="catalog-card-unavailable"><AlertTriangle size={13} />暂不可用</span>}
-        <span className="catalog-detail-updated">更新于 {formatCatalogTimestamp(data.updated_at)}</span>
+  return <PublicShell><div className={`page catalog-detail-page ${redesignStyles.detailPage}`}>
+    <nav className="breadcrumb"><Link href="/">资源库</Link><span>›</span><Link href="/catalog">资源条目</Link><span>›</span>{data.title}</nav>
+
+    <header className={redesignStyles.detailHero}>
+      <span className={`${redesignStyles.detailHeroIcon} type-${data.content_type}`}><Boxes /></span>
+      <div className={redesignStyles.detailHeroCopy}>
+        <span className={redesignStyles.eyebrow}>资源条目</span>
+        <h1>{data.title}</h1>
+        <p className={redesignStyles.detailHeroSummary}>{data.summary || "该条目暂未填写简介。"}</p>
+        <div className={redesignStyles.detailHeroMeta}>
+          <span className={redesignStyles.catalogPill}>{contentTypeLabel(data.content_type)}</span>
+          <span className={data.availability === "available" ? redesignStyles.availablePill : redesignStyles.unavailablePill}>
+            {data.availability === "available" ? "当前可用" : "暂不可用"}
+          </span>
+          <span className={redesignStyles.catalogPill}>更新于 {formatCatalogTimestamp(data.updated_at)}</span>
+        </div>
       </div>
-      <div className="catalog-detail-follow"><CatalogFollowButton entryId={data.entry_id} /></div>
+      <aside className={redesignStyles.detailSide}>
+        <div className={redesignStyles.detailSideRow}><span>已发布版本</span><strong>{publishedReleases.length}</strong></div>
+        <div className={redesignStyles.detailSideRow}><span>可用状态</span><strong>{data.availability === "available" ? "可获取" : "暂不可用"}</strong></div>
+        <CatalogFollowButton entryId={data.entry_id} />
+      </aside>
     </header>
 
-    {data.summary && <p className="catalog-detail-summary">{data.summary}</p>}
-    {data.description && <section className="markdown-body catalog-detail-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{data.description}</ReactMarkdown></section>}
+    <div className={redesignStyles.detailBody}>
+      <main className={redesignStyles.detailMain}>
+        {data.description && <section className={redesignStyles.compactDescription}>
+          <div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{data.description}</ReactMarkdown></div>
+        </section>}
 
-    {publishedReleases.length === 0 ? <div className="empty">该条目暂无可见的已发布版本。</div>
-      : <ReleasePicker entryId={data.entry_id} releases={publishedReleases} />}
+        {publishedReleases.length === 0 ? <div className="empty">该条目暂无可见的已发布版本。</div>
+          : <ReleasePicker entryId={data.entry_id} releases={publishedReleases} />}
+      </main>
 
-    {data.relations.length > 0 && <section className="panel catalog-relations">
-      <h2>相关条目</h2>
-      <ul>{data.relations.map((relation) => <li key={relation.relation_id}><Link2 size={14} /><Link href={`/catalog/${relation.to_entry_id}`}>{relation.to_title}</Link><span>{relation.relation_type}</span></li>)}</ul>
-    </section>}
+      <aside className={redesignStyles.detailAside}>
+        <Link className="resource-back" href="/catalog"><ChevronLeft />返回资源条目</Link>
+        {data.relations.length > 0 && <section className="panel catalog-relations">
+          <h2>相关条目</h2>
+          <ul>{data.relations.map((relation) => <li key={relation.relation_id}><Link2 size={14} /><Link href={`/catalog/${relation.to_entry_id}`}>{relation.to_title}</Link><span>{relation.relation_type}</span></li>)}</ul>
+        </section>}
+      </aside>
+    </div>
   </div></PublicShell>;
 }
 
