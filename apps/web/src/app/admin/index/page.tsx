@@ -35,7 +35,7 @@ type SyncProgress = {
   engine_version: string;
   status: string;
   roots_completed: number;
-  roots_total: number;
+  roots_configured: number;
   categories_done: number;
   elapsed_seconds: number;
   active_workers: number;
@@ -43,7 +43,7 @@ type SyncProgress = {
   known_pending: number;
   entries_discovered: number;
   recent_paths: string[];
-  current_path: string;
+  current_path?: string[];
 };
 type Mapping = { id: number; content_type: string; display_name: string; alist_path: string; enabled: boolean };
 
@@ -106,14 +106,14 @@ export default function IndexPage() {
   const latest = summary.data?.latest_sync;
   const syncing = progress.data?.status === "running" || (summary.data?.syncing ?? false);
   const rootsCompleted = progress.data?.roots_completed ?? latest?.roots_completed ?? 0;
-  const rootsTotal = progress.data?.roots_total ?? latest?.roots_total ?? 0;
+  const rootsConfigured = progress.data?.roots_configured ?? latest?.roots_total ?? 0;
   const directoriesDone = progress.data?.directories_done ?? latest?.directories_done ?? latest?.folders_scanned ?? 0;
   const knownPending = progress.data?.known_pending ?? latest?.known_pending ?? 0;
   const activeWorkers = progress.data?.active_workers ?? latest?.active_workers ?? 0;
   const entriesDiscovered = progress.data?.entries_discovered ?? latest?.entries_discovered ?? latest?.resources_scanned ?? 0;
-  const currentPath = progress.data?.current_path || latest?.current_path || "";
+  const recentPaths = progress.data?.recent_paths ?? progress.data?.current_path ?? [];
+  const currentPath = recentPaths.at(-1) || latest?.current_path || "";
   const elapsedSeconds = progress.data?.elapsed_seconds ?? Math.round((latest?.duration_ms ?? 0) / 1000);
-  const rootProgressPercent = rootsTotal > 0 ? Math.min(100, Math.max(0, (rootsCompleted / rootsTotal) * 100)) : 0;
   const summaryLoading = summary.isLoading && !summary.data;
   const summaryUnavailable = Boolean(summary.error) && !summary.data;
   const resourceCountText = summary.data ? String(summary.data.resources) : summaryLoading ? "…" : "不可用";
@@ -124,7 +124,7 @@ export default function IndexPage() {
 
   const syncStatusIcon = summaryLoading ? <Loader2 className="spin" /> : summaryUnavailable ? <AlertTriangle className="warn" /> : syncing ? <Loader2 className="spin" /> : latest?.status === "success" ? <CheckCircle2 className="ok" /> : latest?.status === "failed" ? <AlertTriangle className="warn" /> : <Database />;
   const syncStatusText = summaryLoading ? "读取中" : summaryUnavailable ? "不可用" : syncing ? "进行中" : latest ? labelOf(runStatusLabel, latest.status) : "未运行";
-  const syncDetail = summaryUnavailable ? "索引摘要请求失败" : latest?.status === "failed" && latest.error_message ? latest.error_message : latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing ? `${rootsCompleted} / ${rootsTotal || "?"} 根目录 · ${directoriesDone} 目录 · ${entriesDiscovered} 条目 · ${elapsedSeconds}s` : "";
+  const syncDetail = summaryUnavailable ? "索引摘要请求失败" : latest?.status === "failed" && latest.error_message ? latest.error_message : latest && !syncing ? `${latest.added_count > 0 ? `+${latest.added_count} ` : ""}${latest.updated_count > 0 ? `~${latest.updated_count} ` : ""}${latest.removed_count > 0 ? `-${latest.removed_count}` : ""}${latest.added_count + latest.updated_count + latest.removed_count === 0 ? "无变化" : ""} · ${(latest.duration_ms / 1000).toFixed(1)}s` : syncing ? `${rootsCompleted} / ${rootsConfigured || "?"} 根目录 · ${directoriesDone} 目录 · ${entriesDiscovered} 条目 · ${elapsedSeconds}s` : "";
 
   return <AdminShell title="内容索引"><div className="admin-page index-admin-page">
     {summary.error && <p className="form-error">索引摘要加载失败：{summary.error.message} <button type="button" onClick={() => summary.refetch()}>重试</button></p>}
@@ -145,18 +145,18 @@ export default function IndexPage() {
       {(sync.error || cancelSync.error) && <p className="form-error">{(sync.error || cancelSync.error)?.message}</p>}
       {syncing && <div className={progressStyles.progressBar}>
         <div className={progressStyles.progressHead}>
-          <span className={progressStyles.currentPath}><Loader2 className="spin" />{currentPath ? `扫描中：${currentPath}` : rootsTotal > 0 ? "正在进入根目录…" : "正在读取 Provider 根目录…"}</span>
+          <span className={progressStyles.currentPath}><Loader2 className="spin" />{currentPath ? `最近扫描：${currentPath}` : rootsConfigured > 0 ? "正在进入根目录…" : "正在读取 Provider 根目录…"}</span>
           <span>{elapsedSeconds}s</span>
         </div>
         <div className={progressStyles.liveMetrics}>
-          <span><strong>{rootsCompleted} / {rootsTotal || "?"}</strong><small>根目录</small></span>
+          <span><strong>{rootsCompleted} / {rootsConfigured || "?"}</strong><small>已完成 / 已配置 Root</small></span>
           <span><strong>{directoriesDone}</strong><small>当前 Root 已完成目录</small></span>
           <span><strong>{knownPending}</strong><small>当前 Root 待处理</small></span>
           <span><strong>{activeWorkers}</strong><small>活跃 Worker</small></span>
           <span><strong>{entriesDiscovered}</strong><small>已发现条目</small></span>
         </div>
-        <div className={rootsTotal > 0 ? progressStyles.progressTrack : `${progressStyles.progressTrack} ${progressStyles.indeterminate}`} aria-label="同步活动进度">
-          <i style={rootsTotal > 0 ? { width: `${rootProgressPercent}%` } : undefined} />
+        <div className={`${progressStyles.progressTrack} ${progressStyles.indeterminate}`} aria-label="同步活动状态">
+          <i />
         </div>
         <p className={progressStyles.progressNote}>目录总量会在遍历过程中动态增长，因此不显示虚假的目录完成百分比；上方数值会实时更新。</p>
       </div>}
