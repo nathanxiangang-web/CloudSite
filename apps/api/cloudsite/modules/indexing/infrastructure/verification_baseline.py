@@ -60,6 +60,13 @@ async def seed_verification_baseline_from_durable_run(
             f"durable scan run is not complete: id={run_id} status={run.status}"
         )
 
+    baseline_verified_at = verified_at
+    if baseline_verified_at is None and run.finished_at is not None:
+        isoformat = getattr(run.finished_at, "isoformat", None)
+        baseline_verified_at = (
+            isoformat() if callable(isoformat) else str(run.finished_at)
+        )
+
     dirs = await scans.list_dirs(run_id)
     unfinished = [row.path for row in dirs if row.status != "done"]
     if unfinished:
@@ -101,7 +108,7 @@ async def seed_verification_baseline_from_durable_run(
             fingerprint=fingerprint.hash,
             child_count=fingerprint.child_count,
             changed=changed,
-            verified_at=verified_at,
+            verified_at=baseline_verified_at,
         )
 
     for stale_path in sorted(set(existing) - current_paths):
