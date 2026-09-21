@@ -67,7 +67,7 @@ def test_validate_url_accepts_https():
 
 
 def test_validate_url_accepts_magnet():
-    url = "magnet:?xt=urn:btih:abcdef1234567890"
+    url = "magnet:?xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02"
     assert drv.validate_url(url) == url
 
 
@@ -131,6 +131,43 @@ def test_validate_url_accepts_max_length_boundary():
     assert drv.validate_url(url) == url
 
 
+# --- normalize_magnet tests -----------------------------------------------
+
+def test_normalize_magnet_strips_dn_and_tr():
+    assert drv.normalize_magnet(
+        "magnet:?xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02&dn=test&tr=xxx"
+    ) == (
+        "magnet:?xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02"
+    )
+
+
+def test_normalize_magnet_finds_btih_anywhere():
+    assert drv.normalize_magnet(
+        "magnet:?dn=test&xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02&tr=xxx"
+    ) == (
+        "magnet:?xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02"
+    )
+
+
+def test_normalize_magnet_accepts_base32_btih():
+    assert drv.normalize_magnet(
+        "magnet:?xt=urn:btih:ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+    ).startswith("magnet:?xt=urn:btih:")
+
+
+def test_normalize_magnet_rejects_no_btih():
+    with pytest.raises(drv.CloudDownloadError):
+        drv.normalize_magnet("magnet:?dn=test&tr=xxx")
+
+
+def test_normalize_magnet_lowercases_hex_btih():
+    assert drv.normalize_magnet(
+        "magnet:?xt=urn:btih:91B272DFA021750CD946228B9B0EDB05BB99CB02"
+    ) == (
+        "magnet:?xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02"
+    )
+
+
 # --- argv / path contract tests -------------------------------------------
 
 def test_add_argv_uses_fixed_folder_and_url():
@@ -191,11 +228,12 @@ async def test_add_offline_task_save_dir_mismatch(fake_subprocess):
 
 async def test_add_offline_task_magnet_success(fake_subprocess):
     calls, queue = fake_subprocess
-    magnet = "magnet:?xt=urn:btih:abcdef"
+    magnet = "magnet:?xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02&dn=test&tr=http://tracker.example.com"
+    normalized = "magnet:?xt=urn:btih:91b272dfa021750cd946228b9b0edb05bb99cb02"
     queue.append(_make_proc(stdout=_envelope({"hashes": ["h1"], "save_dir": drv.FIXED_FOLDER})))
     result = await drv.add_offline_task(magnet)
     assert result.hashes == ["h1"]
-    assert calls[0][-1] == magnet
+    assert calls[0][-1] == normalized
 
 
 # --- list_offline_tasks success -------------------------------------------

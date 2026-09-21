@@ -36,6 +36,12 @@ _MAGNET_URL_RE = re.compile(r"^magnet:\?[^\s]+$")
 # ed2k://|file|... form: require the leading segment marker and a first segment.
 _ED2K_URL_RE = re.compile(r"^ed2k://\|[^\s|]+\|")
 
+# BTIH extraction: 40-char hex or 32-char Base32, anywhere in the query string.
+_BTIH_RE = re.compile(
+    r"(?:^|[?&])xt=urn:btih:([A-Fa-f0-9]{40}|[A-Za-z2-7]{32})(?:&|$)",
+    re.IGNORECASE,
+)
+
 
 class CloudDownloadError(Exception):
     """Sanitized cloud-download adapter error.
@@ -48,6 +54,26 @@ class CloudDownloadError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+def normalize_magnet(url: str) -> str:
+    """Reduce a magnet URI to its canonical BTIH-only form.
+
+    Extracts the xt=urn:btih:<hash> parameter from anywhere in the query
+    string, validates the hash (40-char hex or 32-char Base32), and returns
+    a clean ``magnet:?xt=urn:btih:<hash>`` with all other parameters (dn,
+    tr, xl, etc.) stripped.
+    """
+    match = _BTIH_RE.search(url)
+    if not match:
+        raise CloudDownloadError("CD-001", "Invalid magnet URL")
+
+    btih = match.group(1)
+
+    if len(btih) == 40:
+        btih = btih.lower()
+
+    return f"magnet:?xt=urn:btih:{btih}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +135,7 @@ def validate_url(url: str) -> str:
     elif scheme == "magnet":
         if not _MAGNET_URL_RE.match(url):
             raise CloudDownloadError("CD-001", "Invalid URL")
+        url = normalize_magnet(url)
     elif scheme == "ed2k":
         if not _ED2K_URL_RE.match(url):
             raise CloudDownloadError("CD-001", "Invalid URL")
