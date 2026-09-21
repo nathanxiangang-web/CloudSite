@@ -87,6 +87,7 @@ class AListProviderAdapter:
             "dirs_pending": 0,
             "entries_discovered": 0,
         }
+        self.last_scan_run_id: str | None = None
 
     def set_durable_session(self, session: Any) -> None:
         """Attach the state.db session used by the durable production scanner."""
@@ -116,6 +117,7 @@ class AListProviderAdapter:
         on_progress: Any = None,
         concurrency: int = DIRECTORY_CONCURRENCY,
     ) -> tuple[list[SnapshotEntry], str | None, bool]:
+        self.last_scan_run_id = None
         root = self._roots.get(category_id)
         if root is None:
             self.last_scan_metrics = {
