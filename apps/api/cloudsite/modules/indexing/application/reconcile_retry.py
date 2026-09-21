@@ -20,6 +20,7 @@ Flow::
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -43,7 +44,8 @@ async def _load_staging_snapshot(
     """Build a :class:`CategorySnapshot` from ``index_scan_entries`` rows."""
     result = await session.execute(
         text(
-            "SELECT resource_id, dir_path, name, modified, metadata_hash, is_dir "
+            "SELECT resource_id, dir_path, path, parent_path, name, is_dir, "
+            "size, modified, content_hash, metadata_json, metadata_hash "
             "FROM index_scan_entries WHERE scan_run_id = :rid ORDER BY id"
         ),
         {"rid": run_id},
@@ -53,14 +55,32 @@ async def _load_staging_snapshot(
         modified = row.modified
         if isinstance(modified, str):
             modified = datetime.fromisoformat(modified)
+
+        metadata: dict[str, Any] = {}
+        if row.metadata_json:
+            try:
+                decoded = json.loads(row.metadata_json)
+                if isinstance(decoded, dict):
+                    metadata.update(decoded)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "invalid staging metadata_json ignored (run_id=%s, resource_id=%s)",
+                    run_id,
+                    row.resource_id,
+                )
+        metadata["is_dir"] = bool(row.is_dir)
+        if row.parent_path is not None:
+            metadata["parent_path"] = row.parent_path
+
         entries.append(
             SnapshotEntry(
                 resource_id=row.resource_id,
-                path=row.dir_path,
+                path=row.path or row.dir_path,
                 name=row.name,
+                size=row.size,
                 modified_at=modified,
-                content_hash=row.metadata_hash,
-                metadata={"is_dir": bool(row.is_dir)},
+                content_hash=row.content_hash or row.metadata_hash,
+                metadata=metadata,
             )
         )
     return CategorySnapshot(

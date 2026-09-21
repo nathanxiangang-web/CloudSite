@@ -9,6 +9,7 @@ rolls back the surrounding transaction.
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -36,8 +37,21 @@ _RUN_FIELDS = ("id", "root_mapping_id", "status", "started_at", "finished_at",
                "fingerprint", "total_dirs", "total_entries", "error_message")
 _DIR_FIELDS = ("id", "scan_run_id", "path", "depth", "status", "started_at",
                "finished_at", "entry_count", "error_message")
-_ENTRY_FIELDS = ("id", "scan_run_id", "dir_path", "resource_id", "name",
-                 "is_dir", "modified", "metadata_hash")
+_ENTRY_FIELDS = (
+    "id",
+    "scan_run_id",
+    "dir_path",
+    "path",
+    "parent_path",
+    "resource_id",
+    "name",
+    "is_dir",
+    "size",
+    "modified",
+    "content_hash",
+    "metadata_json",
+    "metadata_hash",
+)
 
 
 class DurableScanRepository:
@@ -205,24 +219,68 @@ class DurableScanRepository:
         self,
         run_id: str,
         entries: list[SnapshotEntry],
+        *,
+        dir_path: str | None = None,
     ) -> None:
+        """Persist staged entries idempotently for one scan run.
+
+        dir_path is the checkpoint scope (the directory that was listed),
+        while entry.path is the resource's real path. Keeping those two
+        concepts separate is required for safe directory retry/replacement.
+        """
         if not entries:
             return
         for entry in entries:
+            metadata = dict(entry.metadata or {})
+            checkpoint_dir = str(
+                dir_path
+                if dir_path is not None
+                else metadata.get("parent_path") or entry.path
+            )
+            parent_path = metadata.get("parent_path")
+            if parent_path is None and dir_path is not None:
+                parent_path = dir_path
+            is_dir = bool(metadata.get("is_dir", False))
             await self._session.execute(
                 text(
-                    "INSERT INTO index_scan_entries(id, scan_run_id, dir_path, "
-                    "resource_id, name, is_dir, modified, metadata_hash) "
-                    "VALUES (:id, :rid, :dp, :resid, :name, 0, :mod, :hash)"
+                    "INSERT INTO index_scan_entries("
+                    "id, scan_run_id, dir_path, path, parent_path, resource_id, "
+                    "name, is_dir, size, modified, content_hash, metadata_json, "
+                    "metadata_hash) "
+                    "VALUES (:id, :rid, :dp, :path, :parent_path, :resid, "
+                    ":name, :is_dir, :size, :mod, :content_hash, :metadata_json, "
+                    ":metadata_hash) "
+                    "ON CONFLICT(scan_run_id, resource_id) DO UPDATE SET "
+                    "dir_path = excluded.dir_path, "
+                    "path = excluded.path, "
+                    "parent_path = excluded.parent_path, "
+                    "name = excluded.name, "
+                    "is_dir = excluded.is_dir, "
+                    "size = excluded.size, "
+                    "modified = excluded.modified, "
+                    "content_hash = excluded.content_hash, "
+                    "metadata_json = excluded.metadata_json, "
+                    "metadata_hash = excluded.metadata_hash"
                 ),
                 {
                     "id": str(uuid.uuid4()),
                     "rid": run_id,
-                    "dp": entry.path,
+                    "dp": checkpoint_dir,
+                    "path": entry.path,
+                    "parent_path": parent_path,
                     "resid": entry.resource_id,
                     "name": entry.name,
+                    "is_dir": 1 if is_dir else 0,
+                    "size": entry.size,
                     "mod": entry.modified_at,
-                    "hash": entry.content_hash,
+                    "content_hash": entry.content_hash,
+                    "metadata_json": json.dumps(
+                        metadata,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    ),
+                    "metadata_hash": entry.content_hash,
                 },
             )
         await self._session.flush()
@@ -234,8 +292,9 @@ class DurableScanRepository:
     ) -> list[SimpleNamespace]:
         result = await self._session.execute(
             text(
-                "SELECT id, scan_run_id, dir_path, resource_id, name, is_dir, "
-                "modified, metadata_hash FROM index_scan_entries "
+                "SELECT id, scan_run_id, dir_path, path, parent_path, "
+                "resource_id, name, is_dir, size, modified, content_hash, "
+                "metadata_json, metadata_hash FROM index_scan_entries "
                 "WHERE scan_run_id = :rid AND dir_path = :dp ORDER BY id"
             ),
             {"rid": run_id, "dp": dir_path},

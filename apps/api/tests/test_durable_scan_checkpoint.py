@@ -172,8 +172,18 @@ async def test_checkpoint_dir_atomic(tmp_path):
             await session.commit()
 
         entries = [
-            SnapshotEntry(resource_id="r1", path="/parent", name="f1"),
-            SnapshotEntry(resource_id="r2", path="/parent", name="f2"),
+            SnapshotEntry(
+                resource_id="r1",
+                path="/parent/f1",
+                name="f1",
+                metadata={"is_dir": False, "parent_path": "/parent"},
+            ),
+            SnapshotEntry(
+                resource_id="r2",
+                path="/parent/f2",
+                name="f2",
+                metadata={"is_dir": False, "parent_path": "/parent"},
+            ),
         ]
         child_dirs = [("/parent/a", 1), ("/parent/b", 1)]
 
@@ -226,9 +236,10 @@ async def test_children_saved_before_dir_done(tmp_path):
             orig_add_dirs = ckpt._repo.add_dirs
             orig_add_entries = ckpt._repo.add_entries
 
-            async def spy_add_entries(run_id_, entries_):
+            async def spy_add_entries(run_id_, entries_, **kwargs):
                 call_order.append("add_entries")
-                await orig_add_entries(run_id_, entries_)
+                assert kwargs.get("dir_path") == "/parent"
+                await orig_add_entries(run_id_, entries_, **kwargs)
 
             async def spy_add_dirs(run_id_, dirs_):
                 call_order.append("add_dirs")
@@ -247,7 +258,14 @@ async def test_children_saved_before_dir_done(tmp_path):
             ckpt._repo.add_dirs = spy_add_dirs
             ckpt._repo.complete_dir = spy_complete
 
-            entries = [SnapshotEntry(resource_id="r1", path="/parent", name="f1")]
+            entries = [
+                SnapshotEntry(
+                    resource_id="r1",
+                    path="/parent/f1",
+                    name="f1",
+                    metadata={"is_dir": False, "parent_path": "/parent"},
+                )
+            ]
             await ckpt.checkpoint_dir(
                 run_id, "/parent", entries, [("/parent/a", 1), ("/parent/b", 1)]
             )
@@ -271,7 +289,14 @@ async def test_checkpoint_idempotent(tmp_path):
             await repo.claim_next_dir(run_id)
             await session.commit()
 
-        entries = [SnapshotEntry(resource_id="r1", path="/parent", name="f1")]
+        entries = [
+            SnapshotEntry(
+                resource_id="r1",
+                path="/parent/f1",
+                name="f1",
+                metadata={"is_dir": False, "parent_path": "/parent"},
+            )
+        ]
         child_dirs = [("/parent/a", 1)]
 
         async with factory() as session:
@@ -286,6 +311,45 @@ async def test_checkpoint_idempotent(tmp_path):
             assert await repo.count_dirs(run_id, "done") == 1
             assert await repo.count_dirs(run_id, "pending") == 1
             assert await repo.count_entries(run_id) == 1
+    finally:
+        await engine.dispose()
+
+
+async def test_checkpoint_empty_directory_removes_stale_scope_rows(tmp_path):
+    engine, factory = await _make_engine(tmp_path)
+    try:
+        async with factory() as session:
+            root_id = await _seed_root_mapping(session)
+            run_id = await _start_run(factory, root_id)
+
+        async with factory() as session:
+            repo = DurableScanRepository(session)
+            await repo.add_dirs(run_id, [("/parent", 0)])
+            claimed = await repo.claim_next_dir(run_id)
+            assert claimed is not None
+            await repo.add_entries(
+                run_id,
+                [
+                    SnapshotEntry(
+                        resource_id="stale",
+                        path="/parent/old.txt",
+                        name="old.txt",
+                        metadata={"is_dir": False, "parent_path": "/parent"},
+                    )
+                ],
+                dir_path="/parent",
+            )
+            await session.commit()
+
+        async with factory() as session:
+            ckpt = DirCheckpoint(session)
+            await ckpt.checkpoint_dir(run_id, "/parent", [], [])
+            await session.commit()
+
+        async with factory() as session:
+            repo = DurableScanRepository(session)
+            assert await repo.get_entries(run_id, "/parent") == []
+            assert await repo.count_dirs(run_id, "done") == 1
     finally:
         await engine.dispose()
 
