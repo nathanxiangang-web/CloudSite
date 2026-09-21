@@ -387,7 +387,17 @@ async def scan_category_durable(
         asyncio.create_task(worker())
         for _ in range(max_workers)
     ]
-    await asyncio.gather(*workers)
+    try:
+        await asyncio.gather(*workers)
+    except BaseException:
+        # Do not let sibling workers keep using the shared AsyncSession after
+        # the scan caller has already unwound. Claimed/checkpointed state was
+        # committed before provider I/O, so cancellation remains resumable.
+        for task in workers:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+        raise
 
     failed = await repo.count_dirs(run_id, "failed")
     pending = await repo.count_dirs(run_id, "pending")
