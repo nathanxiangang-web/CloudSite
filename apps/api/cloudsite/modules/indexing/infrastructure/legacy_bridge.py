@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 GLOBAL_SCAN_CONCURRENCY = 16  # global scan concurrency
 RECONCILE_CONCURRENCY = 1     # production reconcile concurrency
 
+
 def _durable_scan_enabled() -> bool:
     """Return whether production scanning should use durable checkpoints."""
     return os.environ.get("CLOUDSITE_DURABLE_SCAN_ENABLED", "").strip().lower() in {
@@ -35,7 +36,6 @@ def _durable_scan_enabled() -> bool:
         "yes",
         "on",
     }
-
 
 
 @dataclass(slots=True)
@@ -242,6 +242,7 @@ async def run_indexing_v2_production(
                         entries_discovered=entries_scanned + count,
                         recent_paths=recent_paths,
                     )
+
                 async def _execute_root() -> dict[str, Any]:
                     async with index_session() as session:
                         store = store_factory(session)
