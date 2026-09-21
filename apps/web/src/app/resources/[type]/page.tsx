@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Folder, Grid2X2 } from "lucide-react";
+import { Folder, Grid2X2, List } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FolderCard } from "@/components/FolderCard";
 import { PublicShell } from "@/components/PublicShell";
@@ -58,7 +58,7 @@ export default function ResourceLibrary() {
     </>}
     <div className={redesignStyles.sectionHeader}>
       <div><h2>文件结果</h2><p>{type === "image" ? "图片使用缩略图网格" : "其余类型使用便于快速扫描的列表"}</p></div>
-      <div><label className="library-sort">文件结果排序<select value={sort} onChange={(event) => navigate({ sort: normalizeSort(event.target.value), page: 1 })}><option value="modified_at">最近更新</option><option value="name">名称</option><option value="size">文件大小</option></select></label><button className="selected" aria-label={type === "image" ? "缩略图视图" : "列表视图"}><Grid2X2 /></button></div>
+      <div><label className="library-sort">文件结果排序<select value={sort} onChange={(event) => navigate({ sort: normalizeSort(event.target.value), page: 1 })}><option value="modified_at">最近更新</option><option value="name">名称</option><option value="size">文件大小</option></select></label><button className="selected" aria-label={type === "image" ? "缩略图视图" : "列表视图"}>{type === "image" ? <Grid2X2 /> : <List />}</button></div>
     </div>
     <section className={type === "image" ? "gallery-grid" : redesignStyles.fileGrid}>{resources.isLoading ? <div className="loading">正在加载资源索引…</div> : resources.error ? <div className="empty error-state">加载失败：{resources.error.message}<button type="button" onClick={() => resources.refetch()}>重试</button></div> : resources.data?.items.length ? resources.data.items.map((item) => type === "image" ? <GalleryCard key={item.id} item={item} /> : <ResourceCard key={item.id} item={item} />) : <div className="empty">{type === "image" ? "暂无公开图片" : type === "document" ? "暂无公开教程" : "当前类型暂无资源。完成 AList 配置和同步后会自动显示。"}</div>}</section>
     {(resources.data?.total_pages ?? 0) > 1 && <nav className="pagination" aria-label="资源分页"><button type="button" disabled={page <= 1 || resources.isFetching} onClick={() => navigate({ page: page - 1 })}>上一页</button><span>第 {page} / {resources.data?.total_pages} 页</span><button type="button" disabled={page >= (resources.data?.total_pages ?? 1) || resources.isFetching} onClick={() => navigate({ page: page + 1 })}>下一页</button></nav>}
