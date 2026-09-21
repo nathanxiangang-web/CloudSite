@@ -183,6 +183,7 @@ Responses must not expose tracebacks, internal filesystem paths, plaintext crede
 | Host | Container | Contents |
 |---|---|---|
 | `${CLOUDSITE_DATA_PATH:-./data}` | `/data` | `state.db`, `index.db`, preview cache, site assets, and recovery metadata |
+| `${CLOUDSITE_115DRIVER_PATH:-./115driver}` | `/root/.115driver` | 115driver CLI login config (persisted across image rebuilds) |
 
 Never run `docker compose down -v` or delete the data directory without a verified backup.
 

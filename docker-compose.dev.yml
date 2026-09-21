@@ -31,6 +31,7 @@ services:
       CLOUDSITE_DURABLE_SCAN_ENABLED: ${CLOUDSITE_DURABLE_SCAN_ENABLED:-false}
     volumes:
       - ${CLOUDSITE_DATA_PATH:-./data}:/data
+      - ${CLOUDSITE_115DRIVER_PATH:-./115driver}:/root/.115driver
     ports:
       - "8000:8000"
     restart: unless-stopped

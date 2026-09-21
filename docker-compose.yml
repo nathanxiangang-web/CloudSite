@@ -15,6 +15,7 @@ services:
       CLOUDSITE_DURABLE_SCAN_ENABLED: ${CLOUDSITE_DURABLE_SCAN_ENABLED:-false}
     volumes:
       - ${CLOUDSITE_DATA_PATH:-./data}:/data
+      - ${CLOUDSITE_115DRIVER_PATH:-./115driver}:/root/.115driver
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
