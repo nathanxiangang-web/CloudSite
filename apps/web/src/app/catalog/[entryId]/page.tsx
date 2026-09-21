@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, ChevronLeft, Download, Link2, AlertTriangle } from "lucide-react";
+import { Boxes, ChevronLeft, Download, Link2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
