@@ -273,6 +273,9 @@ async def run_indexing_v2_production(
 
                 if not result.get("scan_complete", True):
                     total_summary.scan_complete = False
+                total_summary.suppressed_removals += int(
+                    result.get("suppressed_removals", 0) or 0
+                )
 
                 if result.get("status") == "partial":
                     root_failed = True
