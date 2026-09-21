@@ -27,7 +27,15 @@ from .search import recover_search_index_if_dirty
 from .sessions import SESSION_CLEANUP_SECONDS, cleanup_expired_user_sessions
 from .modules.shares.contracts.public import cleanup_share_verify_attempts
 from .shares.service import cleanup_terminal_shares
-from .tasks.scheduler import SYNC_INTERVAL_OPTIONS, _run_cleanup_job, get_system_values, scheduler_loop
+from .tasks.scheduler import (
+    ROLLING_VERIFICATION_BATCH_SIZE,
+    ROLLING_VERIFICATION_INTERVAL_SECONDS,
+    SYNC_INTERVAL_OPTIONS,
+    _run_cleanup_job,
+    _run_rolling_verification_job,
+    get_system_values,
+    scheduler_loop,
+)
 from .tasks.sync import _run_manual_sync_in_background, _safe_startup_sync
 from .infrastructure.lifespan import lifespan
 from .infrastructure.middleware import register_middlewares
@@ -44,6 +52,7 @@ manual_sync_task: asyncio.Task | None = None
 _last_rate_limit_cleanup_at = 0.0
 _last_session_cleanup_at = 0.0
 _last_share_cleanup_at = 0.0
+_last_rolling_verification_at = 0.0
 
 # 常量：中间件与 scheduler 引用，测试 monkeypatch。
 SESSION_COOKIE = "cloudsite_session"
