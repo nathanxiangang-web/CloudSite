@@ -158,6 +158,16 @@ jobs:
         run: docker compose -f docker-compose.dev.yml config --quiet
       - name: Validate offline Compose overlay
         run: docker compose -f docker-compose.yml -f docker-compose.offline.yml config --quiet
+      - name: Verify durable scan flag reaches API
+        env:
+          CLOUDSITE_DOMAIN: cloud.example.com
+          CLOUDSITE_DURABLE_SCAN_ENABLED: "true"
+        run: |
+          for file in docker-compose.yml docker-compose.dev.yml docker-compose.traefik.yml; do
+            docker compose -f "$file" config --format json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["services"]["api"]["environment"]["CLOUDSITE_DURABLE_SCAN_ENABLED"] == "true"'
+          done
+      - name: Validate durable resume E2E script syntax
+        run: bash -n scripts/e2e-durable-resume.sh
 
   docker-smoke:
     runs-on: ubuntu-latest
