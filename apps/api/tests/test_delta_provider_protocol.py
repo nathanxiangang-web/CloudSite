@@ -12,11 +12,12 @@ from cloudsite.modules.providers.domain.capabilities import (
     CapabilityState,
     ProviderCapabilities,
 )
-from cloudsite.modules.providers.domain.delta import ProviderChange
+from cloudsite.modules.providers.domain.delta import ProviderChange, resolve_sync_strategy
 from cloudsite.modules.providers.domain.provider import (
     DeltaCapableProvider,
     StorageProvider,
 )
+from cloudsite.modules.providers.infrastructure.alist_adapter import GenericAListProvider
 from cloudsite.modules.providers.infrastructure.testing import (
     FakeDeltaProvider,
 )
@@ -102,6 +103,21 @@ class TestDeltaCapableProviderProtocol:
         provider = _FullDeltaProvider()
         assert isinstance(provider, DeltaCapableProvider)
 
+
+
+class TestProductionProviderDeltaBoundary:
+    """Generic AList stays on rolling until a real native delta exists."""
+
+    def test_generic_alist_is_not_delta_capable(self):
+        provider = GenericAListProvider(None)  # type: ignore[arg-type]
+        assert not isinstance(provider, DeltaCapableProvider)
+
+    def test_generic_alist_resolves_to_rolling(self):
+        provider = GenericAListProvider(None)  # type: ignore[arg-type]
+        capabilities = provider.capabilities()
+        assert capabilities.supports_delta is CapabilityState.NO
+        assert capabilities.supports_change_cursor is CapabilityState.NO
+        assert resolve_sync_strategy(capabilities) == "rolling"
 
 
 class TestDeltaProviderMethods:
