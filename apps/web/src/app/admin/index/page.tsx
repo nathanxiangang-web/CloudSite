@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Database, Folder, RefreshCw, Search, CheckCi
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
+import progressStyles from "@/features/admin-index/styles/live-progress.module.css";
 import { api, Folder as FolderType } from "@/lib/api";
 
 type SyncRun = {
@@ -142,22 +143,22 @@ export default function IndexPage() {
             : <button type="button" className="primary" disabled={sync.isPending || mappings.isLoading || Boolean(mappings.error)} onClick={() => sync.mutate(false)}><RefreshCw />立即同步</button>}
       </div>
       {(sync.error || cancelSync.error) && <p className="form-error">{(sync.error || cancelSync.error)?.message}</p>}
-      {syncing && <div className="sync-progress-bar">
-        <div className="sync-progress-head">
-          <span className="sync-current-path"><Loader2 className="spin" />{currentPath ? `扫描中：${currentPath}` : rootsTotal > 0 ? "正在进入根目录…" : "正在读取 Provider 根目录…"}</span>
+      {syncing && <div className={progressStyles.progressBar}>
+        <div className={progressStyles.progressHead}>
+          <span className={progressStyles.currentPath}><Loader2 className="spin" />{currentPath ? `扫描中：${currentPath}` : rootsTotal > 0 ? "正在进入根目录…" : "正在读取 Provider 根目录…"}</span>
           <span>{elapsedSeconds}s</span>
         </div>
-        <div className="sync-live-metrics">
+        <div className={progressStyles.liveMetrics}>
           <span><strong>{rootsCompleted} / {rootsTotal || "?"}</strong><small>根目录</small></span>
           <span><strong>{directoriesDone}</strong><small>当前 Root 已完成目录</small></span>
           <span><strong>{knownPending}</strong><small>当前 Root 待处理</small></span>
           <span><strong>{activeWorkers}</strong><small>活跃 Worker</small></span>
           <span><strong>{entriesDiscovered}</strong><small>已发现条目</small></span>
         </div>
-        <div className={rootsTotal > 0 ? "sync-progress-track" : "sync-progress-track indeterminate"} aria-label="同步活动进度">
+        <div className={rootsTotal > 0 ? progressStyles.progressTrack : `${progressStyles.progressTrack} ${progressStyles.indeterminate}`} aria-label="同步活动进度">
           <i style={rootsTotal > 0 ? { width: `${rootProgressPercent}%` } : undefined} />
         </div>
-        <p className="sync-progress-note">目录总量会在遍历过程中动态增长，因此不显示虚假的目录完成百分比；上方数值会实时更新。</p>
+        <p className={progressStyles.progressNote}>目录总量会在遍历过程中动态增长，因此不显示虚假的目录完成百分比；上方数值会实时更新。</p>
       </div>}
     </section>
     <section className="index-workspace">
