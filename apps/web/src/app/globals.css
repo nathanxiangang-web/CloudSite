@@ -1272,7 +1272,19 @@ button:active, .button:active { transform:scale(.97); }
 .site-footer-col a { color:var(--muted); font-size:13px; }
 .site-footer-col a:hover { color:var(--blue); }
 .site-footer-bottom { text-align:center; color:var(--muted); font-size:11px; padding-top:8px; border-top:1px solid #edf0f5; }
-@media (max-width:760px) { .site-footer-grid { grid-template-columns:1fr; gap:18px; } }
+@media (max-width:760px) {
+  .site-footer { padding:20px 0 16px; gap:16px; }
+  .site-footer-grid {
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+    width:calc(100% - 32px);
+  }
+  .site-footer-col { gap:10px; }
+  .site-footer-col h4 { margin-bottom:2px; }
+  .site-footer-col a { font-size:12px; line-height:1.5; }
+  .site-footer-bottom { align-self:stretch; padding:12px 16px 0; }
+  .site-footer .site-footer-bottom span { display:block; }
+}
 
 /* === UI Redesign: Resource type tabs === */
 .resource-type-tabs { display:flex; gap:6px; margin-bottom:20px; flex-wrap:wrap; }
