@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 from collections import deque
+from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -70,12 +71,16 @@ def _restore_entry(row: Any, root: ProviderScanRoot) -> SnapshotEntry:
     metadata.setdefault("mime_type", "")
     metadata.setdefault("thumbnail", "")
 
+    modified = row.modified
+    if isinstance(modified, str):
+        modified = datetime.fromisoformat(modified.replace("Z", "+00:00"))
+
     return SnapshotEntry(
         resource_id=row.resource_id,
         path=path,
         name=row.name,
         size=row.size,
-        modified_at=row.modified,
+        modified_at=modified,
         content_hash=row.content_hash or row.metadata_hash,
         metadata=metadata,
     )
