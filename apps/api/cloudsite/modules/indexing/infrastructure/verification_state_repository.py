@@ -94,28 +94,23 @@ class VerificationStateRepository:
             if key not in _UPDATABLE_FIELDS:
                 raise ValueError(f"unsupported verification_state field: {key!r}")
 
-        existing = await self.get(root_mapping_id, path)
-        if existing is None:
-            columns = ["root_mapping_id", "path"] + list(fields)
-            params = [":rid", ":path"] + [f":{name}" for name in fields]
-            await self._session.execute(
-                text(
-                    f"INSERT INTO index_verification_states ({', '.join(columns)}) "
-                    f"VALUES ({', '.join(params)})"
-                ),
-                {"rid": root_mapping_id, "path": path, **fields},
-            )
-        elif fields:
-            assignments = [f"{name} = :{name}" for name in fields]
+        columns = ["root_mapping_id", "path"] + list(fields)
+        params = [":rid", ":path"] + [f":{name}" for name in fields]
+        if fields:
+            assignments = [f"{name} = excluded.{name}" for name in fields]
             assignments.append("updated_at = datetime('now')")
-            await self._session.execute(
-                text(
-                    f"UPDATE index_verification_states "
-                    f"SET {', '.join(assignments)} "
-                    "WHERE root_mapping_id = :rid AND path = :path"
-                ),
-                {"rid": root_mapping_id, "path": path, **fields},
-            )
+            conflict = "DO UPDATE SET " + ", ".join(assignments)
+        else:
+            conflict = "DO NOTHING"
+
+        await self._session.execute(
+            text(
+                f"INSERT INTO index_verification_states ({', '.join(columns)}) "
+                f"VALUES ({', '.join(params)}) "
+                f"ON CONFLICT(root_mapping_id, path) {conflict}"
+            ),
+            {"rid": root_mapping_id, "path": path, **fields},
+        )
         await self._session.flush()
 
     async def mark_verified(

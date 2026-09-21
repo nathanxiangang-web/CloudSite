@@ -235,6 +235,8 @@ async def run_indexing_v2_production(
                 f"Scanning: {root_label}",
             )
             root_failed = False
+            baseline_seeded: int | None = None
+            baseline_warning: str | None = None
             try:
                 async def _on_progress(recent_paths: list[str], count: int) -> None:
                     metrics = adapter.last_scan_metrics
@@ -266,10 +268,55 @@ async def run_indexing_v2_production(
                         adapter.set_durable_session(durable_state)
                         try:
                             result = await _execute_root()
+                            if (
+                                result.get("status") == "success"
+                                and result.get("scan_complete", True)
+                            ):
+                                run_id = adapter.last_scan_run_id
+                                if run_id:
+                                    try:
+                                        from .verification_baseline import (
+                                            seed_verification_baseline_from_durable_run,
+                                        )
+
+                                        baseline_seeded = (
+                                            await seed_verification_baseline_from_durable_run(
+                                                durable_state,
+                                                root_mapping_id=root.root_mapping_id,
+                                                run_id=run_id,
+                                            )
+                                        )
+                                        await durable_state.commit()
+                                    except Exception as exc:  # noqa: BLE001
+                                        await durable_state.rollback()
+                                        baseline_warning = (
+                                            f"{root_label}: verification baseline seed failed: "
+                                            f"{type(exc).__name__}: {exc}"
+                                        )
+                                else:
+                                    baseline_warning = (
+                                        f"{root_label}: durable scan completed without run id; "
+                                        "verification baseline not updated"
+                                    )
                         finally:
                             adapter.set_durable_session(None)
                 else:
                     result = await _execute_root()
+
+                if baseline_seeded is not None:
+                    await _log_operation(
+                        "sync",
+                        "v2_verification_baseline_seeded",
+                        f"Verification baseline: {root_label} | "
+                        f"directories={baseline_seeded}",
+                    )
+                elif baseline_warning:
+                    await _log_operation(
+                        "sync",
+                        "v2_verification_baseline_failed",
+                        baseline_warning,
+                        level="WARNING",
+                    )
 
                 if not result.get("scan_complete", True):
                     total_summary.scan_complete = False

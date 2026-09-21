@@ -154,6 +154,7 @@ async def test_durable_scan_checkpoints_and_completes(tmp_path):
             runs = await repo.list_scan_runs(1)
             assert len(runs) == 1
             assert runs[0].status == "completed"
+            assert adapter.last_scan_run_id == runs[0].id
             assert await repo.count_dirs(runs[0].id, "done") == 4
             assert await repo.count_entries(runs[0].id) == len(entries) - 1
 
