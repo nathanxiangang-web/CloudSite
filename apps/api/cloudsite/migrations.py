@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-CURRENT_SCHEMA_VERSION = 33
+CURRENT_SCHEMA_VERSION = 34
 
 
 @dataclass(frozen=True, slots=True)
@@ -1902,6 +1902,38 @@ async def state_v32_to_v33_upgrade(conn: AsyncConnection) -> None:
     )
 
 
+async def state_v33_to_v34_upgrade(conn: AsyncConnection) -> None:
+    """Schema v33 -> v34: per-directory rolling verification state.
+
+    Rolling Verification needs a durable fact source per directory so batch
+    selection can make forward progress across restarts instead of repeatedly
+    selecting the same paths. Dirty work remains owned by index_dirty_scopes;
+    this table stores only verification baseline/timestamps/errors.
+    """
+    await conn.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS index_verification_states("
+        "root_mapping_id INTEGER NOT NULL REFERENCES content_root_mappings(id) ON DELETE CASCADE,"
+        "path TEXT NOT NULL,"
+        "fingerprint TEXT,"
+        "child_count INTEGER NOT NULL DEFAULT 0,"
+        "last_verified_at TEXT,"
+        "last_changed_at TEXT,"
+        "last_error_code TEXT,"
+        "last_error_message TEXT,"
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        "updated_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        "PRIMARY KEY(root_mapping_id, path))"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_verification_states_root_verified "
+        "ON index_verification_states (root_mapping_id, last_verified_at)"
+    )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_index_verification_states_last_changed "
+        "ON index_verification_states (last_changed_at)"
+    )
+
+
 STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v1_to_v2", from_version=1, to_version=2, upgrade=state_v1_to_v2_upgrade),
     Migration(id="state_v2_to_v3", from_version=2, to_version=3, upgrade=state_v2_to_v3_upgrade),
@@ -1935,5 +1967,6 @@ STATE_MIGRATIONS: list[Migration] = [
     Migration(id="state_v30_to_v31", from_version=30, to_version=31, upgrade=state_v30_to_v31_upgrade),
     Migration(id="state_v31_to_v32", from_version=31, to_version=32, upgrade=state_v31_to_v32_upgrade),
     Migration(id="state_v32_to_v33", from_version=32, to_version=33, upgrade=state_v32_to_v33_upgrade),
+    Migration(id="state_v33_to_v34", from_version=33, to_version=34, upgrade=state_v33_to_v34_upgrade),
 ]
 
