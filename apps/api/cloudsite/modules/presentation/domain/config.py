@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 HOME_BLOCK_TYPES = (
     "featured",
     "recent",
-    "topic",
+
     "category",
     "continue",
 )
@@ -84,8 +84,8 @@ SOFTWARE_PRESET = PresentationConfig(
             sort_order=3,
         ),
         NavigationItem(
-            label="最近更新",
-            href="/resources/file",
+            label="云下载",
+            href="/cloud-download",
             sort_order=4,
         ),
         NavigationItem(label="使用指南", href="/about", sort_order=5),
@@ -109,14 +109,8 @@ SOFTWARE_PRESET = PresentationConfig(
             title="最近更新",
         ),
         HomeBlock(
-            type="topic",
-            sort_order=3,
-            limit=6,
-            title="推荐专题",
-        ),
-        HomeBlock(
             type="continue",
-            sort_order=4,
+            sort_order=3,
             limit=6,
             title="继续使用",
         ),
@@ -146,31 +140,25 @@ TUTORIAL_PRESET = PresentationConfig(
     ],
     home_blocks=[
         HomeBlock(
-            type="topic",
-            sort_order=0,
-            limit=6,
-            title="推荐教程",
-        ),
-        HomeBlock(
             type="featured",
-            sort_order=1,
+            sort_order=0,
             limit=4,
             title="精选合集",
         ),
         HomeBlock(
             type="category",
-            sort_order=2,
+            sort_order=1,
             title="资源分类",
         ),
         HomeBlock(
             type="recent",
-            sort_order=3,
+            sort_order=2,
             limit=6,
             title="最近更新",
         ),
         HomeBlock(
             type="continue",
-            sort_order=4,
+            sort_order=3,
             limit=6,
             title="继续使用",
         ),

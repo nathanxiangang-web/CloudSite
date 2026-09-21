@@ -7,7 +7,7 @@ import { AdminShell } from "@/components/AdminShell";
 import { api } from "@/lib/api";
 import { SITE_QUERY_KEY } from "@/lib/site";
 
-type BlockType = "featured" | "recent" | "topic" | "category" | "continue";
+type BlockType = "featured" | "recent" | "category" | "continue";
 type HomeBlock = { type: BlockType; enabled: boolean; sort_order: number; limit: number; title: string };
 type NavItem = { label: string; href: string; sort_order: number };
 type ThemeTokens = { accent_color: string; card_radius: number };
@@ -30,11 +30,10 @@ type PresentationResponse = {
 const BLOCK_LABELS: Record<BlockType, string> = {
   featured: "精选合集",
   recent: "最新发布",
-  topic: "推荐专题",
   category: "资源分类",
   continue: "继续使用",
 };
-const BLOCK_ORDER: BlockType[] = ["category", "featured", "recent", "topic", "continue"];
+const BLOCK_ORDER: BlockType[] = ["category", "featured", "recent", "continue"];
 
 export default function PresentationPage() {
   const queryClient = useQueryClient();

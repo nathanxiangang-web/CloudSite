@@ -4,12 +4,12 @@ import { Archive, ArrowRight, Clapperboard, Download, File, FileText, Image, Pan
 import { MobilePrimaryNavigation } from "./PublicNavigation";
 import { HomeSearch } from "./HomeSearch";
 import { FeaturedCollections } from "./FeaturedCollections";
-import { FeaturedTopics, TopicEntry } from "./FeaturedTopics";
+
 import { ContinueSection } from "./ContinueSection";
 import { HeroIllustration } from "./hero/HeroIllustration";
 import { Collection, formatBytes, Resource } from "@/lib/api";
 
-type BlockType = "featured" | "recent" | "topic" | "category" | "continue";
+type BlockType = "featured" | "recent" | "category" | "continue";
 type OrderedBlock = { type: BlockType; enabled: boolean; sort_order: number; limit: number; title: string };
 
 type HomeData = {
@@ -25,7 +25,7 @@ type HomeData = {
     navigation: { label: string; href: string; sort_order: number }[];
     ordered_blocks: OrderedBlock[];
   };
-  topics: TopicEntry[];
+
   type_entries?: { type: string; display_name: string; count: number; url: string }[];
   popular_strategy?: string;
 };
@@ -41,7 +41,7 @@ const typeMeta = {
 const BLOCK_LABELS: Record<BlockType, string> = {
   featured: "精选合集",
   recent: "最近更新",
-  topic: "推荐专题",
+
   category: "资源分类",
   continue: "继续使用",
 };
@@ -121,7 +121,7 @@ export async function HomeContent() {
   const collections = data.collections ?? [];
   const popular = data.popular.length ? data.popular.slice(0, 6) : null;
   const recent = data.recent ?? [];
-  const topics = data.topics ?? [];
+
   const accent = "资源网站";
   const titleLead = site.home_title.endsWith(accent) ? site.home_title.slice(0, -accent.length) : site.home_title;
   const titleAccent = site.home_title.endsWith(accent) ? accent : "";
@@ -142,8 +142,7 @@ export async function HomeContent() {
             {recent.length ? recent.slice(0, block.limit).map((item) => <RecentRow item={item} key={item.id} />) : <div className="empty">还没有索引数据，请到管理后台配置 AList 并执行同步。</div>}
           </section>
         </div>;
-      case "topic":
-        return <div key={block.type}><FeaturedTopics topics={topics} limit={block.limit} title={title} /></div>;
+
       case "continue":
         return <div key={block.type}><SectionTitle title={title} href="/browse" /><ContinueSection limit={block.limit} /></div>;
       default:

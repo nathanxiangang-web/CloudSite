@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 
 from ..modules.catalog.contracts.public import (
     featured_cover_resource_ids,
-    published_browse_entries,
+
 )
 from ..modules.collections.contracts.public import list_home_collections
 from ..modules.presentation.contracts.public import public_presentation
@@ -114,10 +114,7 @@ async def home(request: Request):
             limit=site["collection_limit"],
         )
         presentation = await public_presentation(state)
-        topic_entries = await published_browse_entries(
-            state,
-            limit=12,
-        )
+
 
         content_roots = _content_root_payloads(
             roots,
@@ -126,17 +123,7 @@ async def home(request: Request):
         )
         recent = [item.to_dict() for item in inventory.recent]
         popular = [item.to_dict() for item in inventory.popular]
-        topics = [
-            {
-                "entry_id": entry.entry_id,
-                "title": entry.title,
-                "summary": entry.summary,
-                "content_type": entry.content_type,
-                "slug": entry.slug,
-                "cover_resource_id": entry.cover_resource_id,
-            }
-            for entry in topic_entries
-        ]
+
         type_entries = [
             {
                 "type": content_type,
@@ -165,7 +152,7 @@ async def home(request: Request):
             "popular": popular,
             "collections": collections,
             "presentation": presentation,
-            "topics": topics,
+
             "type_entries": type_entries,
             "popular_strategy": popular_strategy,
         }
