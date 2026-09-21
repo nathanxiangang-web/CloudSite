@@ -1,6 +1,6 @@
 import ImageAsset from "next/image";
 import Link from "next/link";
-import { ArrowRight, Camera, FolderKanban, Images, PanelsTopLeft, SquarePlay } from "lucide-react";
+import { ArrowRight, BookOpen, Camera, FolderKanban, Images, PanelsTopLeft, SquarePlay } from "lucide-react";
 import { Collection } from "@/lib/api";
 import { collectionCoverSrc } from "@/lib/collection-cover";
 
@@ -13,6 +13,7 @@ const fallbackVisuals = [
   { icon: Camera, tone: "green", cover: "/assets/collection-photography.webp" },
   { icon: Images, tone: "purple", cover: "/assets/collection-image.webp" },
   { icon: PanelsTopLeft, tone: "orange", cover: "/assets/collection-software.webp" },
+  { icon: BookOpen, tone: "green", cover: "/assets/collection-2.webp" },
 ] as const;
 
 function getCollectionVisual(name: string, index: number) {
@@ -20,6 +21,7 @@ function getCollectionVisual(name: string, index: number) {
   if (/摄影|photo|camera/i.test(name)) return fallbackVisuals[1];
   if (/图片|图像|图库|image|gallery/i.test(name)) return fallbackVisuals[2];
   if (/软件|应用|software|app/i.test(name)) return fallbackVisuals[3];
+  if (/教程|指南|文档|tutorial|guide|document/i.test(name)) return fallbackVisuals[4];
   const fallback = fallbackVisuals[index % fallbackVisuals.length];
   return { icon: FolderKanban, tone: fallback.tone, cover: fallback.cover };
 }
