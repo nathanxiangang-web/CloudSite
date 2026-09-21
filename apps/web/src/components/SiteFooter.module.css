@@ -1,0 +1,13 @@
+@media (max-width:760px) {
+  .footer { padding:20px 0 16px; gap:16px; }
+  .footer .grid {
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+    width:calc(100% - 32px);
+  }
+  .footer .column { gap:10px; }
+  .footer .column h4 { margin-bottom:2px; }
+  .footer .column a { font-size:12px; line-height:1.5; }
+  .footer .bottom { align-self:stretch; padding:12px 16px 0; }
+  .footer .bottom span { display:block; }
+}
