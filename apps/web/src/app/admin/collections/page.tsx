@@ -66,7 +66,9 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
   const [itemIntro, setItemIntro] = useState("");
   const [items, setItems] = useState<AdminCollectionItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchPage, setSearchPage] = useState(1);
   const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogPage, setCatalogPage] = useState(1);
 
   const [syncedData, setSyncedData] = useState(query.data);
   if (query.data !== syncedData) {
@@ -87,12 +89,12 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
     }
   }
 
-  const search = useQuery({ queryKey: ["collection-picker", searchQuery], queryFn: () => api<SearchResponse>(`/api/search?q=${encodeURIComponent(searchQuery)}&object_type=resource&page_size=20`), enabled: searchQuery.trim().length > 0 });
+  const search = useQuery({ queryKey: ["collection-picker", searchQuery, searchPage], queryFn: () => api<SearchResponse>(`/api/search?q=${encodeURIComponent(searchQuery)}&object_type=resource&page=${searchPage}&page_size=100`), enabled: searchQuery.trim().length > 0 });
   const catalogSearch = useQuery({
-    queryKey: ["collection-catalog-picker", catalogQuery],
+    queryKey: ["collection-catalog-picker", catalogQuery, catalogPage],
     queryFn: () => catalogQuery.trim()
-      ? fetchCatalogSearch({ q: catalogQuery.trim(), page_size: 20 })
-      : fetchCatalogEntries({ page_size: 20 }),
+      ? fetchCatalogSearch({ q: catalogQuery.trim(), page_size: 100, page: catalogPage })
+      : fetchCatalogEntries({ page_size: 100, page: catalogPage }),
   });
   const save = useMutation({ mutationFn: () => api(`/api/admin/collections/${id}`, { method: "PUT", body: JSON.stringify({ name, description, cover, status, visible_on_home: visibleOnHome, sort_order: sortOrder, goal, audience, prerequisites, item_intro: itemIntro }) }), onSuccess: () => client.invalidateQueries({ queryKey: ["admin-collections"] }) });
   const saveItems = useMutation({ mutationFn: (next: AdminCollectionItem[]) => api(`/api/admin/collections/${id}/items`, { method: "PUT", body: JSON.stringify({ items: next.map((i) => i.item_type === "resource" ? { item_type: "resource", resource_id: i.resource_id, catalog_entry_id: null, note: i.note } : { item_type: "catalog_entry", resource_id: null, catalog_entry_id: i.catalog_entry_id, note: i.note }) }) }), onSuccess: () => { client.invalidateQueries({ queryKey: ["admin-collections"] }); client.invalidateQueries({ queryKey: ["admin-collection", id] }); } });
@@ -139,12 +141,14 @@ function CollectionEditor({ id, onClose }: { id: number; onClose: () => void }) 
     </div>)}</div>
 
     <h3>添加资源</h3>
-    <div className="small-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索资源名称或类型，如 Chrome / pdf / 摄影" /></div>
+    <div className="small-search"><Search /><input maxLength={SEARCH_QUERY_MAX_LENGTH} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setSearchPage(1); }} placeholder="搜索资源名称或类型，如 Chrome / pdf / 摄影" /></div>
     <div className="picker-results">{search.isLoading ? <div className="loading">搜索中…</div> : search.error ? <div className="empty error-state">资源搜索失败：{search.error.message}<button type="button" onClick={() => search.refetch()}>重试</button></div> : search.data?.items.filter((r) => r.object_type === "resource").map((resource) => { const added = addedResourceIds.has(resource.id); return <div className="picker-item" key={resource.id}><span className={`picker-item-icon type-${resource.content_type || "file"}`}><FolderKanban /></span><span className="picker-item-copy"><strong>{resource.name}</strong><small>{typeLabel[resource.content_type] ?? resource.content_type}{resource.extension ? ` · ${resource.extension.toUpperCase()}` : ""}{resource.size != null ? ` · ${formatBytes(resource.size)}` : ""}</small></span>{added ? <button disabled><Check />已添加</button> : <button className="primary" onClick={() => addResource(resource.id, resource.name, resource.content_type, resource.extension, resource.size ?? 0)}><Plus />添加</button>}</div>; })}</div>
+    {search.data && searchPage < search.data.total_pages && <div className="picker-more"><button onClick={() => setSearchPage(searchPage + 1)}>加载更多（第 {searchPage}/{search.data.total_pages} 页）</button></div>}
 
     <h3>添加教程条目（Catalog）</h3>
-    <div className="small-search"><BookOpen /><input value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder="按标题筛选已发布的 Catalog 条目" /></div>
+    <div className="small-search"><BookOpen /><input value={catalogQuery} onChange={(e) => { setCatalogQuery(e.target.value); setCatalogPage(1); }} placeholder="按标题筛选已发布的 Catalog 条目" /></div>
     <div className="picker-results">{catalogSearch.isLoading ? <div className="loading">加载中…</div> : catalogSearch.error ? <div className="empty error-state">Catalog 加载失败：{catalogSearch.error.message}<button type="button" onClick={() => catalogSearch.refetch()}>重试</button></div> : catalogResults.map((entry) => { const added = addedEntryIds.has(entry.entry_id); return <div className="picker-item" key={entry.entry_id}><span className={`picker-item-icon type-${entry.content_type || "file"}`}><BookOpen /></span><span className="picker-item-copy"><strong>{entry.title}</strong><small>{typeLabel[entry.content_type] ?? entry.content_type}{entry.summary ? ` · ${entry.summary}` : ""}</small></span>{added ? <button disabled><Check />已添加</button> : <button className="primary" onClick={() => addCatalogEntry(entry)}><Plus />添加</button>}</div>; })}</div>
+    {catalogSearch.data && catalogPage < (catalogSearch.data as any).total_pages && <div className="picker-more"><button onClick={() => setCatalogPage(catalogPage + 1)}>加载更多（第 {catalogPage}/{(catalogSearch.data as any).total_pages} 页）</button></div>}
 
     <div className="form-actions"><button onClick={onClose}>取消</button><button className="primary" onClick={persistAll} disabled={save.isPending || saveItems.isPending}>保存</button></div>
     {(save.error || saveItems.error) && <p className="form-error">{(save.error ?? saveItems.error)?.message}</p>}
