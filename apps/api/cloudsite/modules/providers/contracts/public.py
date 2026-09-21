@@ -43,7 +43,7 @@ from ..domain.delta import (
     SyncStrategy,
     resolve_sync_strategy,
 )
-from ..domain.provider import StorageProvider
+from ..domain.provider import DeltaCapableProvider, StorageProvider
 from ..domain.scan import (
     ProviderScanPort,
     ProviderScanRoot,
@@ -66,6 +66,7 @@ from ..infrastructure.registry import (
 __all__ = [
     "ContentRootView",
     "StorageProvider",
+    "DeltaCapableProvider",
     "ProviderScanPort",
     "ProviderScanRoot",
     "ProviderScanSource",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from .capabilities import ProviderCapabilities
+from .delta import ProviderChange
 
 
 @runtime_checkable
@@ -24,4 +25,11 @@ class StorageProvider(Protocol):
     async def identity(self, path: str) -> dict[str, Any]: ...
 
 
-__all__ = ["StorageProvider"]
+@runtime_checkable
+class DeltaCapableProvider(StorageProvider, Protocol):
+    async def bootstrap_cursor(self) -> str: ...
+
+    async def fetch_changes(self, cursor: str | None) -> tuple[list[ProviderChange], str]: ...
+
+
+__all__ = ["StorageProvider", "DeltaCapableProvider"]
