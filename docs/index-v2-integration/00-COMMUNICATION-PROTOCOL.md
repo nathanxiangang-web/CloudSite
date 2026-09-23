@@ -4,15 +4,15 @@
 >
 > Control issue: #223
 >
-> Applies to: Architect and all Codex workers participating in the CloudSite 1.0.0 × index-v2 integration.
+> Applies to: Architect and the single Codex worker participating in the CloudSite 1.0.0 × index-v2 integration.
 
 ## 1. Purpose
 
 GitHub is the single source of truth for this project. Chat messages, local notes, and worker memory are not authoritative unless the architect converts them into a GitHub Issue, PR review, ADR, or this document.
 
 The protocol exists to prevent:
-- workers changing scope while implementing;
-- parallel workers modifying the same ownership area without coordination;
+- the Codex worker changing scope while implementing;
+- overlapping tasks modifying the same ownership area without sequencing;
 - “done” claims without code/test evidence;
 - repeated blind retries;
 - accidental import of unrelated CloudSite 2.0 architecture into the 1.0.0 baseline;
@@ -28,7 +28,7 @@ The architect owns:
 - scope freeze;
 - architecture and compatibility contracts;
 - task decomposition and dependency order;
-- worker path ownership;
+- task path ownership;
 - acceptance criteria;
 - PR review and merge recommendation;
 - changes to the blueprint;
@@ -37,9 +37,9 @@ The architect owns:
 Only the architect may mark a task `READY` or `ACCEPTED`.
 
 ### Codex worker
-A worker owns implementation only inside the task contract. A worker may inspect adjacent code for understanding, but may not change adjacent scope without a change request.
+There is exactly **one Codex worker** for this project. The worker owns implementation only inside the active task contract. A worker may inspect adjacent code for understanding, but may not change adjacent scope without a change request.
 
-A worker must never infer “while I am here” work.
+The worker must never infer “while I am here” work.
 
 ## 3. Authoritative artifacts
 
@@ -59,18 +59,18 @@ If two artifacts conflict, the higher item wins. The worker must report the conf
 Every implementation task has exactly one Issue.
 
 ### Branch = execution workspace
-One task normally maps to one worker branch.
+One task normally maps to one task branch.
 
 Branch naming:
 
 ```text
-worker/W<worker-number>/<task-id>-<short-slug>
+worker/<task-id>-<short-slug>
 ```
 
 Example:
 
 ```text
-worker/W2/IDX-P2-003-v1-persistence-adapter
+worker/IDX-P2-003-v1-persistence-adapter
 ```
 
 ### Commit = auditable progress
@@ -87,7 +87,7 @@ fix(indexing): prevent incomplete snapshot deletion [IDX-P4-001]
 ### PR = delivery unit
 One task = one PR unless the architect explicitly authorizes a split.
 
-Workers do not merge their own PRs.
+The Codex worker does not merge its own PR.
 
 ## 5. Task state machine
 
@@ -131,7 +131,7 @@ A task may be marked `READY` only when it contains all fields below.
 ```markdown
 TASK: IDX-Px-xxx
 STATUS: READY
-OWNER: W1
+OWNER: CODEX
 BASE: <approved base branch>@<sha>
 SOURCE: index-v2@<frozen sha, when applicable>
 
@@ -255,7 +255,7 @@ No out-of-scope change is permitted until the architect updates the Issue or exp
 
 ## 10. Failure and retry rule
 
-A worker may make at most two materially different implementation attempts for the same blocking problem without architect intervention.
+The Codex worker may make at most two materially different implementation attempts for the same blocking problem without architect intervention.
 
 After the second failed attempt, the worker must stop and report:
 
@@ -349,17 +349,17 @@ A PR is not acceptable unless:
 9. PR description links the task Issue.
 10. CI is green, or the architect explicitly records why a check is non-applicable.
 
-## 13. Parallel-worker ownership rules
+## 13. Single-worker sequencing rules
 
-Workers may run in parallel only when path and contract ownership do not overlap.
+There is one Codex worker, so work is sequenced by task dependencies rather than parallel worker ownership.
 
 Rules:
-- Architect assigns ownership before `READY`.
-- Two workers may read the same file.
-- Two workers may not both modify the same file unless an explicit integration order is documented.
-- Workers do not cherry-pick other worker branches on their own.
-- Shared-interface changes are produced by the owner of that interface first; dependent workers rebase only after architect instruction.
-- Cross-worker conflict resolution belongs to the architect/integration task, not an individual worker.
+- The architect selects the active task before `READY`.
+- Only one architecture-sensitive implementation task should be active at a time unless the architect explicitly allows overlap.
+- The worker may inspect future-task areas but may not modify them early.
+- The worker does not cherry-pick unfinished task branches into another task on its own.
+- Shared-interface changes land first; dependent tasks rebase only after architect instruction.
+- Integration conflicts are resolved as an explicit architect-controlled task, not by silently widening the current task.
 
 ## 14. Architecture decision rule
 
@@ -405,4 +405,4 @@ The process is working when a fresh Codex session can open the repository and, u
 - Issue #223;
 - its assigned task Issue;
 
-understand exactly what it may change, why, how to test it, and how to report completion without relying on hidden conversation context.
+understand exactly what it may change, why, how to test it, and how to report completion without relying on hidden conversation context or parallel-worker coordination.
