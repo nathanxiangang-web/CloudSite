@@ -40,7 +40,7 @@ The source snapshot is used for analysis and selective porting. It is **not** an
 main/v1.0.0
   └── arch/index-v2-integration
        └── future integration/index-v2-final
-            └── worker branches
+            └── task branches
 ```
 
 No whole-branch merge from `index-v2` is permitted.
@@ -556,12 +556,22 @@ Outputs:
 
 After this gate, no roadmap expansion is implied.
 
-## 19. Four-worker execution lanes
+## 19. Single Codex worker execution model
 
-Parallelism is allowed only under the communication protocol.
+This project uses exactly **one Codex worker**. The architect controls task order and keeps the worker on one bounded task contract at a time.
 
-### W1 — Index core
-Primary ownership:
+Execution sequence:
+1. Index core tasks.
+2. Persistence / identity adapter tasks.
+3. Provider / runtime / control-plane tasks.
+4. Verification / E2E / release tasks.
+
+The worker may change role between tasks, but the active task defines the only permitted scope. There is no W1/W2/W3/W4 parallel worker model.
+
+Responsibilities by task phase:
+
+### Core phase
+Primary paths:
 `apps/api/cloudsite/index_v2/domain/**`
 `apps/api/cloudsite/index_v2/application/**`
 
@@ -570,34 +580,33 @@ Responsibilities:
 - unit tests;
 - no knowledge of 1.0 ORM internals.
 
-### W2 — Persistence and identity adapters
-Primary ownership:
-`apps/api/cloudsite/index_v2/adapters/persistence_v1.py`
-`apps/api/cloudsite/index_v2/adapters/identity_v1.py`
-migration files explicitly assigned by architect.
+### Adapter phase
+Primary paths:
+`apps/api/cloudsite/index_v2/adapters/**`
+and migration files explicitly assigned by the architect.
 
 Responsibilities:
 - 1.0 Folder/Resource mapping;
 - identity stability;
+- AList adapter;
 - staging/progress persistence;
+- search/status integration;
 - atomic/destructive safety.
 
-### W3 — Provider/runtime/control-plane adapters
-Primary ownership:
-`alist_v1.py`
-`runtime/**`
-compatibility facade and explicitly assigned scheduler/admin integration.
+### Runtime/control phase
+Primary paths:
+`apps/api/cloudsite/index_v2/runtime/**`
+and explicitly assigned scheduler/admin compatibility files.
 
 Responsibilities:
-- AList listing;
 - bounded concurrency;
 - progress/status;
 - manual/scheduler/startup wiring;
-- feature flag.
+- feature flag and rollback.
 
-### W4 — Verification and release QA
-Primary ownership:
-tests, E2E scripts, fixtures, compatibility snapshots, release verification docs.
+### Verification/release phase
+Primary paths:
+tests, E2E scripts, fixtures, compatibility snapshots, and release verification docs.
 
 Responsibilities:
 - baseline regression;
@@ -607,11 +616,11 @@ Responsibilities:
 - failure injection;
 - release evidence.
 
-W4 does not “fix production code while testing” without a separate task.
+When testing exposes a production-code defect, the worker reports it and the architect opens or updates a dedicated implementation task before production code is changed.
 
 ## 20. Initial work breakdown
 
-These are blueprint work packages, not yet authorized implementation Issues.
+These are sequential blueprint work packages for the single Codex worker, not yet authorized implementation Issues.
 
 ### P0 discovery
 
